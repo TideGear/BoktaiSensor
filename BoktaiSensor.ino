@@ -12,8 +12,15 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
 
+// Power button state tracking
+unsigned long buttonPressStart = 0;
+bool buttonWasPressed = false;
+
 void setup() {
   Serial.begin(115200);
+
+  // Configure power button with internal pull-up (active LOW)
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   // Initialize I2C for the ESP32-S3 Mini pins (GP8 = SDA, GP9 = SCL)
   Wire.begin(8, 9); 
@@ -35,9 +42,27 @@ void setup() {
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
+
+  // Wait for 3-second button hold to fully power on
+  display.setTextSize(1);
+  display.setCursor(10, 28);
+  display.print("Hold btn 3s to start");
+  display.display();
+  
+  waitForLongPress();
+  
+  // Show wake-up confirmation
+  display.clearDisplay();
+  display.setCursor(20, 28);
+  display.print("Boktai Sensor ON");
+  display.display();
+  delay(800);
 }
 
 void loop() {
+  // Check power button for long-press to sleep
+  handlePowerButton();
+
   // Wait for new sensor data
   if (ltr.newDataAvailable()) {
     float uvi = ltr.readUVI();
@@ -68,7 +93,80 @@ void loop() {
 
     display.display();
   }
-  delay(500);
+  delay(100); // Faster loop for responsive button handling
+}
+
+// Handle power button: long-press (3s) enters deep sleep
+void handlePowerButton() {
+  bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
+  
+  if (buttonPressed && !buttonWasPressed) {
+    // Button just pressed - start timing
+    buttonPressStart = millis();
+    buttonWasPressed = true;
+  } 
+  else if (buttonPressed && buttonWasPressed) {
+    // Button held - check for long press
+    if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
+      enterDeepSleep();
+    }
+  }
+  else if (!buttonPressed) {
+    buttonWasPressed = false;
+  }
+}
+
+// Wait for 3-second button press on startup
+void waitForLongPress() {
+  unsigned long pressStart = 0;
+  bool wasPressed = false;
+  
+  while (true) {
+    bool pressed = (digitalRead(BUTTON_PIN) == LOW);
+    
+    if (pressed && !wasPressed) {
+      pressStart = millis();
+      wasPressed = true;
+    }
+    else if (pressed && wasPressed) {
+      if ((millis() - pressStart) >= LONG_PRESS_MS) {
+        // Wait for button release before continuing
+        while (digitalRead(BUTTON_PIN) == LOW) {
+          delay(10);
+        }
+        return;
+      }
+    }
+    else if (!pressed) {
+      wasPressed = false;
+    }
+    delay(10);
+  }
+}
+
+// Enter deep sleep mode with button wake-up
+void enterDeepSleep() {
+  // Show sleep message
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(15, 24);
+  display.print("Sleeping...");
+  display.setCursor(15, 36);
+  display.print("Press btn to wake");
+  display.display();
+  delay(1000);
+  
+  // Turn off display
+  display.ssd1306_command(SSD1306_DISPLAYOFF);
+  
+  // Configure wake-up source: BUTTON_PIN going LOW (pressed)
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
+  
+  Serial.println("Entering deep sleep...");
+  Serial.flush();
+  
+  // Enter deep sleep - device resets on wake
+  esp_deep_sleep_start();
 }
 
 // Function to draw segmented horizontal bars
