@@ -1,11 +1,28 @@
 ======================================================================
-UV METER PROJECT: WAVESHARE ESP32-S3 MINI + LTR390 + OLED
+BOKTAI SOLAR SENSOR - ESP32-S3 UV Meter for Boktai Games
 ======================================================================
+
+A substitute solar sensor for playing the Boktai series (Boktai 1, 2, 3)
+on flash carts or emulators. Restores "Kojima's Intent" by using real
+sunlight instead of artificial light hacks.
+
+SUPPORTED GAMES
+---------------
+- Boktai 1: The Sun Is in Your Hand (8-bar gauge)
+- Boktai 2: Solar Boy Django (10-bar gauge)
+- Boktai 3: Sabata's Counterattack (10-bar gauge)
+
+HARDWARE
+--------
+- Waveshare ESP32-S3 Mini
+- Adafruit LTR390 UV Sensor (I2C)
+- SSD1306 128x64 OLED Display (I2C)
+- Tactile Push Button (power/game select)
+- 3.7V LiPo Battery (450mAh recommended)
 
 1. HARDWARE CONNECTIONS (I2C)
 ----------------------------------------------------------------------
 Both the LTR390 sensor and the OLED display share the I2C bus.
-Use the Waveshare ESP32-S3 Mini Pinout (GP8 and GP9).
 
 | Component Pin | ESP32-S3 Mini Pin | Description            |
 | :------------ | :---------------- | :--------------------- |
@@ -17,59 +34,107 @@ Use the Waveshare ESP32-S3 Mini Pinout (GP8 and GP9).
 | Battery Black | GND               | Negative (-) Term      |
 
 IMPORTANT: The 5V pin on this board is the battery input/charging pin. 
-Connecting your 3.7V 450mAh LiPo here allows the board to charge the 
-battery via USB-C and power itself when unplugged.
+Connecting your 3.7V LiPo here allows the board to charge via USB-C.
 
 2. POWER BUTTON WIRING
 ----------------------------------------------------------------------
-A tactile push button is used to wake/sleep the device.
+A single tactile push button controls power and game selection.
 
-| Button Pin    | ESP32-S3 Mini Pin | Description            |
-| :------------ | :---------------- | :--------------------- |
+| Button Pin    | ESP32-S3 Mini Pin | Description               |
+| :------------ | :---------------- | :------------------------ |
 | Pin 1 (leg A) | GP2               | Signal (internal pull-up) |
-| Pin 2 (leg B) | GND               | Ground                 |
+| Pin 2 (leg B) | GND               | Ground                    |
 
-                 ESP32-S3 Mini
-                 ┌──────────┐
-                 │          │
-    GP2 ─────────┤          │
-                 │          │
-                ┌┴┐         │
-    Button      │ │ (NO)    │
-                └┬┘         │
-                 │          │
-    GND ─────────┴──────────┘
-
-NOTE: The push button has 4 pins arranged in a square. Pins on the 
-same side are internally connected. Connect diagonally opposite pins
-OR pins on opposite sides to use the normally-open (NO) switch.
-
-POWER BUTTON BEHAVIOR:
-- Hold button 3 seconds: Powers device ON from sleep
-- Hold button 3 seconds: Powers device OFF (enters deep sleep)
+BUTTON BEHAVIOR:
+- Tap (short press):  Cycle to next game (1 → 2 → 3 → 1...)
+- Hold 3 seconds:     Power ON from sleep
+- Hold 3 seconds:     Power OFF (enters deep sleep ~10µA)
 
 3. LIBRARIES REQUIRED
 ----------------------------------------------------------------------
-Install these via the Arduino Library Manager:
+Install via Arduino Library Manager:
 - Adafruit LTR390 Library
 - Adafruit SSD1306
 - Adafruit GFX Library
 - Adafruit BusIO
 
-4. SETUP & USAGE
+4. USAGE
 ----------------------------------------------------------------------
-- Open 'BoktaiSensor.ino' in the Arduino IDE.
-- Ensure 'config.h' is in the same folder.
-- Select Board: "ESP32S3 Dev Module" (or "Waveshare ESP32-S3-Zero").
-- The LTR390 has a peak UV response between 300 and 350nm.
-- Charging: Plug USB-C into the board to charge the LiPo. 
-- Meters: The 8-segment and 10-segment bars represent the range 
-  between UV_MIN and UV_MAX set in config.h.
+1. Power on the device (hold button 3 seconds)
+2. Tap button to select your game (BOKTAI 1, 2, or 3)
+3. Point the LTR390 sensor toward the sky/sun
+4. Read the bar count from the display
+5. Enter the matching sun level in-game using Prof9's ROM hacks
+   (or your flash cart's input method)
+6. Power off when done (hold button 3 seconds)
 
-5. POWER MANAGEMENT
+Board Settings (Arduino IDE):
+- Board: "ESP32S3 Dev Module" or "Waveshare ESP32-S3-Zero"
+- USB CDC On Boot: Enabled (for serial debugging)
+
+5. CALIBRATION
 ----------------------------------------------------------------------
-Deep sleep draws approximately 10µA, extending battery life significantly.
-- To power ON: Hold button for 3 seconds
-- To power OFF: Hold button for 3 seconds
-- Timing is configurable via LONG_PRESS_MS in config.h
+
+AUTOMATIC MODE (Default)
+------------------------
+By default, AUTO_MODE is enabled in config.h. This uses two simple
+values to calculate bar thresholds for all games:
+
+  const bool AUTO_MODE = true;
+  const float AUTO_UV_MIN = 0.5;   // UV for 1 bar
+  const float AUTO_UV_MAX = 9.0;   // UV for full bars
+
+The code automatically distributes bars evenly across this range:
+- Boktai 1:   8 bars spread from 0.5 to 9.0
+- Boktai 2/3: 10 bars spread from 0.5 to 9.0
+
+To calibrate in auto mode, simply adjust UV_MIN and UV_MAX based on
+what your original cartridge shows at low and high sunlight levels.
+
+MANUAL MODE (Advanced)
+----------------------
+Set AUTO_MODE = false to use per-game threshold arrays:
+- BOKTAI_1_UV[8]  - 8 custom thresholds for Boktai 1
+- BOKTAI_2_UV[10] - 10 custom thresholds for Boktai 2
+- BOKTAI_3_UV[10] - 10 custom thresholds for Boktai 3
+
+This allows fine-tuning each bar level independently and per-game
+if testing reveals differences between the games.
+
+To calibrate:
+1. Take device and original Boktai cart outside
+2. Note UV Index reading and compare to in-game gauge
+3. In auto mode: adjust AUTO_UV_MIN and AUTO_UV_MAX
+   In manual mode: adjust individual threshold values
+4. Repeat under different conditions (clouds, shade, direct sun)
+
+6. TECHNICAL NOTES
+----------------------------------------------------------------------
+Original Boktai Cartridge Sensor (from GBATEK):
+- Uses photodiode with 8-bit ADC (digital-ramp converter)
+- Values are INVERTED: 0xE8 = darkness, 0x50 = max gauge, 0x00 = extreme
+- Accessed via GPIO at 0x80000C4-0x80000C8
+
+LTR390 UV Sensor:
+- Measures UV Index directly (0-11+ typical range)
+- Peak response: 300-350nm (matches solar UV-A/UV-B)
+- NOT inverted: higher values = more UV
+
+7. FUTURE PLANS
+----------------------------------------------------------------------
+- [ ] Bluetooth HID output for mGBA/smartphone emulators
+- [ ] USB HID output for PC emulators  
+- [ ] GBA Link Port output for direct hardware integration
+- [ ] Runtime calibration mode (button-triggered dark/bright reference)
+- [ ] Save selected game to NVS (persist across power cycles)
+
+8. CREDITS & LINKS
+----------------------------------------------------------------------
+- GBATEK Solar Sensor Documentation:
+  https://problemkaputt.de/gbatek.htm
+- Prof9's Boktai ROM Hacks:
+  (link to Prof9's patches when available)
+- Adafruit LTR390:
+  https://www.adafruit.com/product/4831
+
 ======================================================================
