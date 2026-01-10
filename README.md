@@ -82,11 +82,15 @@ values to calculate bar thresholds for all games:
 
   const bool AUTO_MODE = true;
   const float AUTO_UV_MIN = 0.5;   // UV for 1 bar
-  const float AUTO_UV_MAX = 9.0;   // UV for full bars
+  const float AUTO_UV_MAX = 6.0;   // UV for full bars
 
 The code automatically distributes bars evenly across this range:
-- Boktai 1:   8 bars spread from 0.5 to 9.0
-- Boktai 2/3: 10 bars spread from 0.5 to 9.0
+- Boktai 1:   8 bars spread from 0.5 to 6.0
+- Boktai 2/3: 10 bars spread from 0.5 to 6.0
+
+Note: UV Index 6.0 is typical for a sunny day in temperate climates
+(Japan, US, Europe). This default was chosen so a full gauge is
+achievable under normal sunny conditions without requiring extreme UV.
 
 To calibrate in auto mode, simply adjust UV_MIN and UV_MAX based on
 what your original cartridge shows at low and high sunlight levels.

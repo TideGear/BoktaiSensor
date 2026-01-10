@@ -23,7 +23,7 @@
 const bool AUTO_MODE = true;
 
 const float AUTO_UV_MIN = 0.5;   // UV Index for 1 bar (shade/overcast)
-const float AUTO_UV_MAX = 9.0;   // UV Index for full bars (direct sun)
+const float AUTO_UV_MAX = 6.0;   // UV Index for full bars (typical sunny day)
 
 // -----------------------------------------------------------------------------
 // GAME DEFINITIONS
@@ -44,44 +44,44 @@ const int GAME_BARS[NUM_GAMES] = { 8, 10, 10 };
 // -----------------------------------------------------------------------------
 // MANUAL MODE CALIBRATION (only used when AUTO_MODE = false)
 // -----------------------------------------------------------------------------
-// BOKTAI 1 - 8 bars
+// BOKTAI 1 - 8 bars (range: 0.5 to 6.0)
 const float BOKTAI_1_UV[8] = {
   0.5,   // Bar 1: Minimal UV (shade/overcast)
-  1.2,   // Bar 2: Low UV
-  2.0,   // Bar 3: Moderate UV (light clouds)
-  3.0,   // Bar 4: Moderate UV
-  4.0,   // Bar 5: High UV (partly sunny)
-  5.5,   // Bar 6: High UV (sunny)
-  7.0,   // Bar 7: Very high UV
-  9.0    // Bar 8: Extreme UV (direct midday sun)
+  1.3,   // Bar 2: Low UV
+  2.1,   // Bar 3: Low-moderate UV
+  2.9,   // Bar 4: Moderate UV
+  3.6,   // Bar 5: Moderate-high UV
+  4.4,   // Bar 6: High UV (partly sunny)
+  5.2,   // Bar 7: High UV (sunny)
+  6.0    // Bar 8: Full sun
 };
 
-// BOKTAI 2 - 10 bars
+// BOKTAI 2 - 10 bars (range: 0.5 to 6.0)
 const float BOKTAI_2_UV[10] = {
-  0.4,   // Bar 1
-  0.8,   // Bar 2
-  1.4,   // Bar 3
-  2.0,   // Bar 4
-  2.8,   // Bar 5
-  3.6,   // Bar 6
-  4.5,   // Bar 7
-  5.5,   // Bar 8
-  7.0,   // Bar 9
-  9.0    // Bar 10
+  0.5,   // Bar 1
+  1.1,   // Bar 2
+  1.7,   // Bar 3
+  2.3,   // Bar 4
+  2.9,   // Bar 5
+  3.5,   // Bar 6
+  4.1,   // Bar 7
+  4.7,   // Bar 8
+  5.3,   // Bar 9
+  6.0    // Bar 10
 };
 
-// BOKTAI 3 - 10 bars
+// BOKTAI 3 - 10 bars (range: 0.5 to 6.0)
 const float BOKTAI_3_UV[10] = {
-  0.4,   // Bar 1
-  0.8,   // Bar 2
-  1.4,   // Bar 3
-  2.0,   // Bar 4
-  2.8,   // Bar 5
-  3.6,   // Bar 6
-  4.5,   // Bar 7
-  5.5,   // Bar 8
-  7.0,   // Bar 9
-  9.0    // Bar 10
+  0.5,   // Bar 1
+  1.1,   // Bar 2
+  1.7,   // Bar 3
+  2.3,   // Bar 4
+  2.9,   // Bar 5
+  3.5,   // Bar 6
+  4.1,   // Bar 7
+  4.7,   // Bar 8
+  5.3,   // Bar 9
+  6.0    // Bar 10
 };
 
 // Raw UV Index display range (for the secondary readout)
