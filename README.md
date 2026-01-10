@@ -120,7 +120,8 @@ Original Boktai Cartridge Sensor (from GBATEK):
 - Accessed via GPIO at 0x80000C4-0x80000C8
 
 LTR390 UV Sensor:
-- Measures UV Index directly (0-11+ typical range)
+- Raw UV counts converted to UV Index via formula
+- UV Index formula: UVI = raw / (sensitivity × gain × int_time_factor)
 - Peak response: 300-350nm (matches solar UV-A/UV-B)
 - NOT inverted: higher values = more UV
 - Configured for: Gain 1x (max headroom for direct sun), 13-bit (fastest)

@@ -12,6 +12,13 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
 
+// UV Index calculation constants
+// UVI = UVS_DATA / (SENSITIVITY * GAIN_FACTOR * INTEGRATION_FACTOR)
+// For Gain 1x and 13-bit resolution (12.5ms integration)
+const float UV_SENSITIVITY = 2300.0;  // LTR390 typical sensitivity
+const float UV_GAIN_FACTOR = 1.0;     // Gain 1x
+const float UV_INT_FACTOR = 0.125;    // 13-bit = 12.5ms / 100
+
 // Power button state tracking
 unsigned long buttonPressStart = 0;
 bool buttonWasPressed = false;
@@ -70,7 +77,7 @@ void loop() {
 
   // Wait for new sensor data
   if (ltr.newDataAvailable()) {
-    float uvi = ltr.readUVI();
+    float uvi = calculateUVI();
     int batPct = getBatteryPercentage();
     int numBars = GAME_BARS[currentGame];
     int filledBars = getBoktaiBars(uvi, currentGame);
@@ -255,4 +262,12 @@ int getBatteryPercentage() {
   float voltage = (raw / 4095.0) * 2.0 * 3.3 * 1.1; 
   int pct = (voltage - VOLT_MIN) / (VOLT_MAX - VOLT_MIN) * 100;
   return constrain(pct, 0, 100);
+}
+
+// Calculate UV Index from raw sensor data
+// Formula: UVI = UVS_DATA / (SENSITIVITY * GAIN * INT_TIME_FACTOR)
+float calculateUVI() {
+  uint32_t rawUVS = ltr.readUVS();
+  float uvi = (float)rawUVS / (UV_SENSITIVITY * UV_GAIN_FACTOR * UV_INT_FACTOR);
+  return uvi;
 }
