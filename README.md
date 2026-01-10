@@ -123,6 +123,11 @@ LTR390 UV Sensor:
 - Measures UV Index directly (0-11+ typical range)
 - Peak response: 300-350nm (matches solar UV-A/UV-B)
 - NOT inverted: higher values = more UV
+- Configured for: Gain 1x (max headroom for direct sun), 13-bit (fastest)
+
+IMPORTANT: Do not place the sensor behind glass or standard plastic!
+Most glass blocks 90%+ of UV light. Use an open aperture, quartz glass,
+or UV-transparent acrylic if an enclosure window is needed.
 
 7. FUTURE PLANS
 ----------------------------------------------------------------------

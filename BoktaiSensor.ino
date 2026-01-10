@@ -39,9 +39,11 @@ void setup() {
   }
 
   // Configure LTR390 for UV sensing mode
+  // Gain 1x: Best for direct sunlight without saturation
+  // Resolution 13-bit: Fastest (12.5ms per reading)
   ltr.setMode(LTR390_MODE_UVS);
-  ltr.setGain(LTR390_GAIN_3);
-  ltr.setResolution(LTR390_RESOLUTION_18BIT);
+  ltr.setGain(LTR390_GAIN_1);
+  ltr.setResolution(LTR390_RESOLUTION_13BIT);
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
