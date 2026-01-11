@@ -179,7 +179,12 @@ LTR390 UV Sensor (per datasheet DS86-2015-0004):
 LTR390 MODULE LED:
 The LED on the Adafruit LTR390 breakout is a power indicator wired
 directly to VIN. It is NOT controllable via software - it will always
-be on when the sensor is powered.
+be on when the sensor is powered, including during deep sleep.
+
+RECOMMENDATION: Desolder or remove the LED to extend battery life.
+The LED draws ~2-5mA continuously, which reduces sleep time from
+months to just days. The LED serves no functional purpose - removing
+it won't affect sensor operation.
 
 IMPORTANT: Do not place the sensor behind glass or standard plastic!
 Most glass blocks 90%+ of UV light. Use an open aperture, quartz glass,
@@ -209,10 +214,6 @@ Adjust VOLT_DIVIDER_MULT in config.h:
 - See BATTERY MONITORING section for exact formula
 - Default 2.25 is calibrated for common hardware variance
 
-SCREEN SHOWS GARBAGE ON COLD BOOT:
-This was fixed in firmware. On cold boot (battery connect), the wake
-prompt should appear immediately. If you see garbage, update firmware.
-
 DEVICE WON'T WAKE FROM SLEEP:
 1. Press the button to show "Hold 3s to power on" prompt
 2. Hold for 3 full seconds while the prompt is displayed
@@ -221,10 +222,8 @@ DEVICE WON'T WAKE FROM SLEEP:
 
 8. FUTURE PLANS
 ----------------------------------------------------------------------
-- [ ] Bluetooth HID output for mGBA/smartphone emulators
-- [ ] USB HID output for PC emulators  
+- [ ] Bluetooth and/or HID output for emulators 
 - [ ] GBA Link Port output for direct hardware integration
-- [ ] Runtime calibration mode (button-triggered dark/bright reference)
 - [ ] Save selected game to NVS (persist across power cycles)
 
 9. CREDITS & LINKS
