@@ -88,8 +88,10 @@ const float BOKTAI_3_UV[10] = {
 const float UV_DISPLAY_MAX = 11.0;
 
 // Battery Monitoring
-// GP1 is an ADC pin used to sense battery voltage.
-const int BAT_PIN = 1; 
+// NOTE: The Waveshare ESP32-S3 Mini does NOT have built-in battery monitoring!
+// You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
+// the midpoint connected to BAT_PIN. Without this, battery % will show 0%.
+const int BAT_PIN = 13;      // GP13 - connect to voltage divider midpoint
 const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery
 

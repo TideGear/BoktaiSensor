@@ -3,6 +3,7 @@
 #include <Adafruit_SSD1306.h>
 #include "Adafruit_LTR390.h"
 #include "config.h"
+#include "esp_sleep.h"
 
 // Display settings
 #define SCREEN_WIDTH 128
@@ -12,12 +13,13 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
 
-// UV Index calculation constants
-// UVI = UVS_DATA / (SENSITIVITY * GAIN_FACTOR * INTEGRATION_FACTOR)
-// For Gain 1x and 13-bit resolution (12.5ms integration)
-const float UV_SENSITIVITY = 2300.0;  // LTR390 typical sensitivity
-const float UV_GAIN_FACTOR = 1.0;     // Gain 1x
-const float UV_INT_FACTOR = 0.125;    // 13-bit = 12.5ms / 100
+// UV Index calculation per LTR-390UV datasheet (DS86-2015-0004)
+// Reference: 2300 counts/UVI at 18x gain, 400ms (20-bit) integration
+// Formula: UVI = raw × (18/gain) × (400/int_time) / 2300
+//
+// For 1x gain, 18-bit (100ms):
+//   UVI = raw × (18/1) × (400/100) / 2300 = raw × 72 / 2300 ≈ raw / 32
+const float UV_DIVISOR = 32.0;  // For 1x gain, 18-bit (100ms) resolution
 
 // Power button state tracking
 unsigned long buttonPressStart = 0;
@@ -25,6 +27,12 @@ bool buttonWasPressed = false;
 
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
+
+// Battery/charging state
+bool isCharging = false;
+int chargeAnimFrame = 0;
+unsigned long lastChargeAnimTime = 0;
+const unsigned long CHARGE_ANIM_INTERVAL = 300;  // Animation speed (ms)
 
 void setup() {
   Serial.begin(115200);
@@ -46,26 +54,46 @@ void setup() {
   }
 
   // Configure LTR390 for UV sensing mode
-  // Gain 1x: Best for direct sunlight without saturation
-  // Resolution 13-bit: Fastest (12.5ms per reading)
+  // Gain 1x: Maximum headroom for direct sunlight (won't saturate)
+  // Resolution 18-bit: Good balance of precision and speed (100ms per reading)
+  // Note: 13-bit was too fast - only ~4 counts/UVI, causing 0 readings
   ltr.setMode(LTR390_MODE_UVS);
   ltr.setGain(LTR390_GAIN_1);
-  ltr.setResolution(LTR390_RESOLUTION_13BIT);
+  ltr.setResolution(LTR390_RESOLUTION_18BIT);
+  
+  // Debug: Print sensor configuration
+  Serial.println(F("LTR390 configured: UV mode, 1x gain, 18-bit (100ms)"));
+  Serial.println(F("Expected: ~32 counts per UVI"));
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
-  // Wait for 3-second button hold to fully power on
-  display.setTextSize(1);
-  display.setCursor(10, 28);
-  display.print("Hold btn 3s to start");
-  display.display();
+  // Check if we woke from deep sleep or cold boot
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  bool coldBoot = (wakeup_reason != ESP_SLEEP_WAKEUP_EXT0);
   
-  waitForLongPress();
+  if (!coldBoot) {
+    // Woke from deep sleep via button - start with display OFF
+    display.ssd1306_command(SSD1306_DISPLAYOFF);
+    
+    // Wait for button release (from wake trigger)
+    while (digitalRead(BUTTON_PIN) == LOW) {
+      delay(10);
+    }
+  }
+  
+  // Wait for power-on: show prompt for 10s, reset on button activity
+  // Cold boot: show message immediately
+  // Wake from sleep: wait for button press to show message
+  if (!waitForPowerOn(coldBoot)) {
+    // Timed out - go back to sleep
+    enterDeepSleep();
+  }
   
   // Show wake-up confirmation
   display.clearDisplay();
-  display.setCursor(20, 28);
+  display.setTextSize(1);
+  display.setCursor(16, 28);
   display.print("Boktai Sensor ON");
   display.display();
   delay(800);
@@ -173,48 +201,88 @@ void handlePowerButton() {
   }
 }
 
-// Wait for 3-second button press on startup
-void waitForLongPress() {
+// Wait for power-on with 10-second timeout
+// Shows "Hold 3s to power on" message
+// Button activity resets the 10-second timer
+// coldBoot: if true, show message immediately; if false, wait for button press
+// Returns true if 3-second hold completed, false if timed out
+bool waitForPowerOn(bool coldBoot) {
+  const unsigned long DISPLAY_TIMEOUT_MS = 10000;  // 10 seconds
+  unsigned long lastActivity = millis();
   unsigned long pressStart = 0;
   bool wasPressed = false;
+  bool displayOn = false;
+  
+  // On cold boot, show message immediately
+  if (coldBoot) {
+    display.ssd1306_command(SSD1306_DISPLAYON);
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(4, 28);
+    display.print("Hold 3s to power on");
+    display.display();
+    displayOn = true;
+  }
   
   while (true) {
     bool pressed = (digitalRead(BUTTON_PIN) == LOW);
+    unsigned long now = millis();
     
-    if (pressed && !wasPressed) {
-      pressStart = millis();
-      wasPressed = true;
+    // Check for timeout (10 seconds of no button activity)
+    if ((now - lastActivity) >= DISPLAY_TIMEOUT_MS) {
+      if (displayOn) {
+        display.ssd1306_command(SSD1306_DISPLAYOFF);
+      }
+      return false;  // Timed out - caller should go to sleep
     }
-    else if (pressed && wasPressed) {
-      if ((millis() - pressStart) >= LONG_PRESS_MS) {
-        // Wait for button release before continuing
-        while (digitalRead(BUTTON_PIN) == LOW) {
-          delay(10);
-        }
-        return;
+    
+    // Button just pressed
+    if (pressed && !wasPressed) {
+      lastActivity = now;  // Reset timeout
+      pressStart = now;
+      wasPressed = true;
+      
+      // Turn on display and show message if not already showing
+      if (!displayOn) {
+        display.ssd1306_command(SSD1306_DISPLAYON);
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setCursor(4, 28);
+        display.print("Hold 3s to power on");
+        display.display();
+        displayOn = true;
       }
     }
-    else if (!pressed) {
+    // Button held
+    else if (pressed && wasPressed) {
+      lastActivity = now;  // Reset timeout while holding
+      
+      // Check for 3-second hold
+      if ((now - pressStart) >= LONG_PRESS_MS) {
+        return true;  // Successfully powered on
+      }
+    }
+    // Button released
+    else if (!pressed && wasPressed) {
       wasPressed = false;
     }
+    
     delay(10);
   }
 }
 
 // Enter deep sleep mode with button wake-up
 void enterDeepSleep() {
-  // Show sleep message
+  // Turn off display immediately - no message
   display.clearDisplay();
-  display.setTextSize(1);
-  display.setCursor(15, 24);
-  display.print("Sleeping...");
-  display.setCursor(15, 36);
-  display.print("Press btn to wake");
   display.display();
-  delay(1000);
-  
-  // Turn off display
   display.ssd1306_command(SSD1306_DISPLAYOFF);
+  
+  // Wait for button release before sleeping
+  while (digitalRead(BUTTON_PIN) == LOW) {
+    delay(10);
+  }
+  delay(50);  // Debounce
   
   // Configure wake-up source: BUTTON_PIN going LOW (pressed)
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
@@ -243,31 +311,82 @@ void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
 }
 
 // Function to draw battery percentage and icon
+// Shows filling animation when charging
 void drawBatteryIcon(int x, int y, int pct) {
   display.setTextSize(1);
   display.setCursor(x - 28, y + 1);
-  display.print(pct); display.print("%");
   
-  display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-  display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-  
-  int fillW = (pct * 14) / 100;
-  display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
+  if (isCharging) {
+    // Show "CHG" text when charging
+    display.print("CHG");
+    
+    // Update animation frame
+    unsigned long now = millis();
+    if ((now - lastChargeAnimTime) >= CHARGE_ANIM_INTERVAL) {
+      chargeAnimFrame = (chargeAnimFrame + 1) % 4;  // 4 frames: 0, 1, 2, 3
+      lastChargeAnimTime = now;
+    }
+    
+    // Draw battery outline
+    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
+    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
+    
+    // Animated fill: each frame fills more (0=empty, 1=33%, 2=66%, 3=full)
+    int animFillW = (chargeAnimFrame + 1) * 3;  // 3, 6, 9, 12 pixels
+    if (animFillW > 14) animFillW = 14;
+    display.fillRect(x + 2, y + 2, animFillW, 5, SSD1306_WHITE);
+  } else {
+    // Normal battery display
+    display.print(pct); display.print("%");
+    
+    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
+    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
+    
+    int fillW = (pct * 14) / 100;
+    display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
+  }
 }
 
 // Calculate battery % based on analog reading
+// Sets global isCharging flag if USB power detected
 int getBatteryPercentage() {
-  float raw = analogRead(BAT_PIN);
-  // ADC logic: (Raw / Resolution) * Divider_Correction * Reference_Voltage
-  float voltage = (raw / 4095.0) * 2.0 * 3.3 * 1.1; 
-  int pct = (voltage - VOLT_MIN) / (VOLT_MAX - VOLT_MIN) * 100;
+  // Read multiple samples and average for stability
+  uint32_t sum = 0;
+  for (int i = 0; i < 10; i++) {
+    sum += analogRead(BAT_PIN);
+    delay(1);
+  }
+  float raw = sum / 10.0;
+  
+  // ESP32-S3 ADC: 12-bit (0-4095), default ~0-3.3V range
+  // Assuming voltage divider ratio of 2:1 (common for LiPo monitoring)
+  // Voltage = (raw / 4095) * 3.3 * 2
+  float voltage = (raw / 4095.0) * 3.3 * 2.0;
+  
+  // Debug output
+  Serial.print("Battery ADC raw: "); Serial.print(raw);
+  Serial.print(" Voltage: "); Serial.println(voltage);
+  
+  // Detect charging: voltage > 4.3V means USB is connected
+  // (LiPo max is 4.2V, so anything higher must be USB 5V)
+  if (voltage > 4.3) {
+    isCharging = true;
+    return 100;  // Show full when charging (actual level unknown)
+  }
+  
+  isCharging = false;
+  int pct = ((voltage - VOLT_MIN) / (VOLT_MAX - VOLT_MIN)) * 100;
   return constrain(pct, 0, 100);
 }
 
 // Calculate UV Index from raw sensor data
-// Formula: UVI = UVS_DATA / (SENSITIVITY * GAIN * INT_TIME_FACTOR)
 float calculateUVI() {
   uint32_t rawUVS = ltr.readUVS();
-  float uvi = (float)rawUVS / (UV_SENSITIVITY * UV_GAIN_FACTOR * UV_INT_FACTOR);
+  float uvi = (float)rawUVS / UV_DIVISOR;
+  
+  // Debug output
+  Serial.print("UV raw: "); Serial.print(rawUVS);
+  Serial.print(" UVI: "); Serial.println(uvi);
+  
   return uvi;
 }

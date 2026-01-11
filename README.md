@@ -19,6 +19,7 @@ HARDWARE
 - SSD1306 128x64 OLED Display (I2C)
 - Tactile Push Button (power/game select)
 - 3.7V LiPo Battery (450mAh recommended)
+- 2x 100KΩ Resistors (for battery monitoring, optional)
 
 1. HARDWARE CONNECTIONS (I2C)
 ----------------------------------------------------------------------
@@ -36,6 +37,41 @@ Both the LTR390 sensor and the OLED display share the I2C bus.
 IMPORTANT: The 5V pin on this board is the battery input/charging pin. 
 Connecting your 3.7V LiPo here allows the board to charge via USB-C.
 
+BATTERY MONITORING (Optional):
+The board does NOT have built-in battery voltage monitoring. To enable
+battery percentage display, add a voltage divider circuit:
+
+COMPONENTS:
+- 2x 100KΩ resistors (1/4W, through-hole or SMD)
+
+WIRING DIAGRAM:
+```
+  Battery (+) ───┬─── 5V pin (charging input)
+                 │
+               [R1] 100KΩ
+                 │
+                 ├─────── GP13 (ADC input)
+                 │
+               [R2] 100KΩ
+                 │
+  Battery (-) ───┴─── GND
+```
+
+HOW IT WORKS:
+The two equal resistors form a 2:1 voltage divider:
+- Full charge (4.2V) → GP13 reads 2.1V → displays 100%
+- Empty (3.3V) → GP13 reads 1.65V → displays 0%
+
+Without this circuit, battery % will always show 0%.
+
+CHARGING DETECTION:
+The firmware detects USB power by monitoring voltage. When USB is connected,
+the 5V rail voltage exceeds what a LiPo can produce (>4.3V), triggering
+charging mode:
+- Display shows "CHG" instead of percentage
+- Battery icon shows a filling animation
+- When USB is unplugged, returns to normal battery percentage display
+
 2. POWER BUTTON WIRING
 ----------------------------------------------------------------------
 A single tactile push button controls power and game selection.
@@ -46,9 +82,14 @@ A single tactile push button controls power and game selection.
 | Pin 2 (leg B) | GND               | Ground                    |
 
 BUTTON BEHAVIOR:
+When device is ON:
 - Tap (short press):  Cycle to next game (1 → 2 → 3 → 1...)
-- Hold 3 seconds:     Power ON from sleep
 - Hold 3 seconds:     Power OFF (enters deep sleep ~10µA)
+
+When waking from sleep:
+- Press button:       Shows "Hold 3s to power on" for 10 seconds
+- Hold 3 seconds:     Powers ON the device
+- No activity 10s:    Screen turns off, returns to sleep
 
 3. LIBRARIES REQUIRED
 ----------------------------------------------------------------------
@@ -119,18 +160,51 @@ Original Boktai Cartridge Sensor (from GBATEK):
 - Values are INVERTED: 0xE8 = darkness, 0x50 = max gauge, 0x00 = extreme
 - Accessed via GPIO at 0x80000C4-0x80000C8
 
-LTR390 UV Sensor:
-- Raw UV counts converted to UV Index via formula
-- UV Index formula: UVI = raw / (sensitivity × gain × int_time_factor)
+LTR390 UV Sensor (per datasheet DS86-2015-0004):
+- Reference sensitivity: 2300 counts/UVI at 18x gain, 400ms
+- UV Index formula: UVI = raw × (18/gain) × (400/int_time) / 2300
+- At our settings (1x gain, 100ms): UVI = raw / 32
 - Peak response: 300-350nm (matches solar UV-A/UV-B)
 - NOT inverted: higher values = more UV
-- Configured for: Gain 1x (max headroom for direct sun), 13-bit (fastest)
+- Configured for: Gain 1x (max headroom), 18-bit/100ms resolution
+
+LTR390 MODULE LED:
+The LED on the Adafruit LTR390 breakout is a power indicator wired
+directly to VIN. It is NOT controllable via software - it will always
+be on when the sensor is powered.
 
 IMPORTANT: Do not place the sensor behind glass or standard plastic!
 Most glass blocks 90%+ of UV light. Use an open aperture, quartz glass,
 or UV-transparent acrylic if an enclosure window is needed.
 
-7. FUTURE PLANS
+7. TROUBLESHOOTING
+----------------------------------------------------------------------
+
+UV SENSOR READS 0 OR VERY LOW:
+1. Open Serial Monitor (115200 baud) to see raw sensor counts
+   - At UVI 6, expect ~192 raw counts (6 × 32)
+   - If raw counts are 0, sensor may not be in UV mode
+2. Check sensor orientation - sensor window must face the sky
+3. Ensure no glass/plastic blocks the sensor (blocks 90%+ of UV)
+4. Low readings indoors are normal - indoor UV is near zero
+5. UV flashlights vary greatly; test outside in direct sunlight
+
+BATTERY ALWAYS SHOWS 0%:
+You need a voltage divider circuit to monitor battery voltage.
+See "BATTERY MONITORING" section in hardware connections.
+Without this, the ADC pin reads near zero.
+
+SCREEN SHOWS GARBAGE ON COLD BOOT:
+This was fixed in firmware. On cold boot (battery connect), the wake
+prompt should appear immediately. If you see garbage, update firmware.
+
+DEVICE WON'T WAKE FROM SLEEP:
+1. Press the button to show "Hold 3s to power on" prompt
+2. Hold for 3 full seconds while the prompt is displayed
+3. The prompt auto-hides after 10 seconds of inactivity
+4. If screen is off, press button again to show the prompt
+
+8. FUTURE PLANS
 ----------------------------------------------------------------------
 - [ ] Bluetooth HID output for mGBA/smartphone emulators
 - [ ] USB HID output for PC emulators  
@@ -138,7 +212,7 @@ or UV-transparent acrylic if an enclosure window is needed.
 - [ ] Runtime calibration mode (button-triggered dark/bright reference)
 - [ ] Save selected game to NVS (persist across power cycles)
 
-8. CREDITS & LINKS
+9. CREDITS & LINKS
 ----------------------------------------------------------------------
 - GBATEK Solar Sensor Documentation:
   https://problemkaputt.de/gbatek.htm
