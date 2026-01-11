@@ -64,6 +64,14 @@ The two equal resistors form a 2:1 voltage divider:
 
 Without this circuit, battery % will always show 0%.
 
+CALIBRATION:
+If battery % is wrong when fully charged (4.2V), adjust VOLT_DIVIDER_MULT
+in config.h:
+- Default: 2.25 (calibrated for typical hardware variance)
+- Formula: new = old × 4.2 ÷ (3.3 + displayed% × 0.009)
+- Example: showing 48% → 2.0 × 4.2 ÷ (3.3 + 0.432) = 2.25
+- Or simply: increase value if % too low, decrease if % too high
+
 CHARGING DETECTION:
 The firmware detects USB power by monitoring voltage. When USB is connected,
 the 5V rail voltage exceeds what a LiPo can produce (>4.3V), triggering
@@ -193,6 +201,13 @@ BATTERY ALWAYS SHOWS 0%:
 You need a voltage divider circuit to monitor battery voltage.
 See "BATTERY MONITORING" section in hardware connections.
 Without this, the ADC pin reads near zero.
+
+BATTERY % IS WRONG (e.g., 48% when fully charged):
+Adjust VOLT_DIVIDER_MULT in config.h:
+- If % is too LOW:  increase the multiplier
+- If % is too HIGH: decrease the multiplier
+- See BATTERY MONITORING section for exact formula
+- Default 2.25 is calibrated for common hardware variance
 
 SCREEN SHOWS GARBAGE ON COLD BOOT:
 This was fixed in firmware. On cold boot (battery connect), the wake

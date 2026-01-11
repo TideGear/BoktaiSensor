@@ -359,9 +359,9 @@ int getBatteryPercentage() {
   float raw = sum / 10.0;
   
   // ESP32-S3 ADC: 12-bit (0-4095), default ~0-3.3V range
-  // Assuming voltage divider ratio of 2:1 (common for LiPo monitoring)
-  // Voltage = (raw / 4095) * 3.3 * 2
-  float voltage = (raw / 4095.0) * 3.3 * 2.0;
+  // VOLT_DIVIDER_MULT compensates for voltage divider ratio + ADC variance
+  // Calibrate in config.h if battery % is wrong at full charge
+  float voltage = (raw / 4095.0) * 3.3 * VOLT_DIVIDER_MULT;
   
   // Debug output
   Serial.print("Battery ADC raw: "); Serial.print(raw);
