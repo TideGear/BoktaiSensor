@@ -1,5 +1,5 @@
 ======================================================================
-BOKTAI SOLAR SENSOR - ESP32-S3 UV Meter for Boktai Games
+Ojo del Sol - ESP32-S3 UV Meter for Boktai Games
 ======================================================================
 
 A substitute solar sensor for playing the Boktai series (Boktai 1, 2, 3)
@@ -18,8 +18,7 @@ HARDWARE
 - Adafruit LTR390 UV Sensor (I2C)
 - SSD1306 128x64 OLED Display (I2C)
 - Tactile Push Button (power/game select)
-- 3.7V LiPo Battery (450mAh recommended)
-- 2x 100KΩ Resistors (for battery monitoring, optional)
+- USB power source (phone, emulation device, power bank)
 
 1. HARDWARE CONNECTIONS (I2C)
 ----------------------------------------------------------------------
@@ -31,54 +30,8 @@ Both the LTR390 sensor and the OLED display share the I2C bus.
 | OLED/LTR GND  | GND               | Common Ground          |
 | OLED/LTR SDA  | GP8               | I2C Data               |
 | OLED/LTR SCL  | GP9               | I2C Clock              |
-| Battery Red   | 5V                | Positive (+) Term      |
-| Battery Black | GND               | Negative (-) Term      |
 
-IMPORTANT: The 5V pin on this board is the battery input/charging pin. 
-Connecting your 3.7V LiPo here allows the board to charge via USB-C.
-
-BATTERY MONITORING (Optional):
-The board does NOT have built-in battery voltage monitoring. To enable
-battery percentage display, add a voltage divider circuit:
-
-COMPONENTS:
-- 2x 100KΩ resistors (1/4W, through-hole or SMD)
-
-WIRING DIAGRAM:
-```
-  Battery (+) ───┬─── 5V pin (charging input)
-                 │
-               [R1] 100KΩ
-                 │
-                 ├─────── GP13 (ADC input)
-                 │
-               [R2] 100KΩ
-                 │
-  Battery (-) ───┴─── GND
-```
-
-HOW IT WORKS:
-The two equal resistors form a 2:1 voltage divider:
-- Full charge (4.2V) → GP13 reads 2.1V → displays 100%
-- Empty (3.3V) → GP13 reads 1.65V → displays 0%
-
-Without this circuit, battery % will always show 0%.
-
-CALIBRATION:
-If battery % is wrong when fully charged (4.2V), adjust VOLT_DIVIDER_MULT
-in config.h:
-- Default: 2.25 (calibrated for typical hardware variance)
-- Formula: new = old × 4.2 ÷ (3.3 + displayed% × 0.009)
-- Example: showing 48% → 2.0 × 4.2 ÷ (3.3 + 0.432) = 2.25
-- Or simply: increase value if % too low, decrease if % too high
-
-CHARGING DETECTION:
-The firmware detects USB power by monitoring voltage. When USB is connected,
-the 5V rail voltage exceeds what a LiPo can produce (>4.3V), triggering
-charging mode:
-- Display shows "CHG" instead of percentage
-- Battery icon shows a filling animation
-- When USB is unplugged, returns to normal battery percentage display
+Power is provided via USB-C from a phone, emulation device, or power bank.
 
 2. POWER BUTTON WIRING
 ----------------------------------------------------------------------
@@ -92,7 +45,7 @@ A single tactile push button controls power and game selection.
 BUTTON BEHAVIOR:
 When device is ON:
 - Tap (short press):  Cycle to next game (1 → 2 → 3 → 1...)
-- Hold 3 seconds:     Power OFF (enters deep sleep ~10µA)
+- Hold 3 seconds:     Power OFF (enters deep sleep)
 
 When waking from sleep:
 - Press button:       Shows "Hold 3s to power on" for 10 seconds
@@ -109,13 +62,14 @@ Install via Arduino Library Manager:
 
 4. USAGE
 ----------------------------------------------------------------------
-1. Power on the device (hold button 3 seconds)
-2. Tap button to select your game (BOKTAI 1, 2, or 3)
-3. Point the LTR390 sensor toward the sky/sun
-4. Read the bar count from the display
-5. Enter the matching sun level in-game using Prof9's ROM hacks
+1. Connect device to USB power (phone, emulator, power bank)
+2. Power on the device (hold button 3 seconds)
+3. Tap button to select your game (BOKTAI 1, 2, or 3)
+4. Point the LTR390 sensor toward the sky/sun
+5. Read the bar count from the display
+6. Enter the matching sun level in-game using Prof9's ROM hacks
    (or your flash cart's input method)
-6. Power off when done (hold button 3 seconds)
+7. Power off when done (hold button 3 seconds)
 
 Board Settings (Arduino IDE):
 - Board: "ESP32S3 Dev Module" or "Waveshare ESP32-S3-Zero"
@@ -179,12 +133,11 @@ LTR390 UV Sensor (per datasheet DS86-2015-0004):
 LTR390 MODULE LED:
 The LED on the Adafruit LTR390 breakout is a power indicator wired
 directly to VIN. It is NOT controllable via software - it will always
-be on when the sensor is powered, including during deep sleep.
+be on when the sensor is powered.
 
-RECOMMENDATION: Desolder or remove the LED to extend battery life.
-The LED draws ~2-5mA continuously, which reduces sleep time from
-months to just days. The LED serves no functional purpose - removing
-it won't affect sensor operation.
+RECOMMENDATION: Desolder or remove the LED to reduce power draw.
+The LED draws ~2-5mA continuously. Removing it won't affect sensor
+operation.
 
 IMPORTANT: Do not place the sensor behind glass or standard plastic!
 Most glass blocks 90%+ of UV light. Use an open aperture, quartz glass,
@@ -202,18 +155,6 @@ UV SENSOR READS 0 OR VERY LOW:
 4. Low readings indoors are normal - indoor UV is near zero
 5. UV flashlights vary greatly; test outside in direct sunlight
 
-BATTERY ALWAYS SHOWS 0%:
-You need a voltage divider circuit to monitor battery voltage.
-See "BATTERY MONITORING" section in hardware connections.
-Without this, the ADC pin reads near zero.
-
-BATTERY % IS WRONG (e.g., 48% when fully charged):
-Adjust VOLT_DIVIDER_MULT in config.h:
-- If % is too LOW:  increase the multiplier
-- If % is too HIGH: decrease the multiplier
-- See BATTERY MONITORING section for exact formula
-- Default 2.25 is calibrated for common hardware variance
-
 DEVICE WON'T WAKE FROM SLEEP:
 1. Press the button to show "Hold 3s to power on" prompt
 2. Hold for 3 full seconds while the prompt is displayed
@@ -224,6 +165,7 @@ DEVICE WON'T WAKE FROM SLEEP:
 ----------------------------------------------------------------------
 - [ ] Bluetooth and/or HID output for emulators 
 - [ ] GBA Link Port output for direct hardware integration
+- [ ] Optional power from GBA link port (no USB required)
 - [ ] Save selected game to NVS (persist across power cycles)
 
 9. CREDITS & LINKS

@@ -28,12 +28,6 @@ bool buttonWasPressed = false;
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
 
-// Battery/charging state
-bool isCharging = false;
-int chargeAnimFrame = 0;
-unsigned long lastChargeAnimTime = 0;
-const unsigned long CHARGE_ANIM_INTERVAL = 300;  // Animation speed (ms)
-
 void setup() {
   Serial.begin(115200);
 
@@ -94,7 +88,7 @@ void setup() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(16, 28);
-  display.print("Boktai Sensor ON");
+  display.print("Ojo del Sol ON");
   display.display();
   delay(800);
 }
@@ -106,32 +100,28 @@ void loop() {
   // Wait for new sensor data
   if (ltr.newDataAvailable()) {
     float uvi = calculateUVI();
-    int batPct = getBatteryPercentage();
     int numBars = GAME_BARS[currentGame];
     int filledBars = getBoktaiBars(uvi, currentGame);
 
     display.clearDisplay();
-    
-    // 1. Draw Battery Indicator (Top Right)
-    drawBatteryIcon(105, 2, batPct);
 
-    // 2. Game Name
+    // 1. Game Name (Top Left)
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.print(GAME_NAMES[currentGame]);
 
-    // 3. Bar Count (Large, Prominent)
+    // 2. Bar Count (Large, Prominent)
     display.setTextSize(3);
     display.setCursor(0, 10);
     display.print(filledBars);
     
-    // 4. UV Index (Small, Secondary)
+    // 3. UV Index (Small, Secondary)
     display.setTextSize(1);
     display.setCursor(30, 18);
     display.print("UV:");
     display.print(uvi, 1);
 
-    // 5. Draw Sun Gauge (8 or 10 segments depending on game)
+    // 4. Draw Sun Gauge (8 or 10 segments depending on game)
     drawBoktaiGauge(38, 20, filledBars, numBars);
 
     display.display();
@@ -308,75 +298,6 @@ void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
       display.drawRect(x, y, segW, h, SSD1306_WHITE); // Outline segment
     }
   }
-}
-
-// Function to draw battery percentage and icon
-// Shows filling animation when charging
-void drawBatteryIcon(int x, int y, int pct) {
-  display.setTextSize(1);
-  display.setCursor(x - 28, y + 1);
-  
-  if (isCharging) {
-    // Show "CHG" text when charging
-    display.print("CHG");
-    
-    // Update animation frame
-    unsigned long now = millis();
-    if ((now - lastChargeAnimTime) >= CHARGE_ANIM_INTERVAL) {
-      chargeAnimFrame = (chargeAnimFrame + 1) % 4;  // 4 frames: 0, 1, 2, 3
-      lastChargeAnimTime = now;
-    }
-    
-    // Draw battery outline
-    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-    
-    // Animated fill: each frame fills more (0=empty, 1=33%, 2=66%, 3=full)
-    int animFillW = (chargeAnimFrame + 1) * 3;  // 3, 6, 9, 12 pixels
-    if (animFillW > 14) animFillW = 14;
-    display.fillRect(x + 2, y + 2, animFillW, 5, SSD1306_WHITE);
-  } else {
-    // Normal battery display
-    display.print(pct); display.print("%");
-    
-    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-    
-    int fillW = (pct * 14) / 100;
-    display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
-  }
-}
-
-// Calculate battery % based on analog reading
-// Sets global isCharging flag if USB power detected
-int getBatteryPercentage() {
-  // Read multiple samples and average for stability
-  uint32_t sum = 0;
-  for (int i = 0; i < 10; i++) {
-    sum += analogRead(BAT_PIN);
-    delay(1);
-  }
-  float raw = sum / 10.0;
-  
-  // ESP32-S3 ADC: 12-bit (0-4095), default ~0-3.3V range
-  // VOLT_DIVIDER_MULT compensates for voltage divider ratio + ADC variance
-  // Calibrate in config.h if battery % is wrong at full charge
-  float voltage = (raw / 4095.0) * 3.3 * VOLT_DIVIDER_MULT;
-  
-  // Debug output
-  Serial.print("Battery ADC raw: "); Serial.print(raw);
-  Serial.print(" Voltage: "); Serial.println(voltage);
-  
-  // Detect charging: voltage > 4.3V means USB is connected
-  // (LiPo max is 4.2V, so anything higher must be USB 5V)
-  if (voltage > 4.3) {
-    isCharging = true;
-    return 100;  // Show full when charging (actual level unknown)
-  }
-  
-  isCharging = false;
-  int pct = ((voltage - VOLT_MIN) / (VOLT_MAX - VOLT_MIN)) * 100;
-  return constrain(pct, 0, 100);
 }
 
 // Calculate UV Index from raw sensor data
