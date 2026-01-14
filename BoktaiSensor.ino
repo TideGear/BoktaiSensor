@@ -40,8 +40,8 @@ void setup() {
   // Configure power button with internal pull-up (active LOW)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  // Initialize I2C for the ESP32-S3 Mini pins (GP8 = SDA, GP9 = SCL)
-  Wire.begin(8, 9); 
+  // Initialize I2C for XIAO ESP32S3 pins (D4/GPIO5 = SDA, D5/GPIO6 = SCL)
+  Wire.begin(5, 6); 
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println(F("SSD1306 failed"));

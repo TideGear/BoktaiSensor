@@ -14,31 +14,31 @@ SUPPORTED GAMES
 
 HARDWARE
 --------
-- Waveshare ESP32-S3 Mini
+- Seeed XIAO ESP32S3 (built-in LiPo charging)
 - Adafruit LTR390 UV Sensor (I2C)
 - SSD1306 128x64 OLED Display (I2C)
 - Tactile Push Button (power/game select)
 - 3.7V LiPo Battery (450mAh recommended)
-- 2x 100KΩ Resistors (for battery monitoring, optional)
+- 2x 100KΩ Resistors (for battery monitoring)
 
 1. HARDWARE CONNECTIONS (I2C)
 ----------------------------------------------------------------------
 Both the LTR390 sensor and the OLED display share the I2C bus.
 
-| Component Pin | ESP32-S3 Mini Pin | Description            |
+| Component Pin | XIAO ESP32S3 Pin  | Description            |
 | :------------ | :---------------- | :--------------------- |
-| OLED/LTR VIN  | 3V3 (OUT)         | 3.3V Power             |
+| OLED/LTR VIN  | 3V3               | 3.3V Power             |
 | OLED/LTR GND  | GND               | Common Ground          |
-| OLED/LTR SDA  | GP8               | I2C Data               |
-| OLED/LTR SCL  | GP9               | I2C Clock              |
-| Battery Red   | 5V                | Positive (+) Term      |
-| Battery Black | GND               | Negative (-) Term      |
+| OLED/LTR SDA  | D4 (GPIO5)        | I2C Data               |
+| OLED/LTR SCL  | D5 (GPIO6)        | I2C Clock              |
+| Battery Red   | BAT+ (back pad)   | Positive (+) Term      |
+| Battery Black | BAT- (back pad)   | Negative (-) Term      |
 
-IMPORTANT: The 5V pin on this board is the battery input/charging pin. 
-Connecting your 3.7V LiPo here allows the board to charge via USB-C.
+BATTERY: Solder LiPo wires directly to BAT+ and BAT- pads on the back
+of the XIAO. Built-in charging circuit handles USB-C charging.
 
-BATTERY MONITORING (Optional):
-The board does NOT have built-in battery voltage monitoring. To enable
+BATTERY MONITORING:
+The XIAO does NOT have built-in battery voltage monitoring. To enable
 battery percentage display, add a voltage divider circuit:
 
 COMPONENTS:
@@ -46,21 +46,21 @@ COMPONENTS:
 
 WIRING DIAGRAM:
 ```
-  Battery (+) ───┬─── 5V pin (charging input)
-                 │
-               [R1] 100KΩ
-                 │
-                 ├─────── GP13 (ADC input)
-                 │
-               [R2] 100KΩ
-                 │
-  Battery (-) ───┴─── GND
+  BAT+ pad ─────┬─────────────────────────────── Battery (+)
+                │
+              [R1] 100KΩ
+                │
+                ├─────── D1 (GPIO2/A1, ADC input)
+                │
+              [R2] 100KΩ
+                │
+  BAT- pad ─────┴─────────────────────────────── Battery (-) / GND
 ```
 
 HOW IT WORKS:
 The two equal resistors form a 2:1 voltage divider:
-- Full charge (4.2V) → GP13 reads 2.1V → displays 100%
-- Empty (3.3V) → GP13 reads 1.65V → displays 0%
+- Full charge (4.2V) → D1 reads 2.1V → displays 100%
+- Empty (3.3V) → D1 reads 1.65V → displays 0%
 
 Without this circuit, battery % will always show 0%.
 
@@ -84,9 +84,9 @@ charging mode:
 ----------------------------------------------------------------------
 A single tactile push button controls power and game selection.
 
-| Button Pin    | ESP32-S3 Mini Pin | Description               |
+| Button Pin    | XIAO ESP32S3 Pin  | Description               |
 | :------------ | :---------------- | :------------------------ |
-| Pin 1 (leg A) | GP2               | Signal (internal pull-up) |
+| Pin 1 (leg A) | D0 (GPIO1)        | Signal (internal pull-up) |
 | Pin 2 (leg B) | GND               | Ground                    |
 
 BUTTON BEHAVIOR:
@@ -118,7 +118,7 @@ Install via Arduino Library Manager:
 6. Power off when done (hold button 3 seconds)
 
 Board Settings (Arduino IDE):
-- Board: "ESP32S3 Dev Module" or "Waveshare ESP32-S3-Zero"
+- Board: "XIAO_ESP32S3" (install Seeed XIAO board package)
 - USB CDC On Boot: Enabled (for serial debugging)
 
 5. CALIBRATION
@@ -232,6 +232,8 @@ DEVICE WON'T WAKE FROM SLEEP:
   https://problemkaputt.de/gbatek.htm
 - Prof9's Boktai ROM Hacks:
   (link to Prof9's patches when available)
+- Seeed XIAO ESP32S3:
+  https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/
 - Adafruit LTR390:
   https://www.adafruit.com/product/4831
 
