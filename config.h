@@ -87,9 +87,23 @@ const float BOKTAI_3_UV[10] = {
 // Raw UV Index display range (for the secondary readout)
 const float UV_DISPLAY_MAX = 11.0;
 
-// -----------------------------------------------------------------------------
-// POWER BUTTON SETTINGS
-// -----------------------------------------------------------------------------
+// Battery Monitoring
+// NOTE: The Waveshare ESP32-S3 Mini does NOT have built-in battery monitoring!
+// You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
+// the midpoint connected to BAT_PIN. Without this, battery % will show 0%.
+const int BAT_PIN = 13;      // GP13 - connect to voltage divider midpoint
+const float VOLT_MIN = 3.3;  // 0% Battery
+const float VOLT_MAX = 4.2;  // 100% Battery
+
+// Voltage divider calibration multiplier
+// Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
+// Actual default: 2.25 compensates for typical ADC/resistor variance
+// Adjust if battery % is wrong at full charge:
+//   - If % too LOW:  increase this value
+//   - If % too HIGH: decrease this value
+const float VOLT_DIVIDER_MULT = 2.25;
+
+// Power Button Settings
 // GP2 supports RTC wake-up from deep sleep.
 const int BUTTON_PIN = 2;
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
