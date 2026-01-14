@@ -94,7 +94,7 @@ void setup() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(16, 28);
-  display.print("Boktai Sensor ON");
+  display.print("Ojo del Sol ON");
   display.display();
   delay(800);
 }
@@ -337,13 +337,13 @@ void drawBatteryIcon(int x, int y, int pct) {
     display.fillRect(x + 2, y + 2, animFillW, 5, SSD1306_WHITE);
   } else {
     // Normal battery display
-    display.print(pct); display.print("%");
-    
-    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-    
-    int fillW = (pct * 14) / 100;
-    display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
+  display.print(pct); display.print("%");
+  
+  display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
+  display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
+  
+  int fillW = (pct * 14) / 100;
+  display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
   }
 }
 

@@ -1,5 +1,5 @@
 ======================================================================
-BOKTAI SOLAR SENSOR - ESP32-S3 UV Meter for Boktai Games
+Ojo del Sol - ESP32-S3 UV Meter for Boktai Games
 ======================================================================
 
 A substitute solar sensor for playing the Boktai series (Boktai 1, 2, 3)
