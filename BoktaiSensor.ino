@@ -122,7 +122,6 @@ void loop() {
     updateBatteryStatus();
     int numBars = GAME_BARS[currentGame];
     int filledBars = getBoktaiBars(uvi, currentGame);
-    float displayUvi = min(uvi, UV_DISPLAY_MAX);
 
     display.clearDisplay();
     
@@ -143,7 +142,7 @@ void loop() {
     display.setTextSize(1);
     display.setCursor(30, 18);
     display.print("UV:");
-    display.print(displayUvi, 1);
+    display.print(uvi, 1);
 
     // 5. Draw Sun Gauge (8 or 10 segments depending on game)
     drawBoktaiGauge(38, 20, filledBars, numBars);

@@ -25,17 +25,25 @@ HARDWARE
 ----------------------------------------------------------------------
 Both the LTR390 sensor and the OLED display share the I2C bus.
 
-| Component Pin | XIAO ESP32S3 Pin  | Description            |
-| :------------ | :---------------- | :--------------------- |
-| OLED/LTR VIN  | 3V3               | 3.3V Power             |
-| OLED/LTR GND  | GND               | Common Ground          |
-| OLED/LTR SDA  | D4 (GPIO5)        | I2C Data               |
-| OLED/LTR SCL  | D5 (GPIO6)        | I2C Clock              |
-| Battery Red   | BAT+ (back pad)   | Positive (+) Term      |
-| Battery Black | BAT- (back pad)   | Negative (-) Term      |
+| Component Pin | XIAO ESP32S3 Pin  | Description                             |
+| :------------ | :---------------- | :-------------------------------------- |
+| OLED VIN      | 3V3               | 3.3V Power                              |
+| OLED GND      | GND               | Common Ground                           |
+| LTR390 VIN    | D3 (GPIO4)        | Sensor power (GPIO-controlled, default) |
+| LTR390 GND    | GND               | Common Ground                           |
+| OLED/LTR SDA  | D4 (GPIO5)        | I2C Data                                |
+| OLED/LTR SCL  | D5 (GPIO6)        | I2C Clock                               |
+| Battery Red   | BAT+ (back pad)   | Positive (+) Term                       |
+| Battery Black | BAT- (back pad)   | Negative (-) Term                       |
 
 BATTERY: Solder LiPo wires directly to BAT+ and BAT- pads on the back
-of the XIAO. Built-in charging circuit handles USB-C charging.
+of the XIAO. Built-in charging circuit handles USB-C charging. The BAT-
+pad is closest to the USB-C port and BAT+ is farthest from the USB-C port.
+
+SENSOR POWER DEFAULT:
+SENSOR_POWER_ENABLED is true by default. Wire LTR390 VIN to D3 (GPIO4).
+If you prefer always-on sensor power, set SENSOR_POWER_ENABLED = false
+and connect LTR390 VIN to 3V3 instead.
 
 BATTERY MONITORING:
 The XIAO does NOT have built-in battery voltage monitoring. To enable
@@ -124,7 +132,9 @@ Install via Arduino Library Manager:
 6. Power off when done (hold button 3 seconds)
 
 Board Settings (Arduino IDE):
-- Board: "XIAO_ESP32S3" (install Seeed XIAO board package)
+- Boards Manager URL: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+- Board package: "esp32" by Espressif Systems (version 2.0.8 or newer)
+- Board: "XIAO ESP32S3"
 - USB CDC On Boot: Enabled (for serial debugging)
 
 5. CALIBRATION
@@ -192,11 +202,12 @@ The LED draws ~2-5mA continuously, which reduces sleep time from
 months to just days. The LED serves no functional purpose - removing
 it won't affect sensor operation.
 
-SENSOR POWER CONTROL (Optional):
-You can power the LTR390 VCC from a GPIO to cut power during deep sleep.
-This must be a 3.3V GPIO that can source a few mA. Do NOT power the OLED
-from a GPIO. If enabled, set SENSOR_POWER_ENABLED in config.h and wire
-LTR390 VIN to the chosen pin, with GND commoned to the XIAO.
+SENSOR POWER CONTROL (Default: Enabled):
+The default firmware powers the LTR390 VCC from a GPIO to cut power during
+deep sleep. This must be a 3.3V GPIO that can source a few mA. Do NOT power
+the OLED from a GPIO. Wire LTR390 VIN to D3 (GPIO4) when
+SENSOR_POWER_ENABLED is true. Set SENSOR_POWER_ENABLED = false to power
+LTR390 from 3V3 instead.
 
 IMPORTANT: Do not place the sensor behind glass or standard plastic!
 Most glass blocks 90%+ of UV light. Use an open aperture, quartz glass,

@@ -84,9 +84,6 @@ const float BOKTAI_3_UV[10] = {
   6.0    // Bar 10
 };
 
-// Raw UV Index display range (for the secondary readout)
-const float UV_DISPLAY_MAX = 11.0;
-
 // Battery Monitoring
 // NOTE: The XIAO ESP32S3 does NOT have built-in battery voltage monitoring!
 // You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
@@ -107,7 +104,9 @@ const float VOLT_DIVIDER_MULT = 2.25;
 // Sensor Power Control
 // Optionally power the LTR390 from a GPIO to cut power during sleep.
 // Use a GPIO capable of sourcing a few mA and never power the OLED this way.
-const bool SENSOR_POWER_ENABLED = false;
+// Default: enabled; wire LTR390 VIN to SENSOR_POWER_PIN (D3/GPIO4).
+// Set to false if powering the sensor from 3V3.
+const bool SENSOR_POWER_ENABLED = true;
 const int SENSOR_POWER_PIN = 4;               // D3 (GPIO4)
 const unsigned long SENSOR_POWER_STABLE_MS = 10;
 
