@@ -28,11 +28,7 @@ bool buttonWasPressed = false;
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
 
-// Battery/charging state
-bool isCharging = false;
-int chargeAnimFrame = 0;
-unsigned long lastChargeAnimTime = 0;
-const unsigned long CHARGE_ANIM_INTERVAL = 300;  // Animation speed (ms)
+// Battery state
 unsigned long lastBatterySampleTime = 0;
 int cachedBatteryPct = 0;
 const int BATTERY_PCT_UNKNOWN = -1;
@@ -53,10 +49,6 @@ void setup() {
   } else {
     cachedBatteryPct = BATTERY_PCT_UNKNOWN;
   }
-  if (VBUS_SENSE_ENABLED) {
-    analogSetPinAttenuation(VBUS_PIN, ADC_11db);
-  }
-
   // Initialize I2C for XIAO ESP32S3 pins (D4/GPIO5 = SDA, D5/GPIO6 = SCL)
   Wire.begin(5, 6); 
 
@@ -345,45 +337,22 @@ void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
 }
 
 // Function to draw battery percentage and icon
-// Shows filling animation when charging
 void drawBatteryIcon(int x, int y, int pct) {
+  if (pct < 0) {
+    return;
+  }
+
   display.setTextSize(1);
   display.setCursor(x - 28, y + 1);
   
-  if (isCharging) {
-    // Show "CHG" text when charging
-    display.print("CHG");
-    
-    // Update animation frame
-    unsigned long now = millis();
-    if ((now - lastChargeAnimTime) >= CHARGE_ANIM_INTERVAL) {
-      chargeAnimFrame = (chargeAnimFrame + 1) % 4;  // 4 frames: 0, 1, 2, 3
-      lastChargeAnimTime = now;
-    }
-    
-    // Draw battery outline
-    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-    
-    // Animated fill: each frame fills more (0=empty, 1=33%, 2=66%, 3=full)
-    int animFillW = (chargeAnimFrame + 1) * 3;  // 3, 6, 9, 12 pixels
-    if (animFillW > 14) animFillW = 14;
-    display.fillRect(x + 2, y + 2, animFillW, 5, SSD1306_WHITE);
-  } else if (pct < 0) {
-    // Unknown battery percentage (divider not wired)
-    display.print("--");
-    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-  } else {
-    // Normal battery display
-    display.print(pct); display.print("%");
-    
-    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-    
-    int fillW = (pct * 14) / 100;
-    display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
-  }
+  // Normal battery display
+  display.print(pct); display.print("%");
+  
+  display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
+  display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
+  
+  int fillW = (pct * 14) / 100;
+  display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
 }
 
 // Calculate battery % based on analog reading
@@ -395,13 +364,6 @@ void updateBatteryStatus() {
   }
   lastBatterySampleTime = now;
 
-  if (VBUS_SENSE_ENABLED && isVbusPresent()) {
-    isCharging = true;
-    cachedBatteryPct = BATTERY_SENSE_ENABLED ? readBatteryPercentage() : BATTERY_PCT_UNKNOWN;
-    return;
-  }
-
-  isCharging = false;
   if (BATTERY_SENSE_ENABLED) {
     cachedBatteryPct = readBatteryPercentage();
   } else {
@@ -458,23 +420,6 @@ bool initLTR390() {
   }
 
   return false;
-}
-
-bool isVbusPresent() {
-  uint32_t sum = 0;
-  for (int i = 0; i < 10; i++) {
-    sum += analogRead(VBUS_PIN);
-    delay(1);
-  }
-  float raw = sum / 10.0;
-  float voltage = (raw / 4095.0) * 3.3 * VBUS_DIVIDER_MULT;
-
-  if (DEBUG_SERIAL) {
-    Serial.print("VBUS ADC raw: "); Serial.print(raw);
-    Serial.print(" Voltage: "); Serial.println(voltage);
-  }
-
-  return voltage >= VBUS_PRESENT_V;
 }
 
 // Calculate UV Index from raw sensor data

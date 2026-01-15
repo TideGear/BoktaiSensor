@@ -67,7 +67,8 @@ The two equal resistors form a 2:1 voltage divider:
 - Empty (3.3V) -> D1 reads 1.65V -> displays 0%
 
 Without this circuit, battery % is unavailable. Set BATTERY_SENSE_ENABLED
-in config.h to false to avoid floating ADC readings and show "--".
+in config.h to false to avoid floating ADC readings and hide the battery
+indicator.
 
 NOTE: The XIAO does not expose battery voltage on a dedicated GPIO.
 Battery monitoring only works if you wire BAT+ through a divider into
@@ -81,15 +82,6 @@ in config.h:
 - Formula: new = old x 4.2 / (3.3 + displayed% x 0.009)
 - Example: showing 48% -> 2.0 x 4.2 / (3.3 + 0.432) = 2.25
 - Or simply: increase value if % too low, decrease if % too high
-
-CHARGING DETECTION:
-The firmware detects USB power by monitoring VBUS (the 5V pin) through a
-separate voltage divider into an ADC pin. Enable VBUS_SENSE_ENABLED in
-config.h only if you wire the divider into D2 (GPIO3). This detects USB
-presence (not the exact charging state):
-- Display shows "CHG" instead of percentage
-- Battery icon shows a filling animation
-- When USB is unplugged, returns to normal battery percentage display
 
 2. POWER BUTTON WIRING
 ----------------------------------------------------------------------
@@ -191,13 +183,10 @@ LTR390 UV Sensor (per datasheet DS86-2015-0004):
 
 LTR390 MODULE LED:
 The LED on the Adafruit LTR390 breakout is a power indicator wired
-directly to VIN. It is NOT controllable via software - it will always
-be on when the sensor is powered, including during deep sleep.
-
-RECOMMENDATION: Desolder or remove the LED to extend battery life.
-The LED draws ~2-5mA continuously, which reduces sleep time from
-months to just days. The LED serves no functional purpose - removing
-it won't affect sensor operation.
+directly to VIN. It is NOT controllable via software - it will be on
+whenever the sensor is powered. If you wire LTR390 VIN to D3 (GPIO4)
+and keep SENSOR_POWER_ENABLED true, the LED turns off during deep sleep.
+You can also desolder or remove the LED to further extend battery life.
 
 SENSOR POWER CONTROL (Default: Enabled):
 The default firmware powers the LTR390 VCC from a GPIO to cut power during

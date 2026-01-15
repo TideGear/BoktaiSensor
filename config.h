@@ -112,15 +112,6 @@ const bool SENSOR_POWER_ENABLED = true;
 const int SENSOR_POWER_PIN = 4;               // D3 (GPIO4)
 const unsigned long SENSOR_POWER_STABLE_MS = 10;
 
-// USB (VBUS) Detection
-// Use the 5V pin (VBUS) through a voltage divider into an ADC pin.
-// When running on battery, 5V is not present, so this detects USB power.
-// Set VBUS_SENSE_ENABLED = true only if you wire the divider.
-const bool VBUS_SENSE_ENABLED = false;
-const int VBUS_PIN = 3;               // D2/A2 (GPIO3) - divider midpoint from 5V
-const float VBUS_DIVIDER_MULT = 2.0;  // 2:1 divider for 5V -> 2.5V
-const float VBUS_PRESENT_V = 4.0;     // Threshold to detect USB power
-
 // Power Button Settings
 // D0 (GPIO1) supports RTC wake-up from deep sleep on XIAO ESP32S3.
 const int BUTTON_PIN = 1;    // D0 (GPIO1)
