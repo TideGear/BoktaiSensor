@@ -87,7 +87,9 @@ const float BOKTAI_3_UV[10] = {
 // Battery Monitoring
 // NOTE: The XIAO ESP32S3 does NOT have built-in battery voltage monitoring!
 // You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
-// the midpoint connected to BAT_PIN. Without this, battery % will show 0%.
+// the midpoint connected to BAT_PIN. Without this, battery % is unavailable.
+// Set BATTERY_SENSE_ENABLED = false if you do not wire the divider.
+const bool BATTERY_SENSE_ENABLED = true;
 const int BAT_PIN = 2;       // D1/A1 (GPIO2) - connect to voltage divider midpoint
 const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery
@@ -113,6 +115,7 @@ const unsigned long SENSOR_POWER_STABLE_MS = 10;
 // USB (VBUS) Detection
 // Use the 5V pin (VBUS) through a voltage divider into an ADC pin.
 // When running on battery, 5V is not present, so this detects USB power.
+// Set VBUS_SENSE_ENABLED = true only if you wire the divider.
 const bool VBUS_SENSE_ENABLED = false;
 const int VBUS_PIN = 3;               // D2/A2 (GPIO3) - divider midpoint from 5V
 const float VBUS_DIVIDER_MULT = 2.0;  // 2:1 divider for 5V -> 2.5V

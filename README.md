@@ -19,7 +19,7 @@ HARDWARE
 - SSD1306 128x64 OLED Display (I2C)
 - Tactile Push Button (power/game select)
 - 3.7V LiPo Battery (450mAh recommended)
-- 2x 100KΩ Resistors (for battery monitoring)
+- 2x 100K ohm Resistors (for battery monitoring)
 
 1. HARDWARE CONNECTIONS (I2C)
 ----------------------------------------------------------------------
@@ -50,27 +50,24 @@ The XIAO does NOT have built-in battery voltage monitoring. To enable
 battery percentage display, add a voltage divider circuit:
 
 COMPONENTS:
-- 2x 100KΩ resistors (1/4W, through-hole or SMD)
+- 2x 100K ohm resistors (1/4W, through-hole or SMD)
 
 WIRING DIAGRAM:
 ```
-  BAT+ pad ─────┬─────────────────────────────── Battery (+)
-                │
-              [R1] 100KΩ
-                │
-                ├─────── D1 (GPIO2/A1, ADC input)
-                │
-              [R2] 100KΩ
-                │
-  BAT- pad ─────┴─────────────────────────────── Battery (-) / GND
+  BAT+ pad ----[R1 100K]----+---- D1 (GPIO2/A1, ADC input)
+                             |
+                           [R2 100K]
+                             |
+  BAT- pad ------------------+---- GND
 ```
 
 HOW IT WORKS:
 The two equal resistors form a 2:1 voltage divider:
-- Full charge (4.2V) → D1 reads 2.1V → displays 100%
-- Empty (3.3V) → D1 reads 1.65V → displays 0%
+- Full charge (4.2V) -> D1 reads 2.1V -> displays 100%
+- Empty (3.3V) -> D1 reads 1.65V -> displays 0%
 
-Without this circuit, battery % will always show 0%.
+Without this circuit, battery % is unavailable. Set BATTERY_SENSE_ENABLED
+in config.h to false to avoid floating ADC readings and show "--".
 
 NOTE: The XIAO does not expose battery voltage on a dedicated GPIO.
 Battery monitoring only works if you wire BAT+ through a divider into
@@ -81,15 +78,15 @@ CALIBRATION:
 If battery % is wrong when fully charged (4.2V), adjust VOLT_DIVIDER_MULT
 in config.h:
 - Default: 2.25 (calibrated for typical hardware variance)
-- Formula: new = old × 4.2 ÷ (3.3 + displayed% × 0.009)
-- Example: showing 48% → 2.0 × 4.2 ÷ (3.3 + 0.432) = 2.25
+- Formula: new = old x 4.2 / (3.3 + displayed% x 0.009)
+- Example: showing 48% -> 2.0 x 4.2 / (3.3 + 0.432) = 2.25
 - Or simply: increase value if % too low, decrease if % too high
 
 CHARGING DETECTION:
 The firmware detects USB power by monitoring VBUS (the 5V pin) through a
-separate voltage divider into an ADC pin. When USB is connected, the 5V
-rail is present; when on battery, the 5V pin is 0V, so this reliably
-detects charging:
+separate voltage divider into an ADC pin. Enable VBUS_SENSE_ENABLED in
+config.h only if you wire the divider into D2 (GPIO3). This detects USB
+presence (not the exact charging state):
 - Display shows "CHG" instead of percentage
 - Battery icon shows a filling animation
 - When USB is unplugged, returns to normal battery percentage display
@@ -105,8 +102,8 @@ A single tactile push button controls power and game selection.
 
 BUTTON BEHAVIOR:
 When device is ON:
-- Tap (short press):  Cycle to next game (1 → 2 → 3 → 1...)
-- Hold 3 seconds:     Power OFF (enters deep sleep ~10µA)
+- Tap (short press):  Cycle to next game (1 -> 2 -> 3 -> 1...)
+- Hold 3 seconds:     Power OFF (enters deep sleep ~10uA)
 
 When waking from sleep:
 - Press button:       Shows "Hold 3s to power on" for 10 seconds
@@ -134,7 +131,7 @@ Install via Arduino Library Manager:
 Board Settings (Arduino IDE):
 - Boards Manager URL: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 - Board package: "esp32" by Espressif Systems (version 2.0.8 or newer)
-- Board: "XIAO ESP32S3"
+- Board: "XIAO_ESP32S3"
 - USB CDC On Boot: Enabled (for serial debugging)
 
 5. CALIBRATION
@@ -186,7 +183,7 @@ Original Boktai Cartridge Sensor (from GBATEK):
 
 LTR390 UV Sensor (per datasheet DS86-2015-0004):
 - Reference sensitivity: 2300 counts/UVI at 18x gain, 400ms
-- UV Index formula: UVI = raw × (18/gain) × (400/int_time) / 2300
+- UV Index formula: UVI = raw x (18/gain) x (400/int_time) / 2300
 - At our settings (1x gain, 100ms): UVI = raw / 32
 - Peak response: 300-350nm (matches solar UV-A/UV-B)
 - NOT inverted: higher values = more UV
@@ -218,7 +215,7 @@ or UV-transparent acrylic if an enclosure window is needed.
 
 UV SENSOR READS 0 OR VERY LOW:
 1. Open Serial Monitor (115200 baud) to see raw sensor counts
-   - At UVI 6, expect ~192 raw counts (6 × 32)
+   - At UVI 6, expect ~192 raw counts (6 x 32)
    - If raw counts are 0, sensor may not be in UV mode
 2. Check sensor orientation - sensor window must face the sky
 3. Ensure no glass/plastic blocks the sensor (blocks 90%+ of UV)

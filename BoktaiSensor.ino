@@ -35,6 +35,7 @@ unsigned long lastChargeAnimTime = 0;
 const unsigned long CHARGE_ANIM_INTERVAL = 300;  // Animation speed (ms)
 unsigned long lastBatterySampleTime = 0;
 int cachedBatteryPct = 0;
+const int BATTERY_PCT_UNKNOWN = -1;
 
 void setup() {
   Serial.begin(115200);
@@ -44,11 +45,14 @@ void setup() {
 
   if (SENSOR_POWER_ENABLED) {
     pinMode(SENSOR_POWER_PIN, OUTPUT);
-    digitalWrite(SENSOR_POWER_PIN, HIGH);
-    delay(SENSOR_POWER_STABLE_MS);
+    digitalWrite(SENSOR_POWER_PIN, LOW); // keep sensor off until power-on
   }
 
-  analogSetPinAttenuation(BAT_PIN, ADC_11db);
+  if (BATTERY_SENSE_ENABLED) {
+    analogSetPinAttenuation(BAT_PIN, ADC_11db);
+  } else {
+    cachedBatteryPct = BATTERY_PCT_UNKNOWN;
+  }
   if (VBUS_SENSE_ENABLED) {
     analogSetPinAttenuation(VBUS_PIN, ADC_11db);
   }
@@ -60,23 +64,6 @@ void setup() {
     Serial.println(F("SSD1306 failed"));
     for (;;);
   }
-
-  if (!ltr.begin()) {
-    Serial.println(F("LTR390 failed"));
-    for (;;);
-  }
-
-  // Configure LTR390 for UV sensing mode
-  // Gain 1x: Maximum headroom for direct sunlight (won't saturate)
-  // Resolution 18-bit: Good balance of precision and speed (100ms per reading)
-  // Note: 13-bit was too fast - only ~4 counts/UVI, causing 0 readings
-  ltr.setMode(LTR390_MODE_UVS);
-  ltr.setGain(LTR390_GAIN_1);
-  ltr.setResolution(LTR390_RESOLUTION_18BIT);
-  
-  // Debug: Print sensor configuration
-  Serial.println(F("LTR390 configured: UV mode, 1x gain, 18-bit (100ms)"));
-  Serial.println(F("Expected: ~32 counts per UVI"));
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
@@ -101,6 +88,34 @@ void setup() {
   if (!waitForPowerOn(coldBoot)) {
     // Timed out - go back to sleep
     enterDeepSleep();
+  }
+
+  if (SENSOR_POWER_ENABLED) {
+    digitalWrite(SENSOR_POWER_PIN, HIGH);
+    delay(SENSOR_POWER_STABLE_MS);
+  }
+
+  if (!initLTR390()) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(10, 28);
+    display.print("LTR390 failed");
+    display.display();
+    delay(2000);
+    enterDeepSleep();
+  }
+
+  // Configure LTR390 for UV sensing mode
+  // Gain 1x: Maximum headroom for direct sunlight (won't saturate)
+  // Resolution 18-bit: Good balance of precision and speed (100ms per reading)
+  // Note: 13-bit was too fast - only ~4 counts/UVI, causing 0 readings
+  ltr.setMode(LTR390_MODE_UVS);
+  ltr.setGain(LTR390_GAIN_1);
+  ltr.setResolution(LTR390_RESOLUTION_18BIT);
+  
+  if (DEBUG_SERIAL) {
+    Serial.println(F("LTR390 configured: UV mode, 1x gain, 18-bit (100ms)"));
+    Serial.println(F("Expected: ~32 counts per UVI"));
   }
   
   // Show wake-up confirmation
@@ -304,8 +319,10 @@ void enterDeepSleep() {
   // Configure wake-up source: BUTTON_PIN going LOW (pressed)
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
   
-  Serial.println("Entering deep sleep...");
-  Serial.flush();
+  if (DEBUG_SERIAL) {
+    Serial.println("Entering deep sleep...");
+    Serial.flush();
+  }
   
   // Enter deep sleep - device resets on wake
   esp_deep_sleep_start();
@@ -352,15 +369,20 @@ void drawBatteryIcon(int x, int y, int pct) {
     int animFillW = (chargeAnimFrame + 1) * 3;  // 3, 6, 9, 12 pixels
     if (animFillW > 14) animFillW = 14;
     display.fillRect(x + 2, y + 2, animFillW, 5, SSD1306_WHITE);
+  } else if (pct < 0) {
+    // Unknown battery percentage (divider not wired)
+    display.print("--");
+    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
+    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
   } else {
     // Normal battery display
-  display.print(pct); display.print("%");
-  
-  display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-  display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-  
-  int fillW = (pct * 14) / 100;
-  display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
+    display.print(pct); display.print("%");
+    
+    display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
+    display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
+    
+    int fillW = (pct * 14) / 100;
+    display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
   }
 }
 
@@ -375,12 +397,16 @@ void updateBatteryStatus() {
 
   if (VBUS_SENSE_ENABLED && isVbusPresent()) {
     isCharging = true;
-    cachedBatteryPct = 100;
+    cachedBatteryPct = BATTERY_SENSE_ENABLED ? readBatteryPercentage() : BATTERY_PCT_UNKNOWN;
     return;
   }
 
   isCharging = false;
-  cachedBatteryPct = readBatteryPercentage();
+  if (BATTERY_SENSE_ENABLED) {
+    cachedBatteryPct = readBatteryPercentage();
+  } else {
+    cachedBatteryPct = BATTERY_PCT_UNKNOWN;
+  }
 }
 
 int readBatteryPercentage() {
@@ -405,6 +431,33 @@ int readBatteryPercentage() {
 
   int pct = ((voltage - VOLT_MIN) / (VOLT_MAX - VOLT_MIN)) * 100;
   return constrain(pct, 0, 100);
+}
+
+bool initLTR390() {
+  const int maxAttempts = 3;
+
+  for (int attempt = 0; attempt < maxAttempts; attempt++) {
+    if (ltr.begin()) {
+      return true;
+    }
+
+    if (DEBUG_SERIAL) {
+      Serial.print("LTR390 init failed (");
+      Serial.print(attempt + 1);
+      Serial.println(")");
+    }
+
+    if (SENSOR_POWER_ENABLED) {
+      digitalWrite(SENSOR_POWER_PIN, LOW);
+      delay(50);
+      digitalWrite(SENSOR_POWER_PIN, HIGH);
+      delay(SENSOR_POWER_STABLE_MS);
+    } else {
+      delay(50);
+    }
+  }
+
+  return false;
 }
 
 bool isVbusPresent() {
