@@ -95,6 +95,11 @@ const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery
 const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 
+// Low-voltage cutoff (requires battery sense divider)
+const bool BATTERY_CUTOFF_ENABLED = true;
+const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
+const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
+
 // Voltage divider calibration multiplier
 // Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
 // Actual default: 2.25 compensates for typical ADC/resistor variance

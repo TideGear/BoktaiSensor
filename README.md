@@ -75,6 +75,13 @@ Battery monitoring only works if you wire BAT+ through a divider into
 an ADC pin (D1 in the diagram). A floating ADC pin will produce
 unreliable readings.
 
+LOW-VOLTAGE CUTOFF:
+If BATTERY_CUTOFF_ENABLED is true, the firmware enters deep sleep when
+battery voltage stays below VOLT_CUTOFF for BATTERY_CUTOFF_HOLD_MS.
+This requires the voltage divider above. Set BATTERY_CUTOFF_ENABLED
+to false if you don't use the divider or want to disable cutoff.
+A brief "LOW BATTERY" message is shown before sleep.
+
 CALIBRATION:
 If battery % is wrong when fully charged (4.2V), adjust VOLT_DIVIDER_MULT
 in config.h:
@@ -98,8 +105,8 @@ When device is ON:
 - Hold 3 seconds:     Power OFF (enters deep sleep ~10uA)
 
 When waking from sleep:
-- Press button:       Shows "Hold 3s to power on" for 10 seconds
-- Hold 3 seconds:     Powers ON the device
+- Press and hold 3s:  Powers ON the device
+- Short press:        Shows "Hold 3s to power on" for 10 seconds
 - No activity 10s:    Screen turns off, returns to sleep
 
 3. LIBRARIES REQUIRED
@@ -203,7 +210,8 @@ or UV-transparent acrylic if an enclosure window is needed.
 ----------------------------------------------------------------------
 
 UV SENSOR READS 0 OR VERY LOW:
-1. Open Serial Monitor (115200 baud) to see raw sensor counts
+1. Set DEBUG_SERIAL = true in config.h, then open Serial Monitor (115200 baud)
+   to see raw sensor counts
    - At UVI 6, expect ~192 raw counts (6 x 32)
    - If raw counts are 0, sensor may not be in UV mode
 2. Check sensor orientation - sensor window must face the sky
@@ -223,11 +231,17 @@ Adjust VOLT_DIVIDER_MULT in config.h:
 - See BATTERY MONITORING section for exact formula
 - Default 2.25 is calibrated for common hardware variance
 
+DEVICE POWERS OFF QUICKLY:
+If BATTERY_CUTOFF_ENABLED is true, the device will sleep when voltage
+stays below VOLT_CUTOFF. Lower the cutoff threshold or disable it.
+If you don't use the voltage divider, set BATTERY_SENSE_ENABLED = false.
+
 DEVICE WON'T WAKE FROM SLEEP:
-1. Press the button to show "Hold 3s to power on" prompt
-2. Hold for 3 full seconds while the prompt is displayed
+1. Press and hold the button for 3 full seconds
+2. If you release early, the "Hold 3s to power on" prompt shows for 10 seconds;
+   press and hold again while the prompt is visible
 3. The prompt auto-hides after 10 seconds of inactivity
-4. If screen is off, press button again to show the prompt
+4. If screen is off, press and hold again to power on
 
 8. FUTURE PLANS
 ----------------------------------------------------------------------

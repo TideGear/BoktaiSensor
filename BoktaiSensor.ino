@@ -31,7 +31,9 @@ int currentGame = 0;
 // Battery state
 unsigned long lastBatterySampleTime = 0;
 int cachedBatteryPct = 0;
+float cachedBatteryVoltage = -1.0f;
 const int BATTERY_PCT_UNKNOWN = -1;
+unsigned long lowBatteryStart = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -48,6 +50,7 @@ void setup() {
     analogSetPinAttenuation(BAT_PIN, ADC_11db);
   } else {
     cachedBatteryPct = BATTERY_PCT_UNKNOWN;
+    cachedBatteryVoltage = -1.0f;
   }
   // Initialize I2C for XIAO ESP32S3 pins (D4/GPIO5 = SDA, D5/GPIO6 = SCL)
   Wire.begin(5, 6); 
@@ -67,16 +70,11 @@ void setup() {
   if (!coldBoot) {
     // Woke from deep sleep via button - start with display OFF
     display.ssd1306_command(SSD1306_DISPLAYOFF);
-    
-    // Wait for button release (from wake trigger)
-    while (digitalRead(BUTTON_PIN) == LOW) {
-      delay(10);
-    }
   }
   
   // Wait for power-on: show prompt for 10s, reset on button activity
   // Cold boot: show message immediately
-  // Wake from sleep: wait for button press to show message
+  // Wake from sleep: show message on button press/hold
   if (!waitForPowerOn(coldBoot)) {
     // Timed out - go back to sleep
     enterDeepSleep();
@@ -127,6 +125,7 @@ void loop() {
   if (ltr.newDataAvailable()) {
     float uvi = calculateUVI();
     updateBatteryStatus();
+    handleLowBatteryCutoff();
     int numBars = GAME_BARS[currentGame];
     int filledBars = getBoktaiBars(uvi, currentGame);
 
@@ -147,7 +146,7 @@ void loop() {
     
     // 4. UV Index (Small, Secondary)
     display.setTextSize(1);
-    display.setCursor(30, 18);
+    display.setCursor(64, 18);
     display.print("UV:");
     display.print(uvi, 1);
 
@@ -156,7 +155,7 @@ void loop() {
 
     display.display();
   }
-  delay(100); // Faster loop for responsive button handling
+  delay(10); // Short delay for responsive button handling
 }
 
 // Convert UV Index to Boktai bar count based on selected game
@@ -166,6 +165,9 @@ int getBoktaiBars(float uvi, int game) {
   if (AUTO_MODE) {
     // Auto mode: linearly interpolate between UV_MIN and UV_MAX
     // UV < MIN = 0 bars, UV >= MAX = full bars
+    if (AUTO_UV_MAX <= AUTO_UV_MIN) {
+      return (uvi >= AUTO_UV_MIN) ? numBars : 0;
+    }
     if (uvi < AUTO_UV_MIN) return 0;
     if (uvi >= AUTO_UV_MAX) return numBars;
     
@@ -224,7 +226,7 @@ void handlePowerButton() {
 // Wait for power-on with 10-second timeout
 // Shows "Hold 3s to power on" message
 // Button activity resets the 10-second timer
-// coldBoot: if true, show message immediately; if false, wait for button press
+// coldBoot: if true, show message immediately; if false, show on button press/hold
 // Returns true if 3-second hold completed, false if timed out
 bool waitForPowerOn(bool coldBoot) {
   const unsigned long DISPLAY_TIMEOUT_MS = 10000;  // 10 seconds
@@ -232,9 +234,10 @@ bool waitForPowerOn(bool coldBoot) {
   unsigned long pressStart = 0;
   bool wasPressed = false;
   bool displayOn = false;
+  bool pressedAtStart = (!coldBoot && (digitalRead(BUTTON_PIN) == LOW));
   
   // On cold boot, show message immediately
-  if (coldBoot) {
+  if (coldBoot || pressedAtStart) {
     display.ssd1306_command(SSD1306_DISPLAYON);
     display.clearDisplay();
     display.setTextSize(1);
@@ -242,6 +245,10 @@ bool waitForPowerOn(bool coldBoot) {
     display.print("Hold 3s to power on");
     display.display();
     displayOn = true;
+  }
+  if (pressedAtStart) {
+    pressStart = lastActivity;
+    wasPressed = true;
   }
   
   while (true) {
@@ -356,7 +363,6 @@ void drawBatteryIcon(int x, int y, int pct) {
 }
 
 // Calculate battery % based on analog reading
-// Sets global isCharging flag if USB power detected
 void updateBatteryStatus() {
   unsigned long now = millis();
   if ((now - lastBatterySampleTime) < BATTERY_SAMPLE_MS) {
@@ -368,6 +374,36 @@ void updateBatteryStatus() {
     cachedBatteryPct = readBatteryPercentage();
   } else {
     cachedBatteryPct = BATTERY_PCT_UNKNOWN;
+    cachedBatteryVoltage = -1.0f;
+    lowBatteryStart = 0;
+  }
+}
+
+void handleLowBatteryCutoff() {
+  if (!BATTERY_SENSE_ENABLED || !BATTERY_CUTOFF_ENABLED) {
+    lowBatteryStart = 0;
+    return;
+  }
+  if (cachedBatteryVoltage <= 0.0f) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if (cachedBatteryVoltage <= VOLT_CUTOFF) {
+    if (lowBatteryStart == 0) {
+      lowBatteryStart = now;
+    }
+    if ((now - lowBatteryStart) >= BATTERY_CUTOFF_HOLD_MS) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(31, 28);
+      display.print("LOW BATTERY");
+      display.display();
+      delay(1500);
+      enterDeepSleep();
+    }
+  } else {
+    lowBatteryStart = 0;
   }
 }
 
@@ -384,6 +420,7 @@ int readBatteryPercentage() {
   // VOLT_DIVIDER_MULT compensates for voltage divider ratio + ADC variance
   // Calibrate in config.h if battery % is wrong at full charge
   float voltage = (raw / 4095.0) * 3.3 * VOLT_DIVIDER_MULT;
+  cachedBatteryVoltage = voltage;
   
   // Debug output
   if (DEBUG_SERIAL) {
