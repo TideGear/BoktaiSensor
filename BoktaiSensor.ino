@@ -33,12 +33,25 @@ bool isCharging = false;
 int chargeAnimFrame = 0;
 unsigned long lastChargeAnimTime = 0;
 const unsigned long CHARGE_ANIM_INTERVAL = 300;  // Animation speed (ms)
+unsigned long lastBatterySampleTime = 0;
+int cachedBatteryPct = 0;
 
 void setup() {
   Serial.begin(115200);
 
   // Configure power button with internal pull-up (active LOW)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  if (SENSOR_POWER_ENABLED) {
+    pinMode(SENSOR_POWER_PIN, OUTPUT);
+    digitalWrite(SENSOR_POWER_PIN, HIGH);
+    delay(SENSOR_POWER_STABLE_MS);
+  }
+
+  analogSetPinAttenuation(BAT_PIN, ADC_11db);
+  if (VBUS_SENSE_ENABLED) {
+    analogSetPinAttenuation(VBUS_PIN, ADC_11db);
+  }
 
   // Initialize I2C for XIAO ESP32S3 pins (D4/GPIO5 = SDA, D5/GPIO6 = SCL)
   Wire.begin(5, 6); 
@@ -106,14 +119,15 @@ void loop() {
   // Wait for new sensor data
   if (ltr.newDataAvailable()) {
     float uvi = calculateUVI();
-    int batPct = getBatteryPercentage();
+    updateBatteryStatus();
     int numBars = GAME_BARS[currentGame];
     int filledBars = getBoktaiBars(uvi, currentGame);
+    float displayUvi = min(uvi, UV_DISPLAY_MAX);
 
     display.clearDisplay();
     
     // 1. Draw Battery Indicator (Top Right)
-    drawBatteryIcon(105, 2, batPct);
+    drawBatteryIcon(105, 2, cachedBatteryPct);
 
     // 2. Game Name
     display.setTextSize(1);
@@ -129,7 +143,7 @@ void loop() {
     display.setTextSize(1);
     display.setCursor(30, 18);
     display.print("UV:");
-    display.print(uvi, 1);
+    display.print(displayUvi, 1);
 
     // 5. Draw Sun Gauge (8 or 10 segments depending on game)
     drawBoktaiGauge(38, 20, filledBars, numBars);
@@ -277,6 +291,10 @@ void enterDeepSleep() {
   display.clearDisplay();
   display.display();
   display.ssd1306_command(SSD1306_DISPLAYOFF);
+
+  if (SENSOR_POWER_ENABLED) {
+    digitalWrite(SENSOR_POWER_PIN, LOW);
+  }
   
   // Wait for button release before sleeping
   while (digitalRead(BUTTON_PIN) == LOW) {
@@ -349,7 +367,24 @@ void drawBatteryIcon(int x, int y, int pct) {
 
 // Calculate battery % based on analog reading
 // Sets global isCharging flag if USB power detected
-int getBatteryPercentage() {
+void updateBatteryStatus() {
+  unsigned long now = millis();
+  if ((now - lastBatterySampleTime) < BATTERY_SAMPLE_MS) {
+    return;
+  }
+  lastBatterySampleTime = now;
+
+  if (VBUS_SENSE_ENABLED && isVbusPresent()) {
+    isCharging = true;
+    cachedBatteryPct = 100;
+    return;
+  }
+
+  isCharging = false;
+  cachedBatteryPct = readBatteryPercentage();
+}
+
+int readBatteryPercentage() {
   // Read multiple samples and average for stability
   uint32_t sum = 0;
   for (int i = 0; i < 10; i++) {
@@ -364,19 +399,30 @@ int getBatteryPercentage() {
   float voltage = (raw / 4095.0) * 3.3 * VOLT_DIVIDER_MULT;
   
   // Debug output
-  Serial.print("Battery ADC raw: "); Serial.print(raw);
-  Serial.print(" Voltage: "); Serial.println(voltage);
-  
-  // Detect charging: voltage > 4.3V means USB is connected
-  // (LiPo max is 4.2V, so anything higher must be USB 5V)
-  if (voltage > 4.3) {
-    isCharging = true;
-    return 100;  // Show full when charging (actual level unknown)
+  if (DEBUG_SERIAL) {
+    Serial.print("Battery ADC raw: "); Serial.print(raw);
+    Serial.print(" Voltage: "); Serial.println(voltage);
   }
-  
-  isCharging = false;
+
   int pct = ((voltage - VOLT_MIN) / (VOLT_MAX - VOLT_MIN)) * 100;
   return constrain(pct, 0, 100);
+}
+
+bool isVbusPresent() {
+  uint32_t sum = 0;
+  for (int i = 0; i < 10; i++) {
+    sum += analogRead(VBUS_PIN);
+    delay(1);
+  }
+  float raw = sum / 10.0;
+  float voltage = (raw / 4095.0) * 3.3 * VBUS_DIVIDER_MULT;
+
+  if (DEBUG_SERIAL) {
+    Serial.print("VBUS ADC raw: "); Serial.print(raw);
+    Serial.print(" Voltage: "); Serial.println(voltage);
+  }
+
+  return voltage >= VBUS_PRESENT_V;
 }
 
 // Calculate UV Index from raw sensor data
@@ -385,8 +431,10 @@ float calculateUVI() {
   float uvi = (float)rawUVS / UV_DIVISOR;
   
   // Debug output
-  Serial.print("UV raw: "); Serial.print(rawUVS);
-  Serial.print(" UVI: "); Serial.println(uvi);
+  if (DEBUG_SERIAL) {
+    Serial.print("UV raw: "); Serial.print(rawUVS);
+    Serial.print(" UVI: "); Serial.println(uvi);
+  }
   
   return uvi;
 }
