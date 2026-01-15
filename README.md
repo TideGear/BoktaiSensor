@@ -64,6 +64,11 @@ The two equal resistors form a 2:1 voltage divider:
 
 Without this circuit, battery % will always show 0%.
 
+NOTE: The XIAO does not expose battery voltage on a dedicated GPIO.
+Battery monitoring only works if you wire BAT+ through a divider into
+an ADC pin (D1 in the diagram). A floating ADC pin will produce
+unreliable readings.
+
 CALIBRATION:
 If battery % is wrong when fully charged (4.2V), adjust VOLT_DIVIDER_MULT
 in config.h:
@@ -73,9 +78,10 @@ in config.h:
 - Or simply: increase value if % too low, decrease if % too high
 
 CHARGING DETECTION:
-The firmware detects USB power by monitoring voltage. When USB is connected,
-the 5V rail voltage exceeds what a LiPo can produce (>4.3V), triggering
-charging mode:
+The firmware detects USB power by monitoring VBUS (the 5V pin) through a
+separate voltage divider into an ADC pin. When USB is connected, the 5V
+rail is present; when on battery, the 5V pin is 0V, so this reliably
+detects charging:
 - Display shows "CHG" instead of percentage
 - Battery icon shows a filling animation
 - When USB is unplugged, returns to normal battery percentage display
@@ -185,6 +191,12 @@ RECOMMENDATION: Desolder or remove the LED to extend battery life.
 The LED draws ~2-5mA continuously, which reduces sleep time from
 months to just days. The LED serves no functional purpose - removing
 it won't affect sensor operation.
+
+SENSOR POWER CONTROL (Optional):
+You can power the LTR390 VCC from a GPIO to cut power during deep sleep.
+This must be a 3.3V GPIO that can source a few mA. Do NOT power the OLED
+from a GPIO. If enabled, set SENSOR_POWER_ENABLED in config.h and wire
+LTR390 VIN to the chosen pin, with GND commoned to the XIAO.
 
 IMPORTANT: Do not place the sensor behind glass or standard plastic!
 Most glass blocks 90%+ of UV light. Use an open aperture, quartz glass,

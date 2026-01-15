@@ -94,6 +94,7 @@ const float UV_DISPLAY_MAX = 11.0;
 const int BAT_PIN = 2;       // D1/A1 (GPIO2) - connect to voltage divider midpoint
 const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery
+const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 
 // Voltage divider calibration multiplier
 // Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
@@ -103,10 +104,28 @@ const float VOLT_MAX = 4.2;  // 100% Battery
 //   - If % too HIGH: decrease this value
 const float VOLT_DIVIDER_MULT = 2.25;
 
+// Sensor Power Control
+// Optionally power the LTR390 from a GPIO to cut power during sleep.
+// Use a GPIO capable of sourcing a few mA and never power the OLED this way.
+const bool SENSOR_POWER_ENABLED = false;
+const int SENSOR_POWER_PIN = 4;               // D3 (GPIO4)
+const unsigned long SENSOR_POWER_STABLE_MS = 10;
+
+// USB (VBUS) Detection
+// Use the 5V pin (VBUS) through a voltage divider into an ADC pin.
+// When running on battery, 5V is not present, so this detects USB power.
+const bool VBUS_SENSE_ENABLED = false;
+const int VBUS_PIN = 3;               // D2/A2 (GPIO3) - divider midpoint from 5V
+const float VBUS_DIVIDER_MULT = 2.0;  // 2:1 divider for 5V -> 2.5V
+const float VBUS_PRESENT_V = 4.0;     // Threshold to detect USB power
+
 // Power Button Settings
 // D0 (GPIO1) supports RTC wake-up from deep sleep on XIAO ESP32S3.
 const int BUTTON_PIN = 1;    // D0 (GPIO1)
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 3000;   // Hold 3 seconds to power on/off
+
+// Debug logging
+const bool DEBUG_SERIAL = false;
 
 #endif
