@@ -247,7 +247,7 @@ DEVICE WON'T WAKE FROM SLEEP:
 ----------------------------------------------------------------------
 - [ ] Bluetooth and/or HID output for emulators 
 - [ ] GBA Link Port output for direct hardware integration
-- [ ] Save selected game to NVS (persist across power cycles)
+- [ ] Maybe Lunar Knights support?
 
 9. CREDITS & LINKS
 ----------------------------------------------------------------------
