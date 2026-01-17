@@ -221,7 +221,8 @@ The LED on the Adafruit LTR390 breakout is a power indicator wired
 directly to VIN. It is NOT controllable via software - it will be on
 whenever the sensor is powered. If you wire LTR390 VIN to D3 (GPIO4)
 and keep SENSOR_POWER_ENABLED true, the LED turns off during deep sleep.
-You can also desolder or remove the LED to further extend battery life.
+You can also cut the LED trace on the back of the LTR390 to further extend
+battery life.
 
 OLED LOW-POWER SLEEP:
 The firmware sends SSD1306 Display OFF (0xAE) and Charge Pump OFF
