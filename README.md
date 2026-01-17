@@ -128,6 +128,10 @@ Notes:
   VDD35 pin to 5V. Keep everything at 3.3V logic.
 - GBA link port sockets/breakouts are sold separately; you can wire one directly
   to the XIAO pins listed above.
+- Use a proper GBA link cable (not an 8-bit Game Boy cable). Look for the
+  mid-cable block/port found on official multi-play cables, and verify the plug
+  has metal contacts for pins 2-6 (SO, SI, SD, SC, GND). Some cheap cables omit
+  SO or SC and will not work.
 
 GBA LINK OUTPUT MODE:
 When GBA_LINK_ENABLED is true, the firmware outputs the current bar count as a
