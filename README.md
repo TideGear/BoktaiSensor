@@ -195,6 +195,12 @@ whenever the sensor is powered. If you wire LTR390 VIN to D3 (GPIO4)
 and keep SENSOR_POWER_ENABLED true, the LED turns off during deep sleep.
 You can also desolder or remove the LED to further extend battery life.
 
+OLED LOW-POWER SLEEP:
+The firmware sends SSD1306 Display OFF (0xAE) and Charge Pump OFF
+(0x8D, 0x10), then releases SDA/SCL to reduce back-powering during
+deep sleep. Some OLED modules keep pull-ups on the bus, so the LTR390
+LED may still glow faintly.
+
 SENSOR POWER CONTROL (Default: Enabled):
 The default firmware powers the LTR390 VCC from a GPIO to cut power during
 deep sleep. This must be a 3.3V GPIO that can source a few mA. Do NOT power

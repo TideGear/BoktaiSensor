@@ -304,6 +304,12 @@ void enterDeepSleep() {
   display.clearDisplay();
   display.display();
   display.ssd1306_command(SSD1306_DISPLAYOFF);
+  display.ssd1306_command(0x8D); // Charge pump
+  display.ssd1306_command(0x10); // Disable charge pump
+  // Release I2C lines to reduce back-powering during sleep.
+  Wire.end();
+  pinMode(5, INPUT);
+  pinMode(6, INPUT);
 
   if (SENSOR_POWER_ENABLED) {
     digitalWrite(SENSOR_POWER_PIN, LOW);
