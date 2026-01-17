@@ -123,6 +123,12 @@ const int BUTTON_PIN = 1;    // D0 (GPIO1)
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 3000;   // Hold 3 seconds to power on/off
 
+// Display Screensaver
+// After SCREENSAVER_TIME minutes of no button activity, show a bouncing
+// "Ojo del Sol" screensaver. Set SCREENSAVER_TIME to 0 to disable.
+const bool SCREENSAVER_ACTIVE = true;
+const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (same as false)
+
 // GBA Link output (D7-D10)
 const bool GBA_LINK_ENABLED = true;
 const int GBA_PIN_SC = 44;  // D7 (GPIO44) - SC (bit 0)

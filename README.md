@@ -103,6 +103,7 @@ BUTTON BEHAVIOR:
 When device is ON:
 - Tap (short press):  Cycle to next game (1 -> 2 -> 3 -> 1...)
 - Hold 3 seconds:     Power OFF (enters deep sleep ~10uA)
+- If screensaver is active: press to wake the screen; next tap changes game
 
 When waking from sleep:
 - Press and hold 3s:  Powers ON the device
@@ -154,6 +155,14 @@ Install via Arduino Library Manager:
 5. Enter the matching sun level in-game using Prof9's ROM hacks
    (or your flash cart's input method)
 6. Power off when done (hold button 3 seconds)
+
+SCREENSAVER:
+When SCREENSAVER_ACTIVE is true, the display switches to a bouncing
+"Ojo del Sol" after SCREENSAVER_TIME minutes with no button activity.
+Pressing the button wakes the screen and resets the timer. If you are
+manually entering the solar meter via ROM hack or emulator, you may want
+to turn off the screensaver (set SCREENSAVER_TIME = 0), but be aware this
+will affect the OLED's lifespan.
 
 Board Settings (Arduino IDE):
 - Boards Manager URL: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json

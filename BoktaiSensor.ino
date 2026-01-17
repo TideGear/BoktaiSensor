@@ -35,6 +35,28 @@ float cachedBatteryVoltage = -1.0f;
 const int BATTERY_PCT_UNKNOWN = -1;
 unsigned long lowBatteryStart = 0;
 
+// Screensaver state
+const char SCREENSAVER_TEXT[] = "Ojo del Sol";
+const bool SCREENSAVER_ENABLED = SCREENSAVER_ACTIVE && (SCREENSAVER_TIME > 0);
+const unsigned long SCREENSAVER_TIMEOUT_MS = SCREENSAVER_TIME * 60UL * 1000UL;
+const unsigned long SCREENSAVER_MOVE_MS = 60;
+unsigned long lastScreenActivityMs = 0;
+unsigned long lastScreensaverMoveMs = 0;
+bool screensaverActive = false;
+bool screensaverJustExited = false;
+bool suppressShortPress = false;
+int16_t screensaverX = 0;
+int16_t screensaverY = 0;
+int8_t screensaverDx = 1;
+int8_t screensaverDy = 1;
+int16_t screensaverTextW = 0;
+int16_t screensaverTextH = 0;
+
+// Cached display values
+float cachedUvi = 0.0f;
+int cachedFilledBars = 0;
+int cachedNumBars = 0;
+
 void setup() {
   Serial.begin(115200);
 
@@ -73,6 +95,14 @@ void setup() {
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  int16_t ssX1, ssY1;
+  uint16_t ssW, ssH;
+  display.getTextBounds(SCREENSAVER_TEXT, 0, 0, &ssX1, &ssY1, &ssW, &ssH);
+  screensaverTextW = (int16_t)ssW;
+  screensaverTextH = (int16_t)ssH;
+  screensaverX = (SCREEN_WIDTH - screensaverTextW) / 2;
+  screensaverY = (SCREEN_HEIGHT - screensaverTextH) / 2;
 
   // Check if we woke from deep sleep or cold boot
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
@@ -126,48 +156,139 @@ void setup() {
   display.print("Ojo del Sol ON");
   display.display();
   delay(800);
+
+  cachedNumBars = GAME_BARS[currentGame];
+  lastScreenActivityMs = millis();
 }
 
 void loop() {
   // Check power button for tap (change game) or long-press (sleep)
   handlePowerButton();
+  updateScreensaverState();
 
   // Wait for new sensor data
+  bool newData = false;
   if (ltr.newDataAvailable()) {
     float uvi = calculateUVI();
     updateBatteryStatus();
     handleLowBatteryCutoff();
-    int numBars = GAME_BARS[currentGame];
-    int filledBars = getBoktaiBars(uvi, currentGame);
-    updateGbaLinkOutput(filledBars);
-
-    display.clearDisplay();
-    
-    // 1. Draw Battery Indicator (Top Right)
-    drawBatteryIcon(105, 2, cachedBatteryPct);
-
-    // 2. Game Name
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print(GAME_NAMES[currentGame]);
-
-    // 3. Bar Count (Large, Prominent)
-    display.setTextSize(3);
-    display.setCursor(0, 10);
-    display.print(filledBars);
-    
-    // 4. UV Index (Small, Secondary)
-    display.setTextSize(1);
-    display.setCursor(64, 18);
-    display.print("UV:");
-    display.print(uvi, 1);
-
-    // 5. Draw Sun Gauge (8 or 10 segments depending on game)
-    drawBoktaiGauge(38, 20, filledBars, numBars);
-
-    display.display();
+    cachedNumBars = GAME_BARS[currentGame];
+    cachedFilledBars = getBoktaiBars(uvi, currentGame);
+    cachedUvi = uvi;
+    updateGbaLinkOutput(cachedFilledBars);
+    newData = true;
   }
+
+  if (screensaverActive) {
+    drawScreensaver();
+  } else if (newData || screensaverJustExited) {
+    drawMainDisplay();
+  }
+
+  screensaverJustExited = false;
   delay(10); // Short delay for responsive button handling
+}
+
+void noteScreenActivity() {
+  lastScreenActivityMs = millis();
+  if (screensaverActive) {
+    screensaverActive = false;
+    screensaverJustExited = true;
+  }
+}
+
+void updateScreensaverState() {
+  if (!SCREENSAVER_ENABLED) {
+    screensaverActive = false;
+    return;
+  }
+  if (screensaverActive) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if ((now - lastScreenActivityMs) >= SCREENSAVER_TIMEOUT_MS) {
+    screensaverActive = true;
+    screensaverDx = 1;
+    screensaverDy = 1;
+    screensaverX = (SCREEN_WIDTH - screensaverTextW) / 2;
+    screensaverY = (SCREEN_HEIGHT - screensaverTextH) / 2;
+    lastScreensaverMoveMs = 0;
+  }
+}
+
+void drawScreensaver() {
+  if (!SCREENSAVER_ENABLED) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if ((now - lastScreensaverMoveMs) < SCREENSAVER_MOVE_MS) {
+    return;
+  }
+  lastScreensaverMoveMs = now;
+
+  int16_t maxX = SCREEN_WIDTH - screensaverTextW;
+  int16_t maxY = SCREEN_HEIGHT - screensaverTextH;
+  if (maxX < 0) {
+    maxX = 0;
+  }
+  if (maxY < 0) {
+    maxY = 0;
+  }
+
+  screensaverX += screensaverDx;
+  screensaverY += screensaverDy;
+
+  if (screensaverX <= 0) {
+    screensaverX = 0;
+    screensaverDx = 1;
+  } else if (screensaverX >= maxX) {
+    screensaverX = maxX;
+    screensaverDx = -1;
+  }
+
+  if (screensaverY <= 0) {
+    screensaverY = 0;
+    screensaverDy = 1;
+  } else if (screensaverY >= maxY) {
+    screensaverY = maxY;
+    screensaverDy = -1;
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(screensaverX, screensaverY);
+  display.print(SCREENSAVER_TEXT);
+  display.display();
+}
+
+void drawMainDisplay() {
+  display.clearDisplay();
+
+  // 1. Draw Battery Indicator (Top Right)
+  drawBatteryIcon(105, 2, cachedBatteryPct);
+
+  // 2. Game Name
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print(GAME_NAMES[currentGame]);
+
+  // 3. Bar Count (Large, Prominent)
+  display.setTextSize(3);
+  display.setCursor(0, 10);
+  display.print(cachedFilledBars);
+
+  // 4. UV Index (Small, Secondary)
+  display.setTextSize(1);
+  display.setCursor(64, 18);
+  display.print("UV:");
+  display.print(cachedUvi, 1);
+
+  // 5. Draw Sun Gauge (8 or 10 segments depending on game)
+  drawBoktaiGauge(38, 20, cachedFilledBars, cachedNumBars);
+
+  display.display();
 }
 
 void updateGbaLinkOutput(int bars) {
@@ -229,9 +350,14 @@ void handlePowerButton() {
     // Button just pressed - start timing
     buttonPressStart = millis();
     buttonWasPressed = true;
+    if (screensaverActive) {
+      suppressShortPress = true;
+    }
+    noteScreenActivity();
   } 
   else if (buttonPressed && buttonWasPressed) {
     // Button held - check for long press
+    noteScreenActivity();
     if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
       enterDeepSleep();
     }
@@ -241,8 +367,11 @@ void handlePowerButton() {
     unsigned long pressDuration = millis() - buttonPressStart;
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
       // Short press: cycle to next game
-      currentGame = (currentGame + 1) % NUM_GAMES;
+      if (!suppressShortPress) {
+        currentGame = (currentGame + 1) % NUM_GAMES;
+      }
     }
+    suppressShortPress = false;
     buttonWasPressed = false;
   }
 }
