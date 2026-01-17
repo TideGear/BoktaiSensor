@@ -123,6 +123,13 @@ const int BUTTON_PIN = 1;    // D0 (GPIO1)
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 3000;   // Hold 3 seconds to power on/off
 
+// GBA Link output (D7-D10)
+const bool GBA_LINK_ENABLED = true;
+const int GBA_PIN_SC = 44;  // D7 (GPIO44) - SC (bit 0)
+const int GBA_PIN_SD = 7;   // D8 (GPIO7)  - SD (bit 1)
+const int GBA_PIN_SI = 8;   // D9 (GPIO8)  - SI (bit 2)
+const int GBA_PIN_SO = 10;  // D10 (GPIO10) - SO (bit 3)
+
 // Debug logging
 const bool DEBUG_SERIAL = false;
 

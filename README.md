@@ -109,6 +109,30 @@ When waking from sleep:
 - Short press:        Shows "Hold 3s to power on" for 10 seconds
 - No activity 10s:    Screen turns off, returns to sleep
 
+GBA LINK PORT WIRING (OPTIONAL)
+----------------------------------------------------------------------
+This mode drives the GBA link port in General-Purpose SIO mode (4-bit parallel).
+Pinout from GBATEK "Serial Link Port Pin-Out (GBA: EXT / GBA SP: EXT.1)":
+
+| GBA Link Pin | Signal | XIAO ESP32S3 Pin | Notes |
+| :----------- | :----- | :--------------- | :---- |
+| 2            | SO     | D10 (GPIO10)     | bit 3 |
+| 3            | SI     | D9 (GPIO8)       | bit 2 |
+| 4            | SD     | D8 (GPIO7)       | bit 1 |
+| 5            | SC     | D7 (GPIO44)      | bit 0 |
+| 6            | GND    | GND              | common ground |
+| 1            | VDD35  | (leave unconnected) | 3.3V from GBA, optional |
+
+Notes:
+- Only connect GND and the four signal lines above. Do not connect the GBA's
+  VDD35 pin to 5V. Keep everything at 3.3V logic.
+- GBA link port sockets/breakouts are sold separately; you can wire one directly
+  to the XIAO pins listed above.
+
+GBA LINK OUTPUT MODE:
+When GBA_LINK_ENABLED is true, the firmware outputs the current bar count as a
+4-bit value on D7-D10.
+
 3. LIBRARIES REQUIRED
 ----------------------------------------------------------------------
 Install via Arduino Library Manager:
@@ -252,7 +276,6 @@ DEVICE WON'T WAKE FROM SLEEP:
 8. FUTURE PLANS
 ----------------------------------------------------------------------
 - [ ] Bluetooth and/or HID output for emulators 
-- [ ] GBA Link Port output for direct hardware integration
 - [ ] Maybe Lunar Knights support?
 
 9. CREDITS & LINKS

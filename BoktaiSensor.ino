@@ -41,6 +41,17 @@ void setup() {
   // Configure power button with internal pull-up (active LOW)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
+  if (GBA_LINK_ENABLED) {
+    pinMode(GBA_PIN_SC, OUTPUT);
+    pinMode(GBA_PIN_SD, OUTPUT);
+    pinMode(GBA_PIN_SI, OUTPUT);
+    pinMode(GBA_PIN_SO, OUTPUT);
+    digitalWrite(GBA_PIN_SC, LOW);
+    digitalWrite(GBA_PIN_SD, LOW);
+    digitalWrite(GBA_PIN_SI, LOW);
+    digitalWrite(GBA_PIN_SO, LOW);
+  }
+
   if (SENSOR_POWER_ENABLED) {
     pinMode(SENSOR_POWER_PIN, OUTPUT);
     digitalWrite(SENSOR_POWER_PIN, LOW); // keep sensor off until power-on
@@ -128,6 +139,7 @@ void loop() {
     handleLowBatteryCutoff();
     int numBars = GAME_BARS[currentGame];
     int filledBars = getBoktaiBars(uvi, currentGame);
+    updateGbaLinkOutput(filledBars);
 
     display.clearDisplay();
     
@@ -156,6 +168,18 @@ void loop() {
     display.display();
   }
   delay(10); // Short delay for responsive button handling
+}
+
+void updateGbaLinkOutput(int bars) {
+  if (!GBA_LINK_ENABLED) {
+    return;
+  }
+
+  uint8_t value = (uint8_t)constrain(bars, 0, 15);
+  digitalWrite(GBA_PIN_SC, (value & 0x01) ? HIGH : LOW);
+  digitalWrite(GBA_PIN_SD, (value & 0x02) ? HIGH : LOW);
+  digitalWrite(GBA_PIN_SI, (value & 0x04) ? HIGH : LOW);
+  digitalWrite(GBA_PIN_SO, (value & 0x08) ? HIGH : LOW);
 }
 
 // Convert UV Index to Boktai bar count based on selected game
@@ -310,6 +334,12 @@ void enterDeepSleep() {
   Wire.end();
   pinMode(5, INPUT);
   pinMode(6, INPUT);
+  if (GBA_LINK_ENABLED) {
+    pinMode(GBA_PIN_SC, INPUT);
+    pinMode(GBA_PIN_SD, INPUT);
+    pinMode(GBA_PIN_SI, INPUT);
+    pinMode(GBA_PIN_SO, INPUT);
+  }
 
   if (SENSOR_POWER_ENABLED) {
     digitalWrite(SENSOR_POWER_PIN, LOW);
