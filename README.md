@@ -212,6 +212,19 @@ To calibrate:
    In manual mode: adjust individual threshold values
 4. Repeat under different conditions (clouds, shade, direct sun)
 
+UV STABILITY (Optional)
+-----------------------
+If the bar display feels jumpy, you can tune filtering in config.h:
+- UVI_SMOOTHING_ENABLED: applies exponential smoothing to the UV reading
+- UVI_SMOOTHING_ALPHA: higher = faster response, lower = smoother
+- BAR_HYSTERESIS: requires a small UV margin before changing bars
+
+UVI CALCULATION
+---------------
+The firmware derives the UV divisor from the sensor's current gain and
+resolution. If you change those settings, the UV Index scaling updates
+automatically. The fallback divisor assumes gain 1 and 18-bit (100ms).
+
 6. TECHNICAL NOTES
 ----------------------------------------------------------------------
 Original Boktai Cartridge Sensor (from GBATEK):

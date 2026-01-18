@@ -19,7 +19,11 @@ Adafruit_LTR390 ltr = Adafruit_LTR390();
 //
 // For 1x gain, 18-bit (100ms):
 //   UVI = raw × (18/1) × (400/100) / 2300 = raw × 72 / 2300 ≈ raw / 32
-const float UV_DIVISOR = 32.0;  // For 1x gain, 18-bit (100ms) resolution
+const float UV_SENSITIVITY_COUNTS_PER_UVI = 2300.0f;
+const float UV_REFERENCE_GAIN = 18.0f;
+const float UV_REFERENCE_INT_MS = 400.0f;
+const float UV_DIVISOR_FALLBACK = 32.0f;  // Gain 1, 18-bit (100ms)
+float uvDivisor = UV_DIVISOR_FALLBACK;
 
 // Power button state tracking
 unsigned long buttonPressStart = 0;
@@ -72,6 +76,9 @@ int16_t screensaverTextH = 0;
 float cachedUvi = 0.0f;
 int cachedFilledBars = 0;
 int cachedNumBars = 0;
+float smoothedUvi = 0.0f;
+bool hasSmoothedUvi = false;
+bool gameChanged = false;
 
 char screensaverBatteryText[6] = "";
 int16_t screensaverBatteryTextW = 0;
@@ -169,6 +176,7 @@ void setup() {
   ltr.setMode(LTR390_MODE_UVS);
   ltr.setGain(LTR390_GAIN_1);
   ltr.setResolution(LTR390_RESOLUTION_18BIT);
+  updateUvDivisorFromSensor();
   
   if (DEBUG_SERIAL) {
     Serial.println(F("LTR390 configured: UV mode, 1x gain, 18-bit (100ms)"));
@@ -212,9 +220,24 @@ void loop() {
     float uvi = calculateUVI();
     updateBatteryStatus();
     handleLowBatteryCutoff();
+    float uviForBars = uvi;
+    if (UVI_SMOOTHING_ENABLED) {
+      if (!hasSmoothedUvi) {
+        smoothedUvi = uvi;
+        hasSmoothedUvi = true;
+      } else {
+        smoothedUvi = (UVI_SMOOTHING_ALPHA * uvi) + ((1.0f - UVI_SMOOTHING_ALPHA) * smoothedUvi);
+      }
+      uviForBars = smoothedUvi;
+    }
     cachedNumBars = GAME_BARS[currentGame];
-    cachedFilledBars = getBoktaiBars(uvi, currentGame);
-    cachedUvi = uvi;
+    if (gameChanged) {
+      cachedFilledBars = getBoktaiBars(uviForBars, currentGame);
+      gameChanged = false;
+    } else {
+      cachedFilledBars = getBoktaiBarsWithHysteresis(uviForBars, currentGame, cachedFilledBars);
+    }
+    cachedUvi = uviForBars;
     updateGbaLinkOutput(cachedFilledBars);
     newData = true;
   }
@@ -413,6 +436,121 @@ void updateGbaLinkOutput(int bars) {
   digitalWrite(GBA_PIN_SO, (value & 0x08) ? HIGH : LOW);
 }
 
+float gainToFactor(ltr390_gain_t gain) {
+  switch (gain) {
+    case LTR390_GAIN_1: return 1.0f;
+    case LTR390_GAIN_3: return 3.0f;
+    case LTR390_GAIN_6: return 6.0f;
+    case LTR390_GAIN_9: return 9.0f;
+    case LTR390_GAIN_18: return 18.0f;
+    default: return 1.0f;
+  }
+}
+
+float resolutionToIntegrationMs(ltr390_resolution_t res) {
+  switch (res) {
+    case LTR390_RESOLUTION_20BIT: return 400.0f;
+    case LTR390_RESOLUTION_19BIT: return 200.0f;
+    case LTR390_RESOLUTION_18BIT: return 100.0f;
+    case LTR390_RESOLUTION_17BIT: return 50.0f;
+    case LTR390_RESOLUTION_16BIT: return 25.0f;
+    case LTR390_RESOLUTION_13BIT: return 12.5f;
+    default: return 100.0f;
+  }
+}
+
+void updateUvDivisorFromSensor() {
+  float gainFactor = gainToFactor(ltr.getGain());
+  float intMs = resolutionToIntegrationMs(ltr.getResolution());
+
+  if (gainFactor <= 0.0f || intMs <= 0.0f) {
+    uvDivisor = UV_DIVISOR_FALLBACK;
+  } else {
+    uvDivisor = (UV_SENSITIVITY_COUNTS_PER_UVI * gainFactor * intMs) /
+                (UV_REFERENCE_GAIN * UV_REFERENCE_INT_MS);
+  }
+
+  if (DEBUG_SERIAL) {
+    Serial.print(F("UV divisor: "));
+    Serial.println(uvDivisor, 4);
+  }
+}
+
+float getAutoThreshold(int numBars, int barIndex) {
+  if (AUTO_UV_MAX <= AUTO_UV_MIN) {
+    return AUTO_UV_MIN;
+  }
+  if (barIndex < 1) {
+    barIndex = 1;
+  }
+  if (barIndex > numBars) {
+    barIndex = numBars;
+  }
+  float range = AUTO_UV_MAX - AUTO_UV_MIN;
+  return AUTO_UV_MIN + (range * (barIndex - 1)) / numBars;
+}
+
+const float* getManualThresholds(int game) {
+  switch (game) {
+    case 0: return BOKTAI_1_UV;
+    case 1: return BOKTAI_2_UV;
+    case 2: return BOKTAI_3_UV;
+    default: return BOKTAI_1_UV;
+  }
+}
+
+float getBarThreshold(int game, int barIndex) {
+  int numBars = GAME_BARS[game];
+  if (AUTO_MODE) {
+    return getAutoThreshold(numBars, barIndex);
+  }
+  const float* thresholds = getManualThresholds(game);
+  if (barIndex < 1) {
+    barIndex = 1;
+  }
+  if (barIndex > numBars) {
+    barIndex = numBars;
+  }
+  return thresholds[barIndex - 1];
+}
+
+int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
+  int numBars = GAME_BARS[game];
+  int target = getBoktaiBars(uvi, game);
+
+  if (BAR_HYSTERESIS <= 0.0f || (AUTO_MODE && AUTO_UV_MAX <= AUTO_UV_MIN)) {
+    return target;
+  }
+
+  if (lastBars < 0) {
+    lastBars = 0;
+  }
+  if (lastBars > numBars) {
+    lastBars = numBars;
+  }
+
+  if (target > lastBars) {
+    float upThreshold = getBarThreshold(game, lastBars + 1);
+    if (uvi >= (upThreshold + BAR_HYSTERESIS)) {
+      return target;
+    }
+    return lastBars;
+  }
+
+  if (target < lastBars) {
+    if (lastBars <= 0) {
+      return lastBars;
+    }
+    float downThreshold = getBarThreshold(game, lastBars);
+    if (uvi < (downThreshold - BAR_HYSTERESIS)) {
+      return target;
+    }
+    return lastBars;
+  }
+
+  return lastBars;
+}
+
 // Convert UV Index to Boktai bar count based on selected game
 int getBoktaiBars(float uvi, int game) {
   int numBars = GAME_BARS[game];
@@ -479,6 +617,7 @@ void handlePowerButton() {
       // Short press: cycle to next game
       if (!suppressShortPress) {
         currentGame = (currentGame + 1) % NUM_GAMES;
+        gameChanged = true;
       }
     }
     suppressShortPress = false;
@@ -737,7 +876,8 @@ bool initLTR390() {
 // Calculate UV Index from raw sensor data
 float calculateUVI() {
   uint32_t rawUVS = ltr.readUVS();
-  float uvi = (float)rawUVS / UV_DIVISOR;
+  float divisor = (uvDivisor > 0.0f) ? uvDivisor : UV_DIVISOR_FALLBACK;
+  float uvi = (float)rawUVS / divisor;
   
   // Debug output
   if (DEBUG_SERIAL) {

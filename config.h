@@ -84,6 +84,15 @@ const float BOKTAI_3_UV[10] = {
   6.0    // Bar 10
 };
 
+// -----------------------------------------------------------------------------
+// UV FILTERING (Optional)
+// -----------------------------------------------------------------------------
+// Exponential smoothing reduces jitter in the UV bar display.
+// Hysteresis adds a small UV margin before changing bars.
+const bool UVI_SMOOTHING_ENABLED = true;
+const float UVI_SMOOTHING_ALPHA = 0.2;  // 0.0-1.0 (higher = faster response)
+const float BAR_HYSTERESIS = 0.2;       // UV Index margin for bar changes
+
 // Battery Monitoring
 // NOTE: The XIAO ESP32S3 does NOT have built-in battery voltage monitoring!
 // You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
