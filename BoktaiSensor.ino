@@ -40,6 +40,22 @@ const char SCREENSAVER_TEXT[] = "Ojo del Sol";
 const bool SCREENSAVER_ENABLED = SCREENSAVER_ACTIVE && (SCREENSAVER_TIME > 0);
 const unsigned long SCREENSAVER_TIMEOUT_MS = SCREENSAVER_TIME * 60UL * 1000UL;
 const unsigned long SCREENSAVER_MOVE_MS = 60;
+const int16_t SCREENSAVER_IMAGE_W = 24;
+const int16_t SCREENSAVER_IMAGE_H = 24;
+const int16_t SCREENSAVER_IMAGE_TEXT_GAP = 8;
+const int16_t SCREENSAVER_TEXT_BATT_GAP = 8;
+const int16_t SCREENSAVER_BATT_GAP = 2;
+const int16_t SCREENSAVER_BATT_ICON_W = 20;
+const int16_t SCREENSAVER_BATT_ICON_H = 9;
+
+const uint8_t OJO_DEL_SOL_BITMAP[] PROGMEM = {
+  0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x08, 0x0C, 0x00, 0x08, 0x18, 0x00,
+  0x0C, 0x18, 0x3C, 0x0E, 0x00, 0x70, 0x04, 0x00, 0x20, 0x00, 0x3C, 0x00,
+  0x00, 0xDB, 0x00, 0x81, 0x42, 0x80, 0x42, 0x00, 0x40, 0x71, 0x85, 0x8C,
+  0x33, 0x81, 0xCE, 0x03, 0x81, 0xC2, 0x01, 0xC3, 0x81, 0x00, 0xFF, 0x00,
+  0x00, 0x7E, 0x00, 0x04, 0x00, 0x20, 0x0E, 0x00, 0x70, 0x3C, 0x18, 0x30,
+  0x00, 0x18, 0x10, 0x00, 0x30, 0x10, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00
+};
 unsigned long lastScreenActivityMs = 0;
 unsigned long lastScreensaverMoveMs = 0;
 bool screensaverActive = false;
@@ -56,6 +72,15 @@ int16_t screensaverTextH = 0;
 float cachedUvi = 0.0f;
 int cachedFilledBars = 0;
 int cachedNumBars = 0;
+
+char screensaverBatteryText[6] = "";
+int16_t screensaverBatteryTextW = 0;
+int16_t screensaverBatteryTextH = 0;
+int16_t screensaverBatteryW = 0;
+int16_t screensaverBatteryH = 0;
+int16_t screensaverBlockW = 0;
+int16_t screensaverBlockH = 0;
+bool screensaverBatteryVisible = false;
 
 void setup() {
   Serial.begin(115200);
@@ -101,8 +126,9 @@ void setup() {
   display.getTextBounds(SCREENSAVER_TEXT, 0, 0, &ssX1, &ssY1, &ssW, &ssH);
   screensaverTextW = (int16_t)ssW;
   screensaverTextH = (int16_t)ssH;
-  screensaverX = (SCREEN_WIDTH - screensaverTextW) / 2;
-  screensaverY = (SCREEN_HEIGHT - screensaverTextH) / 2;
+  calculateScreensaverLayout();
+  screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
+  screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
 
   // Check if we woke from deep sleep or cold boot
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
@@ -152,10 +178,24 @@ void setup() {
   // Show wake-up confirmation
   display.clearDisplay();
   display.setTextSize(1);
-  display.setCursor(16, 28);
-  display.print("Ojo del Sol ON");
+  const char wakeText[] = "Ojo del Sol ON";
+  int16_t wakeX1, wakeY1;
+  uint16_t wakeW, wakeH;
+  display.getTextBounds(wakeText, 0, 0, &wakeX1, &wakeY1, &wakeW, &wakeH);
+  const int16_t wakeGap = 8;
+  int16_t blockW = SCREENSAVER_IMAGE_W + wakeGap + (int16_t)wakeW;
+  int16_t blockH = (SCREENSAVER_IMAGE_H > (int16_t)wakeH) ? SCREENSAVER_IMAGE_H : (int16_t)wakeH;
+  int16_t blockX = (SCREEN_WIDTH - blockW) / 2;
+  int16_t blockY = (SCREEN_HEIGHT - blockH) / 2;
+  int16_t iconX = blockX;
+  int16_t iconY = blockY + ((blockH - SCREENSAVER_IMAGE_H) / 2);
+  int16_t textX = blockX + SCREENSAVER_IMAGE_W + wakeGap;
+  int16_t textY = blockY + ((blockH - (int16_t)wakeH) / 2);
+  display.drawBitmap(iconX, iconY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, SSD1306_WHITE);
+  display.setCursor(textX - wakeX1, textY - wakeY1);
+  display.print(wakeText);
   display.display();
-  delay(800);
+  delay(2000);
 
   cachedNumBars = GAME_BARS[currentGame];
   lastScreenActivityMs = millis();
@@ -197,6 +237,59 @@ void noteScreenActivity() {
   }
 }
 
+void calculateScreensaverLayout() {
+  screensaverBatteryVisible = (cachedBatteryPct >= 0);
+  screensaverBatteryText[0] = '\0';
+  screensaverBatteryTextW = 0;
+  screensaverBatteryTextH = 0;
+  screensaverBatteryW = 0;
+  screensaverBatteryH = 0;
+
+  display.setTextSize(1);
+  if (screensaverBatteryVisible) {
+    snprintf(screensaverBatteryText, sizeof(screensaverBatteryText), "%d%%", cachedBatteryPct);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(screensaverBatteryText, 0, 0, &x1, &y1, &w, &h);
+    screensaverBatteryTextW = (int16_t)w;
+    screensaverBatteryTextH = (int16_t)h;
+    screensaverBatteryW = screensaverBatteryTextW + SCREENSAVER_BATT_GAP + SCREENSAVER_BATT_ICON_W;
+    screensaverBatteryH = max(screensaverBatteryTextH, SCREENSAVER_BATT_ICON_H);
+  }
+
+  screensaverBlockW = screensaverTextW;
+  if (SCREENSAVER_IMAGE_W > screensaverBlockW) {
+    screensaverBlockW = SCREENSAVER_IMAGE_W;
+  }
+  if (screensaverBatteryW > screensaverBlockW) {
+    screensaverBlockW = screensaverBatteryW;
+  }
+
+  screensaverBlockH = SCREENSAVER_IMAGE_H + SCREENSAVER_IMAGE_TEXT_GAP + screensaverTextH;
+  if (screensaverBatteryVisible) {
+    screensaverBlockH += SCREENSAVER_TEXT_BATT_GAP + screensaverBatteryH;
+  }
+}
+
+void drawScreensaverBattery(int16_t x, int16_t y) {
+  if (!screensaverBatteryVisible) {
+    return;
+  }
+
+  display.setTextSize(1);
+  int16_t textY = y + ((screensaverBatteryH - screensaverBatteryTextH) / 2);
+  display.setCursor(x, textY);
+  display.print(screensaverBatteryText);
+
+  int16_t iconX = x + screensaverBatteryTextW + SCREENSAVER_BATT_GAP;
+  int16_t iconY = y + ((screensaverBatteryH - SCREENSAVER_BATT_ICON_H) / 2);
+  display.drawRect(iconX, iconY, 18, 9, SSD1306_WHITE);
+  display.fillRect(iconX + 18, iconY + 2, 2, 5, SSD1306_WHITE);
+
+  int fillW = (cachedBatteryPct * 14) / 100;
+  display.fillRect(iconX + 2, iconY + 2, fillW, 5, SSD1306_WHITE);
+}
+
 void updateScreensaverState() {
   if (!SCREENSAVER_ENABLED) {
     screensaverActive = false;
@@ -211,8 +304,9 @@ void updateScreensaverState() {
     screensaverActive = true;
     screensaverDx = 1;
     screensaverDy = 1;
-    screensaverX = (SCREEN_WIDTH - screensaverTextW) / 2;
-    screensaverY = (SCREEN_HEIGHT - screensaverTextH) / 2;
+    calculateScreensaverLayout();
+    screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
+    screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
     lastScreensaverMoveMs = 0;
   }
 }
@@ -228,8 +322,10 @@ void drawScreensaver() {
   }
   lastScreensaverMoveMs = now;
 
-  int16_t maxX = SCREEN_WIDTH - screensaverTextW;
-  int16_t maxY = SCREEN_HEIGHT - screensaverTextH;
+  calculateScreensaverLayout();
+
+  int16_t maxX = SCREEN_WIDTH - screensaverBlockW;
+  int16_t maxY = SCREEN_HEIGHT - screensaverBlockH;
   if (maxX < 0) {
     maxX = 0;
   }
@@ -257,9 +353,23 @@ void drawScreensaver() {
   }
 
   display.clearDisplay();
+
+  int16_t imageX = screensaverX + ((screensaverBlockW - SCREENSAVER_IMAGE_W) / 2);
+  int16_t imageY = screensaverY;
+  display.drawBitmap(imageX, imageY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, SSD1306_WHITE);
+
+  int16_t textX = screensaverX + ((screensaverBlockW - screensaverTextW) / 2);
+  int16_t textY = imageY + SCREENSAVER_IMAGE_H + SCREENSAVER_IMAGE_TEXT_GAP;
   display.setTextSize(1);
-  display.setCursor(screensaverX, screensaverY);
+  display.setCursor(textX, textY);
   display.print(SCREENSAVER_TEXT);
+
+  if (screensaverBatteryVisible) {
+    int16_t batteryX = screensaverX + ((screensaverBlockW - screensaverBatteryW) / 2);
+    int16_t batteryY = textY + screensaverTextH + SCREENSAVER_TEXT_BATT_GAP;
+    drawScreensaverBattery(batteryX, batteryY);
+  }
+
   display.display();
 }
 

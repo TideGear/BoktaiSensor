@@ -107,6 +107,7 @@ When device is ON:
 
 When waking from sleep:
 - Press and hold 3s:  Powers ON the device
+- After power-on:     Shows an "Ojo del Sol ON" splash with logo for ~2 seconds
 - Short press:        Shows "Hold 3s to power on" for 10 seconds
 - No activity 10s:    Screen turns off, returns to sleep
 
@@ -159,6 +160,7 @@ Install via Arduino Library Manager:
 SCREENSAVER:
 When SCREENSAVER_ACTIVE is true, the display switches to a bouncing
 "Ojo del Sol" after SCREENSAVER_TIME minutes with no button activity.
+The logo appears above the text, with the battery indicator centered below.
 Pressing the button wakes the screen and resets the timer. If you are
 manually entering the solar meter via ROM hack or emulator, you may want
 to turn off the screensaver (set SCREENSAVER_TIME = 0), but be aware this
