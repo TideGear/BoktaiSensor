@@ -130,6 +130,8 @@ Notes:
   VDD35 pin to 5V. Keep everything at 3.3V logic.
 - GBA link port sockets/breakouts are sold separately; you can wire one directly
   to the XIAO pins listed above.
+- This build uses the PCB from https://github.com/Palmr/gb-link-cable for the
+  link cable connection.
 - Use a proper GBA link cable (not an 8-bit Game Boy cable). Look for the
   mid-cable block/port found on official multi-play cables, and verify the plug
   has metal contacts for pins 2-6 (SO, SI, SD, SC, GND). Some cheap cables omit
@@ -223,7 +225,7 @@ UVI CALCULATION
 ---------------
 The firmware derives the UV divisor from the sensor's current gain and
 resolution. If you change those settings, the UV Index scaling updates
-automatically. The fallback divisor assumes gain 1 and 18-bit (100ms).
+automatically. The fallback divisor assumes gain 18 and 20-bit (400ms).
 
 6. TECHNICAL NOTES
 ----------------------------------------------------------------------
@@ -235,10 +237,10 @@ Original Boktai Cartridge Sensor (from GBATEK):
 LTR390 UV Sensor (per datasheet DS86-2015-0004):
 - Reference sensitivity: 2300 counts/UVI at 18x gain, 400ms
 - UV Index formula: UVI = raw x (18/gain) x (400/int_time) / 2300
-- At our settings (1x gain, 100ms): UVI = raw / 32
+- At our settings (18x gain, 20-bit/400ms): UVI = raw / 2300
 - Peak response: 300-350nm (matches solar UV-A/UV-B)
 - NOT inverted: higher values = more UV
-- Configured for: Gain 1x (max headroom), 18-bit/100ms resolution
+- Configured for: Gain 18x, 20-bit/400ms resolution (500ms measurement rate)
 
 LTR390 MODULE LED:
 The LED on the Adafruit LTR390 breakout is a power indicator wired

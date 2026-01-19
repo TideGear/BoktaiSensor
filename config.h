@@ -146,6 +146,6 @@ const int GBA_PIN_SI = 8;   // D9 (GPIO8)  - SI (bit 2)
 const int GBA_PIN_SO = 10;  // D10 (GPIO10) - SO (bit 3)
 
 // Debug logging
-const bool DEBUG_SERIAL = false;
+const bool DEBUG_SERIAL = true;
 
 #endif

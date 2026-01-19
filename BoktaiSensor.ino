@@ -15,15 +15,16 @@ Adafruit_LTR390 ltr = Adafruit_LTR390();
 
 // UV Index calculation per LTR-390UV datasheet (DS86-2015-0004)
 // Reference: 2300 counts/UVI at 18x gain, 400ms (20-bit) integration
-// Formula: UVI = raw × (18/gain) × (400/int_time) / 2300
+// Formula: UVI = raw * (18/gain) * (400/int_time) / 2300
 //
-// For 1x gain, 18-bit (100ms):
-//   UVI = raw × (18/1) × (400/100) / 2300 = raw × 72 / 2300 ≈ raw / 32
+// For 18x gain, 20-bit (400ms):
+//   UVI = raw / 2300
 const float UV_SENSITIVITY_COUNTS_PER_UVI = 2300.0f;
 const float UV_REFERENCE_GAIN = 18.0f;
 const float UV_REFERENCE_INT_MS = 400.0f;
-const float UV_DIVISOR_FALLBACK = 32.0f;  // Gain 1, 18-bit (100ms)
+const float UV_DIVISOR_FALLBACK = 2300.0f;  // Gain 18, 20-bit (400ms)
 float uvDivisor = UV_DIVISOR_FALLBACK;
+const uint8_t LTR390_MEAS_RATE_500MS = 0x04;
 
 // Power button state tracking
 unsigned long buttonPressStart = 0;
@@ -170,17 +171,18 @@ void setup() {
   }
 
   // Configure LTR390 for UV sensing mode
-  // Gain 1x: Maximum headroom for direct sunlight (won't saturate)
-  // Resolution 18-bit: Good balance of precision and speed (100ms per reading)
-  // Note: 13-bit was too fast - only ~4 counts/UVI, causing 0 readings
+  // Gain 18x: Datasheet reference setting for UVI sensitivity
+  // Resolution 20-bit: Datasheet accuracy setting (~400ms integration)
+  // Measurement rate 500ms: Matches datasheet example timing
   ltr.setMode(LTR390_MODE_UVS);
-  ltr.setGain(LTR390_GAIN_1);
-  ltr.setResolution(LTR390_RESOLUTION_18BIT);
+  ltr.setGain(LTR390_GAIN_18);
+  ltr.setResolution(LTR390_RESOLUTION_20BIT);
+  setMeasurementRate(LTR390_MEAS_RATE_500MS);
   updateUvDivisorFromSensor();
   
   if (DEBUG_SERIAL) {
-    Serial.println(F("LTR390 configured: UV mode, 1x gain, 18-bit (100ms)"));
-    Serial.println(F("Expected: ~32 counts per UVI"));
+    Serial.println(F("LTR390 configured: UV mode, 18x gain, 20-bit (~400ms)"));
+    Serial.println(F("Expected: ~2300 counts per UVI"));
   }
   
   // Show wake-up confirmation
@@ -434,6 +436,19 @@ void updateGbaLinkOutput(int bars) {
   digitalWrite(GBA_PIN_SD, (value & 0x02) ? HIGH : LOW);
   digitalWrite(GBA_PIN_SI, (value & 0x04) ? HIGH : LOW);
   digitalWrite(GBA_PIN_SO, (value & 0x08) ? HIGH : LOW);
+}
+
+void writeLtr390Register(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(LTR390_I2CADDR_DEFAULT);
+  Wire.write(reg);
+  Wire.write(value);
+  Wire.endTransmission();
+}
+
+void setMeasurementRate(uint8_t rate) {
+  uint8_t resBits = (uint8_t)ltr.getResolution();
+  uint8_t regValue = (uint8_t)((resBits << 4) | (rate & 0x07));
+  writeLtr390Register(LTR390_MEAS_RATE, regValue);
 }
 
 float gainToFactor(ltr390_gain_t gain) {
