@@ -4,11 +4,22 @@
 #include "Adafruit_LTR390.h"
 #include "config.h"
 #include "esp_sleep.h"
+#include <BleGamepad.h>
+#include <BleGamepadConfiguration.h>
+#include <NimBLEDevice.h>
+#include <NimBLEServer.h>
 
 // Display settings
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+const int16_t STATUS_BATT_ICON_W = 20;
+const int16_t STATUS_BATT_ICON_H = 9;
+const int16_t STATUS_BT_ICON_W = 8;
+const int16_t STATUS_BT_ICON_H = 10;
+const int16_t STATUS_BT_GAP = 2;
+const int16_t STATUS_TEXT_GAP = 2;
+const int16_t STATUS_RIGHT_MARGIN = 3;
 
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
@@ -52,6 +63,9 @@ const int16_t SCREENSAVER_TEXT_BATT_GAP = 8;
 const int16_t SCREENSAVER_BATT_GAP = 2;
 const int16_t SCREENSAVER_BATT_ICON_W = 20;
 const int16_t SCREENSAVER_BATT_ICON_H = 9;
+const int16_t SCREENSAVER_BT_ICON_W = 8;
+const int16_t SCREENSAVER_BT_ICON_H = 10;
+const int16_t SCREENSAVER_BT_GAP = 2;
 
 const uint8_t OJO_DEL_SOL_BITMAP[] PROGMEM = {
   0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x08, 0x0C, 0x00, 0x08, 0x18, 0x00,
@@ -80,6 +94,47 @@ int cachedNumBars = 0;
 float smoothedUvi = 0.0f;
 bool hasSmoothedUvi = false;
 bool gameChanged = false;
+bool bleGameChanged = false;
+
+BleGamepad bleGamepad(BLE_DEVICE_NAME);
+BleGamepadConfiguration bleGamepadConfig;
+unsigned long blePressIntervalMs = 16;
+unsigned long blePressHoldMs = 8;
+bool bleConnected = false;
+bool blePairingActive = false;
+unsigned long blePairingStartMs = 0;
+bool bleIconFlashOn = true;
+unsigned long bleIconLastToggleMs = 0;
+bool bleSyncPending = false;
+unsigned long bleLastResyncMs = 0;
+int bleDeviceBars = 0;
+int bleDeviceNumBars = 0;
+bool bleEstimateValid = false;
+int bleEstimatedSteps = 0;
+bool blePressHolding = false;
+unsigned long blePressStartMs = 0;
+unsigned long bleLastPressMs = 0;
+int blePressDirection = 0;
+uint8_t bleActiveButton = 0;
+int bleSyncTargetSteps = 0;
+int bleSyncStepsMax = 0;
+int bleSyncRemaining = 0;
+int bleSyncDirection = 0;
+int bleRefillRemaining = 0;
+int bleRefillDirection = 0;
+const unsigned long BLE_ICON_FLASH_MS = 500;
+const int BLE_DIR_DEC = -1;
+const int BLE_DIR_INC = 1;
+const int BOKTAI1_STEP_COUNT = 10;
+const int BOKTAI1_STEP_TO_BAR[BOKTAI1_STEP_COUNT + 1] = { 0, 1, 2, 3, 3, 4, 5, 6, 7, 7, 8 };
+const int BOKTAI1_BAR_TO_STEP_FROM_EMPTY[9] = { 0, 1, 2, 3, 5, 6, 7, 8, 10 };
+const int BOKTAI1_BAR_TO_STEP_FROM_FULL[9] = { 0, 1, 2, 4, 5, 6, 7, 9, 10 };
+enum BleSyncPhase {
+  BLE_SYNC_NONE = 0,
+  BLE_SYNC_CLAMP,
+  BLE_SYNC_REFILL
+};
+BleSyncPhase bleSyncPhase = BLE_SYNC_NONE;
 
 char screensaverBatteryText[6] = "";
 int16_t screensaverBatteryTextW = 0;
@@ -209,12 +264,14 @@ void setup() {
 
   cachedNumBars = GAME_BARS[currentGame];
   lastScreenActivityMs = millis();
+  initBluetooth();
 }
 
 void loop() {
   // Check power button for tap (change game) or long-press (sleep)
   handlePowerButton();
   updateScreensaverState();
+  updateBluetoothState();
 
   // Wait for new sensor data
   bool newData = false;
@@ -241,6 +298,7 @@ void loop() {
     }
     cachedUvi = uviForBars;
     updateGbaLinkOutput(cachedFilledBars);
+    updateBluetoothMeter(cachedFilledBars, cachedNumBars);
     newData = true;
   }
 
@@ -251,6 +309,7 @@ void loop() {
   }
 
   screensaverJustExited = false;
+  handleBlePresses();
   delay(10); // Short delay for responsive button handling
 }
 
@@ -263,7 +322,7 @@ void noteScreenActivity() {
 }
 
 void calculateScreensaverLayout() {
-  screensaverBatteryVisible = (cachedBatteryPct >= 0);
+  screensaverBatteryVisible = (cachedBatteryPct >= 0) || isBluetoothReserved();
   screensaverBatteryText[0] = '\0';
   screensaverBatteryTextW = 0;
   screensaverBatteryTextH = 0;
@@ -272,14 +331,35 @@ void calculateScreensaverLayout() {
 
   display.setTextSize(1);
   if (screensaverBatteryVisible) {
-    snprintf(screensaverBatteryText, sizeof(screensaverBatteryText), "%d%%", cachedBatteryPct);
-    int16_t x1, y1;
-    uint16_t w, h;
-    display.getTextBounds(screensaverBatteryText, 0, 0, &x1, &y1, &w, &h);
-    screensaverBatteryTextW = (int16_t)w;
-    screensaverBatteryTextH = (int16_t)h;
-    screensaverBatteryW = screensaverBatteryTextW + SCREENSAVER_BATT_GAP + SCREENSAVER_BATT_ICON_W;
-    screensaverBatteryH = max(screensaverBatteryTextH, SCREENSAVER_BATT_ICON_H);
+    bool hasBattery = (cachedBatteryPct >= 0);
+    if (hasBattery) {
+      snprintf(screensaverBatteryText, sizeof(screensaverBatteryText), "%d%%", cachedBatteryPct);
+      int16_t x1, y1;
+      uint16_t w, h;
+      display.getTextBounds(screensaverBatteryText, 0, 0, &x1, &y1, &w, &h);
+      screensaverBatteryTextW = (int16_t)w;
+      screensaverBatteryTextH = (int16_t)h;
+    }
+
+    int16_t bluetoothW = 0;
+    if (BLUETOOTH_ENABLED) {
+      bluetoothW = SCREENSAVER_BT_ICON_W;
+    }
+
+    if (hasBattery) {
+      screensaverBatteryW = screensaverBatteryTextW + SCREENSAVER_BATT_GAP + SCREENSAVER_BATT_ICON_W;
+      if (BLUETOOTH_ENABLED) {
+        screensaverBatteryW += bluetoothW + SCREENSAVER_BT_GAP;
+      }
+      screensaverBatteryH = max(screensaverBatteryTextH, SCREENSAVER_BATT_ICON_H);
+    } else {
+      screensaverBatteryW = bluetoothW;
+      screensaverBatteryH = bluetoothW > 0 ? SCREENSAVER_BT_ICON_H : 0;
+    }
+
+    if (BLUETOOTH_ENABLED) {
+      screensaverBatteryH = max(screensaverBatteryH, SCREENSAVER_BT_ICON_H);
+    }
   }
 
   screensaverBlockW = screensaverTextW;
@@ -301,18 +381,32 @@ void drawScreensaverBattery(int16_t x, int16_t y) {
     return;
   }
 
+  bool hasBattery = (cachedBatteryPct >= 0);
+  int16_t cursorX = x;
+
   display.setTextSize(1);
-  int16_t textY = y + ((screensaverBatteryH - screensaverBatteryTextH) / 2);
-  display.setCursor(x, textY);
-  display.print(screensaverBatteryText);
+  if (BLUETOOTH_ENABLED) {
+    int16_t btY = y + ((screensaverBatteryH - SCREENSAVER_BT_ICON_H) / 2);
+    drawBluetoothIcon(cursorX, btY, isBluetoothIconOn());
+    cursorX += SCREENSAVER_BT_ICON_W;
+    if (hasBattery) {
+      cursorX += SCREENSAVER_BT_GAP;
+    }
+  }
+  if (hasBattery) {
+    int16_t textY = y + ((screensaverBatteryH - screensaverBatteryTextH) / 2);
+    display.setCursor(cursorX, textY);
+    display.print(screensaverBatteryText);
+    cursorX += screensaverBatteryTextW + SCREENSAVER_BATT_GAP;
+  }
+  if (hasBattery) {
+    int16_t iconY = y + ((screensaverBatteryH - SCREENSAVER_BATT_ICON_H) / 2);
+    display.drawRect(cursorX, iconY, 18, 9, SSD1306_WHITE);
+    display.fillRect(cursorX + 18, iconY + 2, 2, 5, SSD1306_WHITE);
 
-  int16_t iconX = x + screensaverBatteryTextW + SCREENSAVER_BATT_GAP;
-  int16_t iconY = y + ((screensaverBatteryH - SCREENSAVER_BATT_ICON_H) / 2);
-  display.drawRect(iconX, iconY, 18, 9, SSD1306_WHITE);
-  display.fillRect(iconX + 18, iconY + 2, 2, 5, SSD1306_WHITE);
-
-  int fillW = (cachedBatteryPct * 14) / 100;
-  display.fillRect(iconX + 2, iconY + 2, fillW, 5, SSD1306_WHITE);
+    int fillW = (cachedBatteryPct * 14) / 100;
+    display.fillRect(cursorX + 2, iconY + 2, fillW, 5, SSD1306_WHITE);
+  }
 }
 
 void updateScreensaverState() {
@@ -401,8 +495,8 @@ void drawScreensaver() {
 void drawMainDisplay() {
   display.clearDisplay();
 
-  // 1. Draw Battery Indicator (Top Right)
-  drawBatteryIcon(105, 2, cachedBatteryPct);
+  // 1. Draw Status Icons (Top Right)
+  drawStatusIcons();
 
   // 2. Game Name
   display.setTextSize(1);
@@ -633,6 +727,9 @@ void handlePowerButton() {
       if (!suppressShortPress) {
         currentGame = (currentGame + 1) % NUM_GAMES;
         gameChanged = true;
+        if (BLUETOOTH_ENABLED) {
+          bleGameChanged = true;
+        }
       }
     }
     suppressShortPress = false;
@@ -772,23 +869,418 @@ void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
   }
 }
 
-// Function to draw battery percentage and icon
-void drawBatteryIcon(int x, int y, int pct) {
-  if (pct < 0) {
+bool isBluetoothReserved() {
+  return BLUETOOTH_ENABLED;
+}
+
+bool isBluetoothIconOn() {
+  if (!BLUETOOTH_ENABLED) {
+    return false;
+  }
+  if (bleConnected) {
+    return true;
+  }
+  if (blePairingActive) {
+    return bleIconFlashOn;
+  }
+  return false;
+}
+
+void drawBluetoothIcon(int x, int y, bool on) {
+  if (!on) {
     return;
   }
 
-  display.setTextSize(1);
-  display.setCursor(x - 28, y + 1);
-  
-  // Normal battery display
-  display.print(pct); display.print("%");
-  
-  display.drawRect(x, y, 18, 9, SSD1306_WHITE); // Main body
-  display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE); // Tip
-  
-  int fillW = (pct * 14) / 100;
-  display.fillRect(x + 2, y + 2, fillW, 5, SSD1306_WHITE);
+  display.drawLine(x + 3, y, x + 3, y + (STATUS_BT_ICON_H - 1), SSD1306_WHITE);
+  display.drawLine(x + 3, y, x + 7, y + 2, SSD1306_WHITE);
+  display.drawLine(x + 3, y + 4, x + 7, y + 2, SSD1306_WHITE);
+  display.drawLine(x + 3, y + 4, x + 7, y + 6, SSD1306_WHITE);
+  display.drawLine(x + 3, y + (STATUS_BT_ICON_H - 1), x + 7, y + 6, SSD1306_WHITE);
+  display.drawLine(x + 3, y + 4, x, y + 2, SSD1306_WHITE);
+  display.drawLine(x + 3, y + 4, x, y + 6, SSD1306_WHITE);
+}
+
+void drawBatteryGauge(int x, int y, int pct) {
+  int16_t bodyW = STATUS_BATT_ICON_W - 2;
+  display.drawRect(x, y, bodyW, STATUS_BATT_ICON_H, SSD1306_WHITE); // Main body
+  display.fillRect(x + bodyW, y + 2, 2, STATUS_BATT_ICON_H - 4, SSD1306_WHITE); // Tip
+
+  int fillW = (pct * (bodyW - 4)) / 100;
+  display.fillRect(x + 2, y + 2, fillW, STATUS_BATT_ICON_H - 4, SSD1306_WHITE);
+}
+
+void drawStatusIcons() {
+  bool batteryVisible = (cachedBatteryPct >= 0);
+  bool btReserved = isBluetoothReserved();
+  bool btOn = isBluetoothIconOn();
+
+  int16_t batteryX = SCREEN_WIDTH - STATUS_BATT_ICON_W - STATUS_RIGHT_MARGIN;
+  int16_t batteryY = 2;
+  int16_t btX = 0;
+  int16_t btY = batteryY - 1;
+  int16_t textX = 0;
+
+  if (batteryVisible) {
+    char pctText[6];
+    snprintf(pctText, sizeof(pctText), "%d%%", cachedBatteryPct);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.setTextSize(1);
+    display.getTextBounds(pctText, 0, 0, &x1, &y1, &w, &h);
+    textX = batteryX - STATUS_TEXT_GAP - (int16_t)w;
+    int16_t textY = batteryY + ((STATUS_BATT_ICON_H - (int16_t)h) / 2);
+    display.setCursor(textX, textY);
+    display.print(pctText);
+    drawBatteryGauge(batteryX, batteryY, cachedBatteryPct);
+  }
+
+  if (btReserved) {
+    int16_t drawX = 0;
+    if (batteryVisible) {
+      drawX = textX - STATUS_BT_GAP - STATUS_BT_ICON_W;
+    } else {
+      drawX = SCREEN_WIDTH - STATUS_BT_ICON_W - STATUS_RIGHT_MARGIN;
+    }
+    drawBluetoothIcon(drawX, btY, btOn);
+  }
+}
+
+void initBluetooth() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  bleGamepadConfig.setButtonCount(16);
+  bleGamepadConfig.setAutoReport(true);
+  bleGamepad.begin(&bleGamepadConfig);
+
+  unsigned long startMs = millis();
+  while (NimBLEDevice::getServer() == nullptr && (millis() - startMs) < 2000) {
+    delay(10);
+  }
+  NimBLEServer* server = NimBLEDevice::getServer();
+  if (server) {
+    server->advertiseOnDisconnect(false);
+  }
+
+  if (BLE_BUTTONS_PER_SECOND == 0) {
+    blePressIntervalMs = 0;
+    blePressHoldMs = 0;
+  } else {
+    blePressIntervalMs = 1000UL / BLE_BUTTONS_PER_SECOND;
+    if (blePressIntervalMs == 0) {
+      blePressIntervalMs = 1;
+    }
+    blePressHoldMs = blePressIntervalMs / 2;
+    if (blePressHoldMs == 0) {
+      blePressHoldMs = 1;
+    }
+  }
+
+  startBlePairing();
+}
+
+void startBleAdvertising() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  if (advertising) {
+    advertising->start();
+  }
+}
+
+void stopBleAdvertising() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  if (advertising) {
+    advertising->stop();
+  }
+}
+
+void startBlePairing() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  blePairingActive = true;
+  blePairingStartMs = millis();
+  bleIconFlashOn = true;
+  bleIconLastToggleMs = blePairingStartMs;
+  startBleAdvertising();
+}
+
+void resetBlePressState() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  if (blePressHolding && bleActiveButton != 0) {
+    bleGamepad.release(bleActiveButton);
+  }
+  blePressHolding = false;
+  bleActiveButton = 0;
+  blePressDirection = 0;
+  blePressStartMs = 0;
+  bleLastPressMs = 0;
+}
+
+void resetBleSyncState() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  bleSyncPhase = BLE_SYNC_NONE;
+  bleSyncRemaining = 0;
+  bleRefillRemaining = 0;
+  bleSyncDirection = 0;
+  bleRefillDirection = 0;
+  bleSyncTargetSteps = 0;
+  bleSyncStepsMax = 0;
+  bleEstimateValid = false;
+}
+
+int getBleMeterStepsForGame(int game) {
+  if (!BLUETOOTH_ENABLED) {
+    return GAME_BARS[game];
+  }
+  if (game == 0) {
+    return BOKTAI1_STEP_COUNT;
+  }
+  return GAME_BARS[game];
+}
+
+int getBleBarFromStep(int game, int step) {
+  if (!BLUETOOTH_ENABLED) {
+    return step;
+  }
+  int stepsMax = getBleMeterStepsForGame(game);
+  if (step < 0) {
+    step = 0;
+  }
+  if (step > stepsMax) {
+    step = stepsMax;
+  }
+  if (game == 0) {
+    return BOKTAI1_STEP_TO_BAR[step];
+  }
+  return step;
+}
+
+int getBleStepFromBar(int game, int bar, bool fromEmpty) {
+  if (!BLUETOOTH_ENABLED) {
+    return bar;
+  }
+  int barsMax = GAME_BARS[game];
+  if (bar < 0) {
+    bar = 0;
+  }
+  if (bar > barsMax) {
+    bar = barsMax;
+  }
+  if (game == 0) {
+    return fromEmpty ? BOKTAI1_BAR_TO_STEP_FROM_EMPTY[bar] : BOKTAI1_BAR_TO_STEP_FROM_FULL[bar];
+  }
+  return bar;
+}
+
+int getBleActiveNumSteps() {
+  if (!BLUETOOTH_ENABLED) {
+    return getBleMeterStepsForGame(currentGame);
+  }
+  if (bleSyncPhase != BLE_SYNC_NONE && bleSyncStepsMax > 0) {
+    return bleSyncStepsMax;
+  }
+  return getBleMeterStepsForGame(currentGame);
+}
+
+void applyBlePressEffect(int direction) {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  if (!bleEstimateValid) {
+    return;
+  }
+  int stepsMax = getBleActiveNumSteps();
+  if (stepsMax <= 0) {
+    return;
+  }
+  if (direction > 0) {
+    bleEstimatedSteps = min(bleEstimatedSteps + 1, stepsMax);
+  } else if (direction < 0) {
+    bleEstimatedSteps = max(bleEstimatedSteps - 1, 0);
+  }
+}
+
+void finishBleSync() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  bleSyncPhase = BLE_SYNC_NONE;
+  bleSyncRemaining = 0;
+  bleRefillRemaining = 0;
+  bleSyncDirection = 0;
+  bleRefillDirection = 0;
+  bleEstimatedSteps = bleSyncTargetSteps;
+  bleEstimateValid = true;
+}
+
+void startBleResync(int deviceBars, int numBars) {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  if (!bleConnected || numBars <= 0) {
+    return;
+  }
+  resetBlePressState();
+  bleSyncPhase = BLE_SYNC_CLAMP;
+  bleSyncStepsMax = getBleMeterStepsForGame(currentGame);
+  int targetBars = constrain(deviceBars, 0, numBars);
+  int middle = numBars / 2;
+  int direction = (targetBars <= middle) ? BLE_DIR_DEC : BLE_DIR_INC;
+  bleSyncTargetSteps = getBleStepFromBar(currentGame, targetBars, direction == BLE_DIR_DEC);
+  bleSyncDirection = direction;
+  bleSyncRemaining = bleSyncStepsMax;
+  if (direction == BLE_DIR_DEC) {
+    bleRefillDirection = BLE_DIR_INC;
+    bleRefillRemaining = bleSyncTargetSteps;
+  } else {
+    bleRefillDirection = BLE_DIR_DEC;
+    bleRefillRemaining = bleSyncStepsMax - bleSyncTargetSteps;
+  }
+  bleEstimateValid = false;
+  bleLastResyncMs = millis();
+}
+
+void updateBluetoothState() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  bool connectedNow = bleGamepad.isConnected();
+  if (connectedNow != bleConnected) {
+    bleConnected = connectedNow;
+    if (bleConnected) {
+      blePairingActive = false;
+      stopBleAdvertising();
+      bleSyncPending = true;
+      bleEstimateValid = false;
+    } else {
+      resetBlePressState();
+      resetBleSyncState();
+      stopBleAdvertising();
+      if (blePairingActive) {
+        startBleAdvertising();
+      }
+    }
+  }
+
+  if (blePairingActive && !bleConnected) {
+    unsigned long now = millis();
+    if (BLE_PAIRING_TIMEOUT_MS > 0 && (now - blePairingStartMs) >= BLE_PAIRING_TIMEOUT_MS) {
+      blePairingActive = false;
+      stopBleAdvertising();
+    } else if ((now - bleIconLastToggleMs) >= BLE_ICON_FLASH_MS) {
+      bleIconFlashOn = !bleIconFlashOn;
+      bleIconLastToggleMs = now;
+    }
+  }
+}
+
+void updateBluetoothMeter(int deviceBars, int numBars) {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  if (!bleConnected) {
+    return;
+  }
+
+  bleDeviceBars = constrain(deviceBars, 0, numBars);
+  bleDeviceNumBars = numBars;
+
+  if (bleSyncPending || bleGameChanged) {
+    startBleResync(bleDeviceBars, bleDeviceNumBars);
+    bleSyncPending = false;
+    bleGameChanged = false;
+    return;
+  }
+
+  if (BLE_RESYNC_ENABLED && BLE_RESYNC_INTERVAL_MS > 0 && bleSyncPhase == BLE_SYNC_NONE) {
+    unsigned long now = millis();
+    if ((now - bleLastResyncMs) >= BLE_RESYNC_INTERVAL_MS) {
+      startBleResync(bleDeviceBars, bleDeviceNumBars);
+    }
+  }
+}
+
+void handleBlePresses() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  if (!bleConnected) {
+    return;
+  }
+
+  unsigned long now = millis();
+
+  if (blePressHolding) {
+    if ((now - blePressStartMs) >= blePressHoldMs) {
+      bleGamepad.release(bleActiveButton);
+      blePressHolding = false;
+      applyBlePressEffect(blePressDirection);
+      if (bleSyncPhase != BLE_SYNC_NONE) {
+        bleSyncRemaining--;
+        if (bleSyncRemaining <= 0) {
+          if (bleSyncPhase == BLE_SYNC_CLAMP) {
+            if (bleSyncDirection == BLE_DIR_DEC) {
+              bleEstimatedSteps = 0;
+            } else {
+              bleEstimatedSteps = bleSyncStepsMax;
+            }
+            bleEstimateValid = true;
+            bleSyncPhase = BLE_SYNC_REFILL;
+            bleSyncRemaining = bleRefillRemaining;
+            bleSyncDirection = bleRefillDirection;
+            if (bleSyncRemaining <= 0) {
+              finishBleSync();
+            }
+          } else {
+            finishBleSync();
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  if (blePressIntervalMs == 0) {
+    return;
+  }
+  if ((now - bleLastPressMs) < blePressIntervalMs) {
+    return;
+  }
+
+  int direction = 0;
+  if (bleSyncPhase != BLE_SYNC_NONE) {
+    if (bleSyncRemaining > 0) {
+      direction = bleSyncDirection;
+    }
+  } else if (bleEstimateValid) {
+    int estimatedBars = getBleBarFromStep(currentGame, bleEstimatedSteps);
+    if (bleDeviceBars > estimatedBars) {
+      direction = BLE_DIR_INC;
+    } else if (bleDeviceBars < estimatedBars) {
+      direction = BLE_DIR_DEC;
+    }
+  }
+
+  if (direction == 0) {
+    return;
+  }
+
+  blePressDirection = direction;
+  bleActiveButton = (direction > 0) ? BLE_BUTTON_INC : BLE_BUTTON_DEC;
+  blePressHolding = true;
+  blePressStartMs = now;
+  bleLastPressMs = now;
+  bleGamepad.press(bleActiveButton);
 }
 
 // Calculate battery % based on analog reading
@@ -805,6 +1297,10 @@ void updateBatteryStatus() {
     cachedBatteryPct = BATTERY_PCT_UNKNOWN;
     cachedBatteryVoltage = -1.0f;
     lowBatteryStart = 0;
+  }
+
+  if (BLUETOOTH_ENABLED && cachedBatteryPct >= 0) {
+    bleGamepad.setBatteryLevel((uint8_t)cachedBatteryPct);
   }
 }
 

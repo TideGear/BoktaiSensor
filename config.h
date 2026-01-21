@@ -145,6 +145,17 @@ const int GBA_PIN_SD = 7;   // D8 (GPIO7)  - SD (bit 1)
 const int GBA_PIN_SI = 8;   // D9 (GPIO8)  - SI (bit 2)
 const int GBA_PIN_SO = 10;  // D10 (GPIO10) - SO (bit 3)
 
+// Bluetooth HID (mGBA)
+// Set BLUETOOTH_ENABLED to false to disable BLE entirely.
+const bool BLUETOOTH_ENABLED = true;
+const char BLE_DEVICE_NAME[] = "Ojo del Sol Sensor";
+const unsigned long BLE_PAIRING_TIMEOUT_MS = 60000; // Stop pairing after 1 minute
+const bool BLE_RESYNC_ENABLED = true;
+const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
+const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // L2/R2 press rate
+const uint8_t BLE_BUTTON_DEC = 9;                   // Default L2 button index
+const uint8_t BLE_BUTTON_INC = 10;                  // Default R2 button index
+
 // Debug logging
 const bool DEBUG_SERIAL = true;
 

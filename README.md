@@ -148,6 +148,7 @@ Install via Arduino Library Manager:
 - Adafruit SSD1306
 - Adafruit GFX Library
 - Adafruit BusIO
+- ESP32 BLE Gamepad (NimBLE)
 
 4. USAGE
 ----------------------------------------------------------------------
@@ -158,6 +159,25 @@ Install via Arduino Library Manager:
 5. Enter the matching sun level in-game using Prof9's ROM hacks
    (or your flash cart's input method)
 6. Power off when done (hold button 3 seconds)
+
+BLUETOOTH (mGBA):
+When BLUETOOTH_ENABLED is true, the device advertises as "Ojo del Sol Sensor".
+You can change the name via BLE_DEVICE_NAME in config.h.
+Pair it in your OS, then map L2/R2 in mGBA to the device's buttons.
+- L2 (Button 9): decreases the in-game meter by 1
+- R2 (Button 10): increases the in-game meter by 1
+
+The firmware keeps the in-game meter synced with L2/R2 presses as the
+sensor changes, and performs a clamp+refill resync every
+BLE_RESYNC_INTERVAL_MS (disable via BLE_RESYNC_ENABLED or set the interval to 0).
+Pairing stops after BLE_PAIRING_TIMEOUT_MS.
+Press speed is set by BLE_BUTTONS_PER_SECOND. If you want L3/R3 or your OS
+labels the buttons differently, adjust BLE_BUTTON_DEC and BLE_BUTTON_INC.
+For Boktai 1, mGBA uses a 10-step input despite the 8-bar gauge; the
+firmware accounts for this when syncing.
+Pairing restarts on the next wake.
+The Bluetooth icon sits to the left of the battery percentage on the main
+screen and screensaver, flashing while pairing and solid when connected.
 
 SCREENSAVER:
 When SCREENSAVER_ACTIVE is true, the display switches to a bouncing
@@ -306,7 +326,7 @@ DEVICE WON'T WAKE FROM SLEEP:
 
 8. FUTURE PLANS
 ----------------------------------------------------------------------
-- [ ] Bluetooth and/or HID output for emulators 
+- [ ] USB output for emulators
 - [ ] Maybe Lunar Knights support?
 
 9. CREDITS & LINKS
