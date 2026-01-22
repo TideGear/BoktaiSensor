@@ -4,8 +4,9 @@
 #include "Adafruit_LTR390.h"
 #include "config.h"
 #include "esp_sleep.h"
-#include <BleGamepad.h>
-#include <BleGamepadConfiguration.h>
+#include <BleCompositeHID.h>
+#include <XboxGamepadDevice.h>
+#include <XboxGamepadConfiguration.h>
 #include <NimBLEDevice.h>
 #include <NimBLEServer.h>
 
@@ -96,8 +97,8 @@ bool hasSmoothedUvi = false;
 bool gameChanged = false;
 bool bleGameChanged = false;
 
-BleGamepad bleGamepad(BLE_DEVICE_NAME);
-BleGamepadConfiguration bleGamepadConfig;
+XboxGamepadDevice* xboxGamepad = nullptr;
+BleCompositeHID compositeHID(BLE_DEVICE_NAME, "Espressif", 100);
 unsigned long blePressIntervalMs = 16;
 unsigned long blePressHoldMs = 8;
 bool bleConnected = false;
@@ -115,7 +116,7 @@ bool blePressHolding = false;
 unsigned long blePressStartMs = 0;
 unsigned long bleLastPressMs = 0;
 int blePressDirection = 0;
-uint8_t bleActiveButton = 0;
+uint16_t bleActiveButton = 0;
 int bleSyncTargetSteps = 0;
 int bleSyncStepsMax = 0;
 int bleSyncRemaining = 0;
@@ -949,9 +950,15 @@ void initBluetooth() {
   if (!BLUETOOTH_ENABLED) {
     return;
   }
-  bleGamepadConfig.setButtonCount(16);
-  bleGamepadConfig.setAutoReport(true);
-  bleGamepad.begin(&bleGamepadConfig);
+  
+  // Create Xbox gamepad device with XInput support for proper L3/R3 buttons
+  // Use Xbox Series X controller configuration for proper VID/PID recognition
+  XboxSeriesXControllerDeviceConfiguration* xboxConfig = new XboxSeriesXControllerDeviceConfiguration();
+  BLEHostConfiguration hostConfig = xboxConfig->getIdealHostConfiguration();
+  
+  xboxGamepad = new XboxGamepadDevice(xboxConfig);
+  compositeHID.addDevice(xboxGamepad);
+  compositeHID.begin(hostConfig);
 
   unsigned long startMs = millis();
   while (NimBLEDevice::getServer() == nullptr && (millis() - startMs) < 2000) {
@@ -1011,11 +1018,12 @@ void startBlePairing() {
 }
 
 void resetBlePressState() {
-  if (!BLUETOOTH_ENABLED) {
+  if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
     return;
   }
   if (blePressHolding && bleActiveButton != 0) {
-    bleGamepad.release(bleActiveButton);
+    xboxGamepad->release(bleActiveButton);
+    xboxGamepad->sendGamepadReport();
   }
   blePressHolding = false;
   bleActiveButton = 0;
@@ -1154,7 +1162,7 @@ void updateBluetoothState() {
   if (!BLUETOOTH_ENABLED) {
     return;
   }
-  bool connectedNow = bleGamepad.isConnected();
+  bool connectedNow = compositeHID.isConnected();
   if (connectedNow != bleConnected) {
     bleConnected = connectedNow;
     if (bleConnected) {
@@ -1222,7 +1230,10 @@ void handleBlePresses() {
 
   if (blePressHolding) {
     if ((now - blePressStartMs) >= blePressHoldMs) {
-      bleGamepad.release(bleActiveButton);
+      if (xboxGamepad != nullptr) {
+        xboxGamepad->release(bleActiveButton);
+        xboxGamepad->sendGamepadReport();
+      }
       blePressHolding = false;
       applyBlePressEffect(blePressDirection);
       if (bleSyncPhase != BLE_SYNC_NONE) {
@@ -1280,7 +1291,10 @@ void handleBlePresses() {
   blePressHolding = true;
   blePressStartMs = now;
   bleLastPressMs = now;
-  bleGamepad.press(bleActiveButton);
+  if (xboxGamepad != nullptr) {
+    xboxGamepad->press(bleActiveButton);
+    xboxGamepad->sendGamepadReport();
+  }
 }
 
 // Calculate battery % based on analog reading
@@ -1300,7 +1314,7 @@ void updateBatteryStatus() {
   }
 
   if (BLUETOOTH_ENABLED && cachedBatteryPct >= 0) {
-    bleGamepad.setBatteryLevel((uint8_t)cachedBatteryPct);
+    compositeHID.setBatteryLevel((uint8_t)cachedBatteryPct);
   }
 }
 

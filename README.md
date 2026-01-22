@@ -148,7 +148,11 @@ Install via Arduino Library Manager:
 - Adafruit SSD1306
 - Adafruit GFX Library
 - Adafruit BusIO
-- ESP32 BLE Gamepad (NimBLE)
+- NimBLE-Arduino (by h2zero)
+- Callback (by Tom Stewart)
+
+Install manually (download ZIP from GitHub):
+- ESP32-BLE-CompositeHID: https://github.com/Mystfit/ESP32-BLE-CompositeHID
 
 4. USAGE
 ----------------------------------------------------------------------
@@ -160,19 +164,22 @@ Install via Arduino Library Manager:
    (or your flash cart's input method)
 6. Power off when done (hold button 3 seconds)
 
-BLUETOOTH (mGBA):
-When BLUETOOTH_ENABLED is true, the device advertises as "Ojo del Sol Sensor".
-You can change the name via BLE_DEVICE_NAME in config.h.
-Pair it in your OS, then map L2/R2 in mGBA to the device's buttons.
-- L2 (Button 9): decreases the in-game meter by 1
-- R2 (Button 10): increases the in-game meter by 1
+BLUETOOTH (mGBA / RetroArch):
+When BLUETOOTH_ENABLED is true, the device presents as an Xbox Series X
+controller named "Ojo del Sol Sensor" (change via BLE_DEVICE_NAME in config.h).
+This provides proper XInput support on both PC and Android.
 
-The firmware keeps the in-game meter synced with L2/R2 presses as the
+Pair it in your OS, then map L3/R3 in mGBA or RetroArch to control the meter:
+- L3 (Left Stick click): decreases the in-game meter by 1
+- R3 (Right Stick click): increases the in-game meter by 1
+
+The firmware keeps the in-game meter synced with L3/R3 presses as the
 sensor changes, and performs a clamp+refill resync every
 BLE_RESYNC_INTERVAL_MS (disable via BLE_RESYNC_ENABLED or set the interval to 0).
 Pairing stops after BLE_PAIRING_TIMEOUT_MS.
-Press speed is set by BLE_BUTTONS_PER_SECOND. If you want L3/R3 or your OS
-labels the buttons differently, adjust BLE_BUTTON_DEC and BLE_BUTTON_INC.
+Press speed is set by BLE_BUTTONS_PER_SECOND. To use different buttons,
+adjust BLE_BUTTON_DEC and BLE_BUTTON_INC in config.h using the Xbox button
+constants from XboxGamepadDevice.h.
 For Boktai 1, mGBA uses a 10-step input despite the 8-bar gauge; the
 firmware accounts for this when syncing.
 Pairing restarts on the next wake.

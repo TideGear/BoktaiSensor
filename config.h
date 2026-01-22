@@ -152,9 +152,12 @@ const char BLE_DEVICE_NAME[] = "Ojo del Sol Sensor";
 const unsigned long BLE_PAIRING_TIMEOUT_MS = 60000; // Stop pairing after 1 minute
 const bool BLE_RESYNC_ENABLED = true;
 const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
-const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // L2/R2 press rate
-const uint8_t BLE_BUTTON_DEC = 9;                   // Default L2 button index
-const uint8_t BLE_BUTTON_INC = 10;                  // Default R2 button index
+const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // Button press rate
+// Xbox gamepad button values (from XboxGamepadDevice.h)
+// XBOX_BUTTON_LS = 0x2000 (Left Stick click = L3)
+// XBOX_BUTTON_RS = 0x4000 (Right Stick click = R3)
+const uint16_t BLE_BUTTON_DEC = 0x2000;              // L3 (Left Stick click)
+const uint16_t BLE_BUTTON_INC = 0x4000;              // R3 (Right Stick click)
 
 // Debug logging
 const bool DEBUG_SERIAL = true;
