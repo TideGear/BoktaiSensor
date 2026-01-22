@@ -1131,15 +1131,15 @@ void getBleChordForBars(int bars, int numBars, int16_t &leftX, int16_t &leftY,
 
   switch (bars) {
     case 0:  break; // L3 only
-    case 1:  leftY = XBOX_STICK_MAX; break; // Left analog up
+    case 1:  leftY = XBOX_STICK_MIN; break; // Left analog up
     case 2:  leftX = XBOX_STICK_MAX; break; // Left analog right
-    case 3:  leftY = XBOX_STICK_MIN; break; // Left analog down
+    case 3:  leftY = XBOX_STICK_MAX; break; // Left analog down
     case 4:  leftX = XBOX_STICK_MIN; break; // Left analog left
-    case 5:  rightY = XBOX_STICK_MAX; break; // Right analog up
+    case 5:  rightY = XBOX_STICK_MIN; break; // Right analog up
     case 6:  rightX = XBOX_STICK_MAX; break; // Right analog right
-    case 7:  rightY = XBOX_STICK_MIN; break; // Right analog down
+    case 7:  rightY = XBOX_STICK_MAX; break; // Right analog down
     case 8:  rightX = XBOX_STICK_MIN; break; // Right analog left
-    case 9:  leftY = XBOX_STICK_MAX; rightY = XBOX_STICK_MAX; break; // Both up
+    case 9:  leftY = XBOX_STICK_MIN; rightY = XBOX_STICK_MIN; break; // Both up
     case 10: leftX = XBOX_STICK_MAX; rightX = XBOX_STICK_MAX; break; // Both right
     default: break;
   }

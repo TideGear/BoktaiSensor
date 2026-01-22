@@ -154,9 +154,9 @@ const bool BLE_RESYNC_ENABLED = true;
 const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
 const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // Button press rate
 // BLE control mode:
-// 0 = Incremental (default): uses BLE_BUTTON_DEC/INC to step the meter.
-// 1 = Chord: holds L3 + stick directions per bar count.
-const uint8_t BLE_CONTROL_MODE = 0;
+// 0 = Incremental (default): uses BLE_BUTTON_DEC/INC to step the meter; resync enabled.
+// 1 = Chord: holds L3 + stick directions per bar count; resync skipped.
+const uint8_t BLE_CONTROL_MODE = 1;
 // Xbox gamepad button values (from XboxGamepadDevice.h)
 // XBOX_BUTTON_LS = 0x2000 (Left Stick click = L3)
 // XBOX_BUTTON_RS = 0x4000 (Right Stick click = R3)
