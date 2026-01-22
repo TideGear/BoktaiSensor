@@ -136,6 +136,13 @@ enum BleSyncPhase {
   BLE_SYNC_REFILL
 };
 BleSyncPhase bleSyncPhase = BLE_SYNC_NONE;
+int bleChordBars = -1;
+int16_t bleChordLeftX = 0;
+int16_t bleChordLeftY = 0;
+int16_t bleChordRightX = 0;
+int16_t bleChordRightY = 0;
+bool bleChordL3Pressed = false;
+bool bleChordActive = false;
 
 char screensaverBatteryText[6] = "";
 int16_t screensaverBatteryTextW = 0;
@@ -1100,6 +1107,100 @@ int getBleActiveNumSteps() {
   return getBleMeterStepsForGame(currentGame);
 }
 
+void resetBleChordState() {
+  bleChordBars = -1;
+  bleChordLeftX = 0;
+  bleChordLeftY = 0;
+  bleChordRightX = 0;
+  bleChordRightY = 0;
+  bleChordL3Pressed = false;
+  bleChordActive = false;
+}
+
+void getBleChordForBars(int bars, int numBars, int16_t &leftX, int16_t &leftY,
+                        int16_t &rightX, int16_t &rightY) {
+  leftX = 0;
+  leftY = 0;
+  rightX = 0;
+  rightY = 0;
+
+  if (numBars < 0) {
+    numBars = 0;
+  }
+  bars = constrain(bars, 0, numBars);
+
+  switch (bars) {
+    case 0:  break; // L3 only
+    case 1:  leftY = XBOX_STICK_MAX; break; // Left analog up
+    case 2:  leftX = XBOX_STICK_MAX; break; // Left analog right
+    case 3:  leftY = XBOX_STICK_MIN; break; // Left analog down
+    case 4:  leftX = XBOX_STICK_MIN; break; // Left analog left
+    case 5:  rightY = XBOX_STICK_MAX; break; // Right analog up
+    case 6:  rightX = XBOX_STICK_MAX; break; // Right analog right
+    case 7:  rightY = XBOX_STICK_MIN; break; // Right analog down
+    case 8:  rightX = XBOX_STICK_MIN; break; // Right analog left
+    case 9:  leftY = XBOX_STICK_MAX; rightY = XBOX_STICK_MAX; break; // Both up
+    case 10: leftX = XBOX_STICK_MAX; rightX = XBOX_STICK_MAX; break; // Both right
+    default: break;
+  }
+}
+
+void applyBleChord(int bars, int numBars) {
+  if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
+    return;
+  }
+
+  if (numBars < 0) {
+    numBars = 0;
+  }
+  bars = constrain(bars, 0, numBars);
+
+  int16_t leftX = 0;
+  int16_t leftY = 0;
+  int16_t rightX = 0;
+  int16_t rightY = 0;
+  getBleChordForBars(bars, numBars, leftX, leftY, rightX, rightY);
+
+  if (!bleChordActive || leftX != bleChordLeftX || leftY != bleChordLeftY) {
+    xboxGamepad->setLeftThumb(leftX, leftY);
+  }
+  if (!bleChordActive || rightX != bleChordRightX || rightY != bleChordRightY) {
+    xboxGamepad->setRightThumb(rightX, rightY);
+  }
+  if (!bleChordL3Pressed || !xboxGamepad->isPressed(XBOX_BUTTON_LS)) {
+    xboxGamepad->press(XBOX_BUTTON_LS);
+    bleChordL3Pressed = true;
+  }
+
+  bleChordBars = bars;
+  bleChordLeftX = leftX;
+  bleChordLeftY = leftY;
+  bleChordRightX = rightX;
+  bleChordRightY = rightY;
+  bleChordActive = true;
+}
+
+void releaseBleChord() {
+  if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
+    resetBleChordState();
+    return;
+  }
+
+  if (bleChordActive) {
+    if (bleChordLeftX != 0 || bleChordLeftY != 0) {
+      xboxGamepad->setLeftThumb(0, 0);
+    }
+    if (bleChordRightX != 0 || bleChordRightY != 0) {
+      xboxGamepad->setRightThumb(0, 0);
+    }
+    if (bleChordL3Pressed || xboxGamepad->isPressed(XBOX_BUTTON_LS)) {
+      xboxGamepad->release(XBOX_BUTTON_LS);
+    }
+  }
+
+  resetBleChordState();
+}
+
 void applyBlePressEffect(int direction) {
   if (!BLUETOOTH_ENABLED) {
     return;
@@ -1168,11 +1269,21 @@ void updateBluetoothState() {
     if (bleConnected) {
       blePairingActive = false;
       stopBleAdvertising();
-      bleSyncPending = true;
-      bleEstimateValid = false;
+      if (BLE_CONTROL_MODE == 1) {
+        bleSyncPending = false;
+        resetBlePressState();
+        resetBleSyncState();
+        resetBleChordState();
+      } else {
+        bleSyncPending = true;
+        bleEstimateValid = false;
+      }
     } else {
       resetBlePressState();
       resetBleSyncState();
+      if (BLE_CONTROL_MODE == 1) {
+        releaseBleChord();
+      }
       stopBleAdvertising();
       if (blePairingActive) {
         startBleAdvertising();
@@ -1203,6 +1314,15 @@ void updateBluetoothMeter(int deviceBars, int numBars) {
   bleDeviceBars = constrain(deviceBars, 0, numBars);
   bleDeviceNumBars = numBars;
 
+  if (BLE_CONTROL_MODE == 1) {
+    if (bleGameChanged) {
+      resetBleChordState();
+      bleGameChanged = false;
+    }
+    applyBleChord(bleDeviceBars, bleDeviceNumBars);
+    return;
+  }
+
   if (bleSyncPending || bleGameChanged) {
     startBleResync(bleDeviceBars, bleDeviceNumBars);
     bleSyncPending = false;
@@ -1220,6 +1340,9 @@ void updateBluetoothMeter(int deviceBars, int numBars) {
 
 void handleBlePresses() {
   if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  if (BLE_CONTROL_MODE == 1) {
     return;
   }
   if (!bleConnected) {

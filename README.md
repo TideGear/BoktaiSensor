@@ -172,7 +172,24 @@ Pair it in your OS, then map L3/R3 in mGBA or RetroArch to control the meter:
 - L3 (Left Stick click): decreases the in-game meter by 1
 - R3 (Right Stick click): increases the in-game meter by 1
 
-The firmware keeps the in-game meter synced with L3/R3 presses as the
+BLE control modes (set via BLE_CONTROL_MODE in config.h):
+- Incremental Control Mode (default, BLE_CONTROL_MODE = 0): uses L3/R3 presses to step the meter.
+- Chord Control Mode (BLE_CONTROL_MODE = 1): holds L3 + stick directions per bar amount.
+  Chord mapping:
+  0 bars: L3
+  1 bar: Left stick up + L3
+  2 bars: Left stick right + L3
+  3 bars: Left stick down + L3
+  4 bars: Left stick left + L3
+  5 bars: Right stick up + L3
+  6 bars: Right stick right + L3
+  7 bars: Right stick down + L3
+  8 bars: Right stick left + L3
+  9 bars (Boktai 2/3 only): Both sticks up + L3
+  10 bars (Boktai 2/3 only): Both sticks right + L3
+
+In Incremental Control Mode, the firmware keeps the in-game meter synced with
+L3/R3 presses as the
 sensor changes, and performs a clamp+refill resync every
 BLE_RESYNC_INTERVAL_MS (disable via BLE_RESYNC_ENABLED or set the interval to 0).
 Pairing stops after BLE_PAIRING_TIMEOUT_MS.
