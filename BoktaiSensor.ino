@@ -1288,9 +1288,8 @@ void updateBluetoothState() {
         releaseBleChord();
       }
       stopBleAdvertising();
-      if (blePairingActive) {
-        startBleAdvertising();
-      }
+      // If a connection drops, re-enter pairing/advertising for the usual timeout.
+      startBlePairing();
     }
   }
 

@@ -192,6 +192,8 @@ In Incremental Control Mode, the firmware keeps the in-game meter synced with
 L3/R3 presses as the sensor changes, and performs a clamp+refill resync every
 BLE_RESYNC_INTERVAL_MS (disable via BLE_RESYNC_ENABLED or set the interval to 0).
 Pairing stops after BLE_PAIRING_TIMEOUT_MS.
+If a connection drops, the device re-enters pairing/advertising for the same
+timeout window.
 Press speed is set by BLE_BUTTONS_PER_SECOND. To use different buttons,
 adjust BLE_BUTTON_DEC and BLE_BUTTON_INC in config.h using the Xbox button
 constants from XboxGamepadDevice.h.

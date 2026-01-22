@@ -149,7 +149,8 @@ const int GBA_PIN_SO = 10;  // D10 (GPIO10) - SO (bit 3)
 // Set BLUETOOTH_ENABLED to false to disable BLE entirely.
 const bool BLUETOOTH_ENABLED = true;
 const char BLE_DEVICE_NAME[] = "Ojo del Sol Sensor";
-const unsigned long BLE_PAIRING_TIMEOUT_MS = 60000; // Stop pairing after 1 minute
+const unsigned long BLE_PAIRING_TIMEOUT_MS = 60000; // Stop pairing (or re-pairing after
+// dropping connection) after 1 minute
 const bool BLE_RESYNC_ENABLED = true;
 const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
 const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // Button press rate
