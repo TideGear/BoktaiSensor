@@ -189,15 +189,15 @@ BLE control modes (set via BLE_CONTROL_MODE in config.h):
   10 bars (Boktai 2/3 only): Both sticks right + L3
 
 In Incremental Control Mode, the firmware keeps the in-game meter synced with
-L3/R3 presses as the
-sensor changes, and performs a clamp+refill resync every
+L3/R3 presses as the sensor changes, and performs a clamp+refill resync every
 BLE_RESYNC_INTERVAL_MS (disable via BLE_RESYNC_ENABLED or set the interval to 0).
 Pairing stops after BLE_PAIRING_TIMEOUT_MS.
 Press speed is set by BLE_BUTTONS_PER_SECOND. To use different buttons,
 adjust BLE_BUTTON_DEC and BLE_BUTTON_INC in config.h using the Xbox button
 constants from XboxGamepadDevice.h.
 For Boktai 1, mGBA uses a 10-step input despite the 8-bar gauge; the
-firmware accounts for this when syncing.
+firmware accounts for this when syncing. If mGBA is fixed, set
+BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND = false in config.h.
 Pairing restarts on the next wake.
 The Bluetooth icon sits to the left of the battery percentage on the main
 screen and screensaver, flashing while pairing and solid when connected.

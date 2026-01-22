@@ -153,6 +153,9 @@ const unsigned long BLE_PAIRING_TIMEOUT_MS = 60000; // Stop pairing after 1 minu
 const bool BLE_RESYNC_ENABLED = true;
 const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
 const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // Button press rate
+// Workaround: mGBA uses 10 steps for Boktai 1 even though it has 8 bars.
+// Set false if mGBA is fixed to use 8 steps.
+const bool BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND = true;
 // BLE control mode:
 // 0 = Incremental (default): uses BLE_BUTTON_DEC/INC to step the meter; resync enabled.
 // 1 = Chord: holds L3 + stick directions per bar count; resync skipped.

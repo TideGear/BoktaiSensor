@@ -1058,6 +1058,9 @@ int getBleMeterStepsForGame(int game) {
     return GAME_BARS[game];
   }
   if (game == 0) {
+    if (!BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
+      return GAME_BARS[game];
+    }
     return BOKTAI1_STEP_COUNT;
   }
   return GAME_BARS[game];
@@ -1074,7 +1077,7 @@ int getBleBarFromStep(int game, int step) {
   if (step > stepsMax) {
     step = stepsMax;
   }
-  if (game == 0) {
+  if (game == 0 && BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
     return BOKTAI1_STEP_TO_BAR[step];
   }
   return step;
@@ -1091,7 +1094,7 @@ int getBleStepFromBar(int game, int bar, bool fromEmpty) {
   if (bar > barsMax) {
     bar = barsMax;
   }
-  if (game == 0) {
+  if (game == 0 && BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
     return fromEmpty ? BOKTAI1_BAR_TO_STEP_FROM_EMPTY[bar] : BOKTAI1_BAR_TO_STEP_FROM_FULL[bar];
   }
   return bar;
