@@ -1,4 +1,3 @@
-======================================================================
 Ojo del Sol - ESP32-S3 UV Meter for Boktai Games
 ======================================================================
 
@@ -346,5 +345,3 @@ DEVICE WON'T WAKE FROM SLEEP:
   https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/
 - Adafruit LTR390:
   https://www.adafruit.com/product/4831
-
-======================================================================
