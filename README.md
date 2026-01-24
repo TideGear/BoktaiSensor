@@ -174,7 +174,8 @@ Pair it in your OS, then map L3/R3 in mGBA or RetroArch to control the meter:
 
 BLE control modes (set via BLE_CONTROL_MODE in config.h):
 - Incremental Control Mode (default, BLE_CONTROL_MODE = 0): uses L3/R3 presses to step the meter.
-- Chord Control Mode (BLE_CONTROL_MODE = 1): holds L3 + stick directions per bar amount.
+- Chord Control Mode (BLE_CONTROL_MODE = 1): outputs the bar value as a chord (L3 + stick directions).
+  Chord mode is immediate (no button-rate throttling) and re-asserts L3 on bar changes for reliability.
   Chord mapping:
   0 bars: L3
   1 bar: Left stick up + L3
@@ -194,7 +195,8 @@ BLE_RESYNC_INTERVAL_MS (disable via BLE_RESYNC_ENABLED or set the interval to 0)
 Pairing stops after BLE_PAIRING_TIMEOUT_MS.
 If a connection drops, the device re-enters pairing/advertising for the same
 timeout window.
-Press speed is set by BLE_BUTTONS_PER_SECOND. To use different buttons,
+In Incremental Control Mode, press speed is set by BLE_BUTTONS_PER_SECOND (Chord mode ignores this).
+To use different buttons,
 adjust BLE_BUTTON_DEC and BLE_BUTTON_INC in config.h using the Xbox button
 constants from XboxGamepadDevice.h.
 For Boktai 1, mGBA uses a 10-step input despite the 8-bar gauge; the
