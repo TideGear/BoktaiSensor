@@ -1,6 +1,6 @@
 **This is all very new, experimental, and subject to change. I'm looking for serious contributors to...**
 
-**1. Help calibrate the device to *exactly* match all three games.**\
+**1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight.**\
 **2. Add support via Chord Control Mode to their emulators.**\
 **3. Test and fix the code if needed.**\
 **4. Create a cool 3D-printable case.**\
