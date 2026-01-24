@@ -8,6 +8,8 @@
 
 **...so please contact me if your are interested at TideGear @at@ gmail .dot. com !**
 
+Photos of a prototype: https://photos.app.goo.gl/2Yt2UpbPR9df76Lb9
+
 Ojo del Sol - ESP32-S3 UV Meter for Boktai Games
 ======================================================================
 
