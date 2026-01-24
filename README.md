@@ -1,5 +1,5 @@
-This is all very new, experimental, and subject to change. I'm looking for serious contributors, so please contact me if your are interested.
-TideGear @at@ gmail .dot. com
+This is all very new, experimental, and subject to change. I'm looking for serious contributors, so please contact me if your are interested at TideGear @at@ gmail .dot. com !
+---------------
 
 Ojo del Sol - ESP32-S3 UV Meter for Boktai Games
 ======================================================================
