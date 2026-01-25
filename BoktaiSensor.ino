@@ -826,7 +826,12 @@ void enterDeepSleep() {
   if (BLUETOOTH_ENABLED) {
     // Release any held buttons/sticks
     if (xboxGamepad != nullptr) {
-      xboxGamepad->releaseAll();
+      // Release buttons that might be held (L3, R3, and any active button)
+      if (bleActiveButton != 0) {
+        xboxGamepad->release(bleActiveButton);
+      }
+      xboxGamepad->release(XBOX_BUTTON_LS);
+      xboxGamepad->release(XBOX_BUTTON_RS);
       xboxGamepad->setLeftThumb(0, 0);
       xboxGamepad->setRightThumb(0, 0);
       xboxGamepad->sendGamepadReport();
