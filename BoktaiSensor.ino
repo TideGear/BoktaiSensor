@@ -822,16 +822,37 @@ bool waitForPowerOn(bool coldBoot) {
 
 // Enter deep sleep mode with button wake-up
 void enterDeepSleep() {
-  // Turn off display immediately - no message
+  // Shut down Bluetooth first - this is critical for low-power sleep
+  if (BLUETOOTH_ENABLED) {
+    // Release any held buttons/sticks
+    if (xboxGamepad != nullptr) {
+      xboxGamepad->releaseAll();
+      xboxGamepad->setLeftThumb(0, 0);
+      xboxGamepad->setRightThumb(0, 0);
+      xboxGamepad->sendGamepadReport();
+    }
+    // Stop advertising if active
+    stopBleAdvertising();
+    // Give BLE stack time to clean up
+    delay(100);
+    // Fully deinitialize NimBLE (true = release memory)
+    NimBLEDevice::deinit(true);
+    xboxGamepad = nullptr;
+  }
+
+  // Turn off display
   display.clearDisplay();
   display.display();
   display.ssd1306_command(SSD1306_DISPLAYOFF);
   display.ssd1306_command(0x8D); // Charge pump
   display.ssd1306_command(0x10); // Disable charge pump
-  // Release I2C lines to reduce back-powering during sleep.
+
+  // Release I2C lines to reduce back-powering during sleep
   Wire.end();
   pinMode(5, INPUT);
   pinMode(6, INPUT);
+
+  // Set GBA link pins to high-impedance
   if (GBA_LINK_ENABLED) {
     pinMode(GBA_PIN_SC, INPUT);
     pinMode(GBA_PIN_SD, INPUT);
@@ -839,8 +860,15 @@ void enterDeepSleep() {
     pinMode(GBA_PIN_SO, INPUT);
   }
 
+  // Turn off sensor power and set pin to INPUT for minimum leakage
   if (SENSOR_POWER_ENABLED) {
     digitalWrite(SENSOR_POWER_PIN, LOW);
+    pinMode(SENSOR_POWER_PIN, INPUT);
+  }
+
+  // Set battery sense pin to INPUT (disable ADC pull)
+  if (BATTERY_SENSE_ENABLED) {
+    pinMode(BAT_PIN, INPUT);
   }
   
   // Wait for button release before sleeping
