@@ -1,10 +1,11 @@
-**This is all very new, experimental, and subject to change. I'm looking for serious contributors to...**
+**This is all very new, experimental, lightly-tested, and subject to change. I'm looking for serious contributors to...**
 
 **1. Help calibrate the device**\
 **2. Add support via Chord Control Mode to their emulators**\
 **3. Test and fix the code if needed**\
-**4. Create a cool 3D-printable case**\
-**5. You tell me!**
+**4. Test the GBA link cable support**\
+**5. Create a cool 3D-printable case**\
+**6. You tell me!**
 
 **...so please contact me if your are interested at TideGear @at@ gmail .dot. com !**
 
@@ -16,7 +17,7 @@ Ojo del Sol - ESP32-S3 UV Meter for Boktai Games
 
 A substitute solar sensor for playing the Boktai series (Boktai 1, 2, 3)
 on flash carts or emulators. Restores "Kojima's Intent" by using real
-sunlight instead of artificial light hacks.
+sunlight (UV) instead of artificial light hacks.
 
 SUPPORTED GAMES
 ---------------
@@ -148,10 +149,24 @@ Notes:
   mid-cable block/port found on official multi-play cables, and verify the plug
   has metal contacts for pins 2-6 (SO, SI, SD, SC, GND). Some cheap cables omit
   SO or SC and will not work.
+- Most cheap GBA link cables available these days are wired as seen in this sheet:
+  https://docs.google.com/spreadsheets/d/19uAjLaDji9D3lIKIEdB9RHNQ_F-Fo1NnXY90uRH3dQA/edit?usp=sharing
+  The Ojo del Sol device should be given the Player 2 side.
 
 GBA LINK OUTPUT MODE:
 When GBA_LINK_ENABLED is true, the firmware outputs the current bar count as a
 4-bit value on D7-D10.
+NOTE: GBA link mode is currently untested and will only work with the
+gba-link-gpio branch of Prof9's ROM hacks:
+https://github.com/Prof9/Boktai-Solar-Sensor-Patches/tree/gba-link-gpio/Source
+
+LINK-CABLE GAME MODES (IMPORTANT):
+The Boktai games also have modes that use the link cable for normal link
+functionality (e.g. multiplayer). These modes are not currently compatible with
+Ojo del Sol's GBA link cable mode and may never be.
+To use those link-cable modes alongside the Ojo del Sol, an emulator with link
+support must be used. I contacted the developers of Pizza Boy A Pro and Linkboy
+(Android), but it remains to be seen if Ojo del Sol will be supported by them.
 
 3. LIBRARIES REQUIRED
 ----------------------------------------------------------------------
@@ -201,6 +216,16 @@ BLE control modes (set via BLE_CONTROL_MODE in config.h):
   8 bars: Right stick left + L3
   9 bars (Boktai 2/3 only): Both sticks up + L3
   10 bars (Boktai 2/3 only): Both sticks right + L3
+
+EMULATOR COMPATIBILITY NOTE:
+Chord Control Mode requires explicit emulator/core support for this chord mapping.
+At the time of writing, most popular emulators (including mGBA) do not work with
+Chord Control Mode.
+Incremental Control Mode with the mGBA libretro core is currently the best
+solution I'm aware of until chords are implemented.
+On January 23, 2026, I submitted a PR to the libretro mGBA core GitHub to
+add chord support (along with other solar tweaks and fixes), but it may or may
+not be approved/merged.
 
 In Incremental Control Mode, the firmware keeps the in-game meter synced with
 L3/R3 presses as the sensor changes, and performs a clamp+refill resync every
@@ -333,7 +358,7 @@ or UV-transparent acrylic if an enclosure window is needed.
 UV SENSOR READS 0 OR VERY LOW:
 1. Set DEBUG_SERIAL = true in config.h, then open Serial Monitor (115200 baud)
    to see raw sensor counts
-   - At UVI 6, expect ~192 raw counts (6 x 32)
+   - At UVI 6, expect ~13800 raw counts (6 x 2300) at the default gain/resolution
    - If raw counts are 0, sensor may not be in UV mode
 2. Check sensor orientation - sensor window must face the sky
 3. Ensure no glass/plastic blocks the sensor (blocks 90%+ of UV)
