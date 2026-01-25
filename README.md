@@ -1,11 +1,10 @@
 **This is all very new, experimental, lightly-tested, and subject to change. I'm looking for serious contributors to...**
 
-**1. Help calibrate the device**\
 **1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight.**\
 **2. Add support via Chord Control Mode to their emulators.**\
 **3. Test and fix the code if needed.**\
 **4. Test the GBA link cable support**\
-**5. Create a cool 3D-printable case**\
+**5. Create a cool 3D-printable case.**\
 **6. You tell me!**
 
 **...so please contact me if your are interested at TideGear @at@ gmail .dot. com !**
