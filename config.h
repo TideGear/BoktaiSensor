@@ -111,11 +111,10 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 
 // Voltage divider calibration multiplier
 // Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
-// Actual default: 2.25 compensates for typical ADC/resistor variance
 // Adjust if battery % is wrong at full charge:
 //   - If % too LOW:  increase this value
 //   - If % too HIGH: decrease this value
-const float VOLT_DIVIDER_MULT = 2.25;
+const float VOLT_DIVIDER_MULT = 2.00;
 
 // Sensor Power Control
 // Optionally power the LTR390 from a GPIO to cut power during sleep.
