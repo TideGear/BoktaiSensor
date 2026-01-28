@@ -635,7 +635,7 @@ int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
   int numBars = GAME_BARS[game];
   int target = getBoktaiBars(uvi, game);
 
-  if (BAR_HYSTERESIS <= 0.0f || (AUTO_MODE && AUTO_UV_MAX <= AUTO_UV_MIN)) {
+  if (!BAR_HYSTERESIS_ENABLED || BAR_HYSTERESIS <= 0.0f || (AUTO_MODE && AUTO_UV_MAX <= AUTO_UV_MIN)) {
     return target;
   }
 

@@ -261,9 +261,10 @@ Set `AUTO_MODE = false` to use per-game threshold arrays (`BOKTAI_1_UV[8]`, `BOK
 ### Stability Tuning
 
 If the bar display feels jumpy:
-- `UVI_SMOOTHING_ENABLED`: Applies exponential smoothing
-- `UVI_SMOOTHING_ALPHA`: Higher = faster response, lower = smoother
-- `BAR_HYSTERESIS`: Requires UV margin before changing bars
+- `UVI_SMOOTHING_ENABLED`: Applies exponential smoothing (default: `false`; set `true` to smooth)
+- `UVI_SMOOTHING_ALPHA`: Controls how much weight new readings get vs. the running average (default: `0.5`; higher = faster response, lower = smoother). Setting `UVI_SMOOTHING_ALPHA = 1.0` is the same as `UVI_SMOOTHING_ENABLED = false`.
+- `BAR_HYSTERESIS_ENABLED`: Enables bar hysteresis (default: `false`). Setting `BAR_HYSTERESIS_ENABLED = false` is the same as `BAR_HYSTERESIS = 0.0`.
+- `BAR_HYSTERESIS`: Requires UV margin before changing bars (default: `0.2`; only used when `BAR_HYSTERESIS_ENABLED = true`)
 
 ----------------------------------------------------------------------
 

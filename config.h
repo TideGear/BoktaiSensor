@@ -26,6 +26,19 @@ const float AUTO_UV_MIN = 0.5;   // UV Index for 1 bar (shade/overcast)
 const float AUTO_UV_MAX = 6.0;   // UV Index for full bars (typical sunny day)
 
 // -----------------------------------------------------------------------------
+// UV FILTERING
+// -----------------------------------------------------------------------------
+// Exponential smoothing reduces jitter in the UV bar display.
+// UVI_SMOOTHING_ALPHA controls how much weight new readings get vs. the running average.
+// Setting UVI_SMOOTHING_ALPHA = 1.0 is the same as UVI_SMOOTHING_ENABLED = false.
+// Hysteresis adds a small UV margin before changing bars.
+// Setting BAR_HYSTERESIS_ENABLED = false is the same as BAR_HYSTERESIS = 0.0.
+const bool UVI_SMOOTHING_ENABLED = false;
+const float UVI_SMOOTHING_ALPHA = 0.5;  // 0.0-1.0. Controls how much weight new readings get vs. the running average. Higher = faster response.
+const bool BAR_HYSTERESIS_ENABLED = false;
+const float BAR_HYSTERESIS = 0.2;       // UV Index margin for bar changes
+
+// -----------------------------------------------------------------------------
 // GAME DEFINITIONS
 // -----------------------------------------------------------------------------
 // Number of supported games
@@ -84,16 +97,13 @@ const float BOKTAI_3_UV[10] = {
   6.0    // Bar 10
 };
 
-// -----------------------------------------------------------------------------
-// UV FILTERING (Optional)
-// -----------------------------------------------------------------------------
-// Exponential smoothing reduces jitter in the UV bar display.
-// Hysteresis adds a small UV margin before changing bars.
-const bool UVI_SMOOTHING_ENABLED = true;
-const float UVI_SMOOTHING_ALPHA = 0.2;  // 0.0-1.0 (higher = faster response)
-const float BAR_HYSTERESIS = 0.2;       // UV Index margin for bar changes
+// =============================================================================
+// POWER MANAGEMENT
+// =============================================================================
 
-// Battery Monitoring
+// -----------------------------------------------------------------------------
+// BATTERY MONITORING
+// -----------------------------------------------------------------------------
 // NOTE: The XIAO ESP32S3 does NOT have built-in battery voltage monitoring!
 // You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
 // the midpoint connected to BAT_PIN. Without this, battery % is unavailable.
@@ -104,11 +114,6 @@ const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery
 const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 
-// Low-voltage cutoff (requires battery sense divider)
-const bool BATTERY_CUTOFF_ENABLED = true;
-const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
-const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
-
 // Voltage divider calibration multiplier
 // Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
 // Actual default: 2.21 compensates for typical ADC/resistor variance
@@ -117,7 +122,16 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 //   - If % too HIGH: decrease this value
 const float VOLT_DIVIDER_MULT = 2.21;
 
-// Sensor Power Control
+// -----------------------------------------------------------------------------
+// LOW-VOLTAGE CUTOFF (requires battery sense divider)
+// -----------------------------------------------------------------------------
+const bool BATTERY_CUTOFF_ENABLED = true;
+const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
+const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
+
+// -----------------------------------------------------------------------------
+// SENSOR POWER CONTROL
+// -----------------------------------------------------------------------------
 // Optionally power the LTR390 from a GPIO to cut power during sleep.
 // Use a GPIO capable of sourcing a few mA and never power the OLED this way.
 // Default: enabled; wire LTR390 VIN to SENSOR_POWER_PIN (D3/GPIO4).
@@ -126,26 +140,42 @@ const bool SENSOR_POWER_ENABLED = true;
 const int SENSOR_POWER_PIN = 4;               // D3 (GPIO4)
 const unsigned long SENSOR_POWER_STABLE_MS = 10;
 
-// Power Button Settings
+// =============================================================================
+// USER INTERFACE
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// POWER BUTTON
+// -----------------------------------------------------------------------------
 // D0 (GPIO1) supports RTC wake-up from deep sleep on XIAO ESP32S3.
 const int BUTTON_PIN = 1;    // D0 (GPIO1)
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 3000;   // Hold 3 seconds to power on/off
 
-// Display Screensaver
+// -----------------------------------------------------------------------------
+// DISPLAY SCREENSAVER
+// -----------------------------------------------------------------------------
 // After SCREENSAVER_TIME minutes of no button activity, show a bouncing
-// "Ojo del Sol" screensaver. Set SCREENSAVER_TIME to 0 to disable.
+// "Ojo del Sol" screensaver.
 const bool SCREENSAVER_ACTIVE = true;
 const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (same as false)
 
-// GBA Link output (D7-D10)
+// =============================================================================
+// CONNECTIVITY
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// GBA LINK OUTPUT (D7-D10)
+// -----------------------------------------------------------------------------
 const bool GBA_LINK_ENABLED = true;
 const int GBA_PIN_SC = 44;  // D7 (GPIO44) - SC (bit 0)
 const int GBA_PIN_SD = 7;   // D8 (GPIO7)  - SD (bit 1)
 const int GBA_PIN_SI = 8;   // D9 (GPIO8)  - SI (bit 2)
 const int GBA_PIN_SO = 10;  // D10 (GPIO10) - SO (bit 3)
 
-// Bluetooth HID (mGBA)
+// -----------------------------------------------------------------------------
+// BLUETOOTH HID (mGBA)
+// -----------------------------------------------------------------------------
 // Set BLUETOOTH_ENABLED to false to disable BLE entirely.
 const bool BLUETOOTH_ENABLED = true;
 const char BLE_DEVICE_NAME[] = "Ojo del Sol Sensor";
@@ -167,7 +197,9 @@ const uint8_t BLE_CONTROL_MODE = 0;
 const uint16_t BLE_BUTTON_DEC = 0x2000;              // L3 (Left Stick click)
 const uint16_t BLE_BUTTON_INC = 0x4000;              // R3 (Right Stick click)
 
-// Debug logging
+// =============================================================================
+// DEBUG
+// =============================================================================
 const bool DEBUG_SERIAL = true;
 
 #endif
