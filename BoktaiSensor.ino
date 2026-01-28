@@ -45,10 +45,17 @@ bool buttonWasPressed = false;
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
 
+// UI screen selection:
+// 0..NUM_GAMES-1 = game screens, NUM_GAMES = DEBUG screen (if enabled)
+int currentScreen = 0;
+bool uiScreenChanged = false;
+
 // Battery state
 unsigned long lastBatterySampleTime = 0;
 int cachedBatteryPct = 0;
 float cachedBatteryVoltage = -1.0f;
+float cachedBatteryAdcAvg = -1.0f;
+bool hasBatteryReading = false;
 const int BATTERY_PCT_UNKNOWN = -1;
 unsigned long lowBatteryStart = 0;
 
@@ -89,6 +96,8 @@ int16_t screensaverTextW = 0;
 int16_t screensaverTextH = 0;
 
 // Cached display values
+uint32_t cachedRawUVS = 0;
+float cachedUviRaw = 0.0f;
 float cachedUvi = 0.0f;
 int cachedFilledBars = 0;
 int cachedNumBars = 0;
@@ -177,9 +186,13 @@ void setup() {
 
   if (BATTERY_SENSE_ENABLED) {
     analogSetPinAttenuation(BAT_PIN, ADC_11db);
+    cachedBatteryAdcAvg = -1.0f;
+    hasBatteryReading = false;
   } else {
     cachedBatteryPct = BATTERY_PCT_UNKNOWN;
     cachedBatteryVoltage = -1.0f;
+    cachedBatteryAdcAvg = -1.0f;
+    hasBatteryReading = false;
   }
   // Initialize I2C for XIAO ESP32S3 pins (D4/GPIO5 = SDA, D5/GPIO6 = SCL)
   Wire.begin(5, 6); 
@@ -312,8 +325,9 @@ void loop() {
 
   if (screensaverActive) {
     drawScreensaver();
-  } else if (newData || screensaverJustExited) {
+  } else if (newData || screensaverJustExited || uiScreenChanged) {
     drawMainDisplay();
+    uiScreenChanged = false;
   }
 
   screensaverJustExited = false;
@@ -500,7 +514,62 @@ void drawScreensaver() {
   display.display();
 }
 
+void drawDebugDisplay() {
+  display.clearDisplay();
+
+  // Draw Status Icons (Top Right)
+  drawStatusIcons();
+
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("DEBUG");
+
+  // UV readings
+  display.setCursor(0, 10);
+  display.print("UV raw:");
+  display.print(cachedRawUVS);
+
+  display.setCursor(0, 20);
+  display.print("UVI:");
+  display.print(cachedUviRaw, 2);
+
+  // Battery readings
+  bool haveBatteryReading = BATTERY_SENSE_ENABLED && hasBatteryReading;
+
+  display.setCursor(0, 32);
+  display.print("ADC avg:");
+  if (haveBatteryReading) {
+    display.print(cachedBatteryAdcAvg, 0);
+  } else {
+    display.print("N/A");
+  }
+
+  display.setCursor(0, 42);
+  display.print("Batt V:");
+  if (haveBatteryReading) {
+    display.print(cachedBatteryVoltage, 2);
+  } else {
+    display.print("N/A");
+  }
+
+  display.setCursor(0, 52);
+  display.print("Batt %:");
+  if (haveBatteryReading && cachedBatteryPct >= 0) {
+    display.print(cachedBatteryPct);
+    display.print("%");
+  } else {
+    display.print("N/A");
+  }
+
+  display.display();
+}
+
 void drawMainDisplay() {
+  if (DEBUG_SCREEN_ENABLED && currentScreen == NUM_GAMES) {
+    drawDebugDisplay();
+    return;
+  }
+
   display.clearDisplay();
 
   // 1. Draw Status Icons (Top Right)
@@ -707,7 +776,7 @@ int getBoktaiBars(float uvi, int game) {
   return 0;  // Below minimum threshold
 }
 
-// Handle power button: tap to change game, long-press (3s) to sleep
+// Handle power button: tap to cycle screens, long-press (3s) to sleep
 void handlePowerButton() {
   bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
   
@@ -731,12 +800,18 @@ void handlePowerButton() {
     // Button released - check if it was a short press (tap)
     unsigned long pressDuration = millis() - buttonPressStart;
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
-      // Short press: cycle to next game
+      // Short press: cycle to next screen (games + optional DEBUG)
       if (!suppressShortPress) {
-        currentGame = (currentGame + 1) % NUM_GAMES;
-        gameChanged = true;
-        if (BLUETOOTH_ENABLED) {
-          bleGameChanged = true;
+        int numScreens = NUM_GAMES + (DEBUG_SCREEN_ENABLED ? 1 : 0);
+        currentScreen = (currentScreen + 1) % numScreens;
+        uiScreenChanged = true;
+
+        if (currentScreen < NUM_GAMES) {
+          currentGame = currentScreen;
+          gameChanged = true;
+          if (BLUETOOTH_ENABLED) {
+            bleGameChanged = true;
+          }
         }
       }
     }
@@ -1497,6 +1572,8 @@ void updateBatteryStatus() {
   } else {
     cachedBatteryPct = BATTERY_PCT_UNKNOWN;
     cachedBatteryVoltage = -1.0f;
+    cachedBatteryAdcAvg = -1.0f;
+    hasBatteryReading = false;
     lowBatteryStart = 0;
   }
 
@@ -1541,6 +1618,8 @@ int readBatteryPercentage() {
     delay(1);
   }
   float raw = sum / 10.0;
+  cachedBatteryAdcAvg = raw;
+  hasBatteryReading = true;
   
   // ESP32-S3 ADC: 12-bit (0-4095), default ~0-3.3V range
   // VOLT_DIVIDER_MULT compensates for voltage divider ratio + ADC variance
@@ -1590,6 +1669,9 @@ float calculateUVI() {
   uint32_t rawUVS = ltr.readUVS();
   float divisor = (uvDivisor > 0.0f) ? uvDivisor : UV_DIVISOR_FALLBACK;
   float uvi = (float)rawUVS / divisor;
+
+  cachedRawUVS = rawUVS;
+  cachedUviRaw = uvi;
   
   // Debug output
   if (DEBUG_SERIAL) {
