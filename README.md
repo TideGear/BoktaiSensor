@@ -1,4 +1,17 @@
-**This is all very new, experimental, lightly-tested, and subject to change. I'm looking for serious contributors to...**
+I've done this all at my own expense.\
+Please consider donating via...
+
+<a href="https://ko-fi.com/TideGear"><img src="https://storage.ko-fi.com/cdn/kofi6.png" height="24"></a> or 
+<a href="https://www.paypal.com/donate/?hosted_button_id=THMF458QTBCAL"><img src="https://i.postimg.cc/VvChGNyd/Pay-Pal.png" height="24"></a>
+
+https://ko-fi.com/TideGear
+
+https://www.paypal.com/donate/?hosted_button_id=THMF458QTBCAL
+
+----------------------------------------------------------------------
+
+**Important!: This project is all very new, experimental, lightly-tested, and subject to change.\
+I'm looking for serious contributors to...**
 
 **1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight.**\
 **2. Add support via Chord Control Mode to their emulators.**\
@@ -9,7 +22,9 @@
 
 **...so please contact me if you are interested at TideGear @at@ gmail .dot. com !**
 
-Photos of a prototype: https://photos.app.goo.gl/2Yt2UpbPR9df76Lb9 \
+**Also contact me if you want to buy a pre-assembled device or kit!**
+
+Photos of a caseless prototype: https://photos.app.goo.gl/2Yt2UpbPR9df76Lb9 \
 (When assembled, it will likely be the size of a large smart watch.)
 
 ----------------------------------------------------------------------
