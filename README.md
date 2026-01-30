@@ -93,7 +93,7 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 - 6 bars: Left stick down + Right stick left
 - 7 bars: Left stick down + Right stick right
 - 8 bars: Left stick left + Right stick up
-- 9 bars: Left stick left + Right stick down
+- 9 bars (Boktai 2/3): Left stick left + Right stick down
 - 10 bars (Boktai 2/3): Left stick left + Right stick left
 
 </details>
