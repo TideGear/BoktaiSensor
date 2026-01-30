@@ -75,7 +75,7 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 | Mode | How it works | Emulator support |
 |------|--------------|------------------|
 | **Incremental (default, mode 0)** | Sends L3/R3 button presses to step the meter up/down | **Works now** with mGBA libretro core |
-| **Chord (mode 1)** | Holds L3 + stick directions to encode bar value directly | **Not yet supported** by most emulators |
+| **Chord (mode 1)** | Uses dual-stick direction chords (no L3) to encode bar value directly | **Not yet supported** by most emulators |
 
 **Current recommendation:** Use **Incremental Mode** with the **mGBA libretro core** in RetroArch. This is the only tested, working configuration.
 
@@ -84,17 +84,17 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 <details>
 <summary>Chord mapping (for emulator developers)</summary>
 
-- 0 bars: L3 only
-- 1 bar: Left stick up + L3
-- 2 bars: Left stick right + L3
-- 3 bars: Left stick down + L3
-- 4 bars: Left stick left + L3
-- 5 bars: Right stick up + L3
-- 6 bars: Right stick right + L3
-- 7 bars: Right stick down + L3
-- 8 bars: Right stick left + L3
-- 9 bars (Boktai 2/3): Both sticks up + L3
-- 10 bars (Boktai 2/3): Both sticks right + L3
+- 0 bars: Left stick up + Right stick up
+- 1 bar: Left stick up + Right stick down
+- 2 bars: Left stick up + Right stick left
+- 3 bars: Left stick up + Right stick right
+- 4 bars: Left stick down + Right stick up
+- 5 bars: Left stick down + Right stick down
+- 6 bars: Left stick down + Right stick left
+- 7 bars: Left stick down + Right stick right
+- 8 bars: Left stick left + Right stick up
+- 9 bars: Left stick left + Right stick down
+- 10 bars (Boktai 2/3): Left stick left + Right stick left
 
 </details>
 
@@ -226,7 +226,7 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 
 **Chord Mode specifics:**
 - Updates immediately on bar change (no rate throttling)
-- Re-asserts L3 on each bar change for reliability
+- Uses dual-stick direction chords only (no L3 modifier)
 
 **Pairing:**
 - Times out after `BLE_PAIRING_TIMEOUT_MS` (default 60s)

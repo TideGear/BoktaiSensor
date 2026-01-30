@@ -150,7 +150,6 @@ int16_t bleChordLeftX = 0;
 int16_t bleChordLeftY = 0;
 int16_t bleChordRightX = 0;
 int16_t bleChordRightY = 0;
-bool bleChordL3Pressed = false;
 bool bleChordActive = false;
 
 char screensaverBatteryText[6] = "";
@@ -901,7 +900,7 @@ void enterDeepSleep() {
   if (BLUETOOTH_ENABLED) {
     // Release any held buttons/sticks
     if (xboxGamepad != nullptr) {
-      // Release buttons that might be held (L3, R3, and any active button)
+    // Release buttons that might be held (R3 and any active button)
       if (bleActiveButton != 0) {
         xboxGamepad->release(bleActiveButton);
       }
@@ -1224,7 +1223,6 @@ void resetBleChordState() {
   bleChordLeftY = 0;
   bleChordRightX = 0;
   bleChordRightY = 0;
-  bleChordL3Pressed = false;
   bleChordActive = false;
 }
 
@@ -1241,17 +1239,17 @@ void getBleChordForBars(int bars, int numBars, int16_t &leftX, int16_t &leftY,
   bars = constrain(bars, 0, numBars);
 
   switch (bars) {
-    case 0:  break; // L3 only
-    case 1:  leftY = XBOX_STICK_MIN; break; // Left analog up
-    case 2:  leftX = XBOX_STICK_MAX; break; // Left analog right
-    case 3:  leftY = XBOX_STICK_MAX; break; // Left analog down
-    case 4:  leftX = XBOX_STICK_MIN; break; // Left analog left
-    case 5:  rightY = XBOX_STICK_MIN; break; // Right analog up
-    case 6:  rightX = XBOX_STICK_MAX; break; // Right analog right
-    case 7:  rightY = XBOX_STICK_MAX; break; // Right analog down
-    case 8:  rightX = XBOX_STICK_MIN; break; // Right analog left
-    case 9:  leftY = XBOX_STICK_MIN; rightY = XBOX_STICK_MIN; break; // Both up
-    case 10: leftX = XBOX_STICK_MAX; rightX = XBOX_STICK_MAX; break; // Both right
+    case 0:  leftY = XBOX_STICK_MIN; rightY = XBOX_STICK_MIN; break; // Left up + Right up
+    case 1:  leftY = XBOX_STICK_MIN; rightY = XBOX_STICK_MAX; break; // Left up + Right down
+    case 2:  leftY = XBOX_STICK_MIN; rightX = XBOX_STICK_MIN; break; // Left up + Right left
+    case 3:  leftY = XBOX_STICK_MIN; rightX = XBOX_STICK_MAX; break; // Left up + Right right
+    case 4:  leftY = XBOX_STICK_MAX; rightY = XBOX_STICK_MIN; break; // Left down + Right up
+    case 5:  leftY = XBOX_STICK_MAX; rightY = XBOX_STICK_MAX; break; // Left down + Right down
+    case 6:  leftY = XBOX_STICK_MAX; rightX = XBOX_STICK_MIN; break; // Left down + Right left
+    case 7:  leftY = XBOX_STICK_MAX; rightX = XBOX_STICK_MAX; break; // Left down + Right right
+    case 8:  leftX = XBOX_STICK_MIN; rightY = XBOX_STICK_MIN; break; // Left left + Right up
+    case 9:  leftX = XBOX_STICK_MIN; rightY = XBOX_STICK_MAX; break; // Left left + Right down
+    case 10: leftX = XBOX_STICK_MIN; rightX = XBOX_STICK_MIN; break; // Left left + Right left
     default: break;
   }
 }
@@ -1274,15 +1272,7 @@ void applyBleChord(int bars, int numBars) {
   int16_t rightY = 0;
   getBleChordForBars(bars, numBars, leftX, leftY, rightX, rightY);
 
-  // Chord mode uses L3 (LS click) as an enable/modifier with stick directions.
-  // Some hosts/emulators can occasionally "drop" a held button bit; to make this
-  // robust, re-assert L3 with a release->press edge whenever the bar value changes.
-  if (barsChanged) {
-    if (xboxGamepad->isPressed(XBOX_BUTTON_LS)) {
-      xboxGamepad->release(XBOX_BUTTON_LS);
-    }
-    bleChordL3Pressed = false;
-  }
+  // Chord mode uses stick directions only (no L3 modifier).
 
   if (barsChanged || !bleChordActive || leftX != bleChordLeftX || leftY != bleChordLeftY) {
     xboxGamepad->setLeftThumb(leftX, leftY);
@@ -1291,21 +1281,7 @@ void applyBleChord(int bars, int numBars) {
     xboxGamepad->setRightThumb(rightX, rightY);
   }
 
-  if (barsChanged) {
-    // First publish the new stick chord with L3 released (clear stale state).
-    xboxGamepad->sendGamepadReport();
-    // Then press L3 and publish again so the host sees a definite rising edge.
-    xboxGamepad->press(XBOX_BUTTON_LS);
-    bleChordL3Pressed = true;
-    xboxGamepad->sendGamepadReport();
-  } else {
-    // Steady-state: ensure L3 remains pressed, and publish periodically.
-    if (!xboxGamepad->isPressed(XBOX_BUTTON_LS)) {
-      xboxGamepad->press(XBOX_BUTTON_LS);
-      bleChordL3Pressed = true;
-    }
-    xboxGamepad->sendGamepadReport();
-  }
+  xboxGamepad->sendGamepadReport();
 
   bleChordBars = bars;
   bleChordLeftX = leftX;
@@ -1328,10 +1304,6 @@ void releaseBleChord() {
   }
   if (bleChordRightX != 0 || bleChordRightY != 0) {
     xboxGamepad->setRightThumb(0, 0);
-    changed = true;
-  }
-  if (xboxGamepad->isPressed(XBOX_BUTTON_LS)) {
-    xboxGamepad->release(XBOX_BUTTON_LS);
     changed = true;
   }
   if (changed) {
