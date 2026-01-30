@@ -24,8 +24,7 @@ I'm looking for serious contributors to...**
 
 **Also contact me if you want to buy a pre-assembled device or kit!**
 
-Photos of a caseless prototype: https://photos.app.goo.gl/2Yt2UpbPR9df76Lb9 \
-(When assembled, it will likely be the size of a large smart watch.)
+Photos of a unfinished prototype: https://photos.app.goo.gl/W3FEJ35C76atN2Qc9
 
 ----------------------------------------------------------------------
 
