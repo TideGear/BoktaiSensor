@@ -190,7 +190,7 @@ const bool BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND = true;
 // BLE control mode:
 // 0 = Incremental (default): uses BLE_BUTTON_DEC/INC to step the meter; resync enabled.
 // 1 = Chord: uses dual-stick direction chords per bar count; resync skipped.
-const uint8_t BLE_CONTROL_MODE = 1;
+const uint8_t BLE_CONTROL_MODE = 0;
 // Xbox gamepad button values (from XboxGamepadDevice.h)
 // XBOX_BUTTON_LS = 0x2000 (Left Stick click = L3)
 // XBOX_BUTTON_RS = 0x4000 (Right Stick click = R3)
