@@ -152,26 +152,41 @@ Without this, set `BATTERY_SENSE_ENABLED = false` in config.h to hide the batter
 
 ### GBA Link Cable Wiring (Optional)
 
-Only needed if using GBA Link output mode.
+Only needed if using GBA Link output mode. The GBA connects to the **Player 1 (P1)** side of a cheap GBA link cable. The Ojo del Sol connects to the **Player 2 (P2)** side via a [Palmr breakout board](https://github.com/Palmr/gb-link-cable).
 
-| GBA Link Pin | Signal | XIAO Pin |
-|--------------|--------|----------|
-| 2 | SO | D10 (GPIO10) |
-| 3 | SI | D9 (GPIO8) |
-| 4 | SD | D8 (GPIO7) |
-| 5 | SC | D7 (GPIO44) |
-| 6 | GND | GND |
-| 1 | VDD35 | (leave unconnected) |
+**Signal-to-GPIO mapping** (what GBA signal each XIAO pin handles):
+
+| GBA Signal | GBA Port Pin | XIAO Pin |
+|------------|--------------|----------|
+| SO | 2 | D10 (GPIO10) |
+| SI | 3 | D9 (GPIO8) |
+| SD | 4 | D8 (GPIO7) |
+| SC | 5 | D7 (GPIO44) |
+| GND | 6 | (leave unconnected) |
+| VDD35 | 1 | (leave unconnected) |
+
+**Cheap cable crossover wiring:**
+
+Cheap GBA link cables have non-standard internal wiring (no mid-cable signal splitter). The cable crosses some lines, so the P2 breakout pad labels **do not match** the GBA signal names. Use the table below to determine which breakout pad to physically wire each XIAO pin to:
+
+| XIAO Pin | GBA Signal | P1 Pin | Cable Routes To | P2 Breakout Pad Label |
+|----------|------------|--------|-----------------|-----------------------|
+| D10 | SO | Pin 2 | P2 Pin 3 | **SI** |
+| D9 | SI | Pin 3 | P2 Pin 6 | **GND** (see note below) |
+| D8 | SD | Pin 4 | P2 Pin 4 | **SD** |
+| D7 | SC | Pin 5 | P2 Pin 5 | **SC** |
+
+The SO-to-SI crossover (P1 Pin 2 → P2 Pin 3) is expected — one device's Serial Out arrives at the other's Serial In. SD and SC are straight-through.
+
+Verify your specific cable's wiring with a multimeter continuity test. See [this sheet](https://docs.google.com/spreadsheets/d/19uAjLaDji9D3lIKIEdB9RHNQ_F-Fo1NnXY90uRH3dQA/edit?usp=sharing) for reference.
+
+**Important — Pin 6 "GND" pad on the breakout:**
+
+The cheap cable routes P1 Pin 3 (GBA's SI) to P2 Pin 6. The breakout board labels this pad "GND" because Pin 6 is normally the ground pin on a standard GBA port. However, the Palmr breakout board simply passes through the connector pin — **it is not tied to an actual ground plane**. It is safe to connect D9 here; the pad will carry the SI signal despite its label.
 
 **Notes:**
-- Keep all signals at 3.3V logic
-- Most cheap GBA link cables are wired per [this sheet](https://docs.google.com/spreadsheets/d/19uAjLaDji9D3lIKIEdB9RHNQ_F-Fo1NnXY90uRH3dQA/edit?usp=sharing) — use the **Player 2** side
-- This build uses the PCB from https://github.com/Palmr/gb-link-cable
+- Keep all signals at 3.3V logic (the XIAO ESP32S3 is 3.3V native, so no level shifting is needed)
 
-**Cable quality warnings:**
-- Do **not** use 8-bit Game Boy cables — they lack the required signals
-- Official multi-play cables have a mid-cable block (signal splitter); cheap cables may lack this
-- Check that pins 2-6 have metal contacts — some budget cables omit SO or SC lines entirely
 
 ----------------------------------------------------------------------
 
