@@ -55,7 +55,9 @@ sunlight (UV) instead of artificial light hacks.
 7. Point sensor toward the sky — the device syncs the in-game meter automatically
 8. Power off: hold button 3 seconds
 
-**Important:** Do not place the sensor behind glass or standard plastic — most glass blocks 90%+ of UV light!
+**Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 3s) when you are not actively playing a Boktai game.
+
+**Important:** Placing the sensor behind standard glass or plastic blocks some UV light! This device will be (not yet) preconfigured to adjust for this with values specifically chosen for a easily sourced, nicely sized transparent box.
 
 ----------------------------------------------------------------------
 
@@ -74,85 +76,11 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 | Mode | How it works | Emulator support |
 |------|--------------|------------------|
 | **Incremental (default, mode 0)** | Sends L3/R3 button presses to step the meter up/down | **Works now** with mGBA libretro core |
-| **Single Analog (mode 1)** | Maps bar count to proportional deflection on one analog axis | Requires emulator support |
+| **Single Analog (mode 1)** | Better for Ojo del Sol! Maps bar count to proportional deflection on one analog axis | Requires emulator support |
 
-**Current recommendation:** Use **Incremental Mode** with the **mGBA libretro core** in RetroArch. This is the only tested, working configuration.
+**Current recommendation:** Use **Incremental Mode** with the **mGBA libretro core** in RetroArch until Single Analog Mode is supported by emulators.
 
-<details>
-<summary>Single Analog Mode — guide for emulator developers</summary>
-
-#### Overview
-
-Single Analog Mode encodes the solar sensor bar count as a proportional deflection on a single analog stick axis. This is simpler and more direct than Incremental Mode (which requires tracking button press sequences) and works naturally with both the Ojo del Sol and a regular gamepad.
-
-#### How it works
-
-The controller sends two simultaneous inputs:
-
-1. **Meter unlock button** (default: R3) — held down the entire time the meter should be adjustable. The emulator should **only** update the in-game solar meter while this button is held. This prevents normal gameplay stick movement from accidentally changing the meter.
-2. **Analog axis** (default: Right Stick X+) — the deflection amount encodes the bar count.
-
-The 0.0–1.0 range of the axis is divided into equal bands based on the game's bar count. The emulator reads the current deflection, determines which band it falls into, and sets the in-game meter to that bar count.
-
-#### Band mapping
-
-**Boktai 1** (8-bar gauge — 9 bands, one per level 0–8):
-
-| Bars | Axis range |
-|------|------------|
-| 0 | 0.00 – 0.11 |
-| 1 | 0.12 – 0.22 |
-| 2 | 0.23 – 0.33 |
-| 3 | 0.34 – 0.44 |
-| 4 | 0.45 – 0.55 |
-| 5 | 0.56 – 0.66 |
-| 6 | 0.67 – 0.77 |
-| 7 | 0.78 – 0.88 |
-| 8 | 0.89 – 1.00 |
-
-**Boktai 2 & 3** (10-bar gauge — 11 bands, one per level 0–10):
-
-| Bars | Axis range |
-|------|------------|
-| 0  | 0.00 – 0.09 |
-| 1  | 0.10 – 0.18 |
-| 2  | 0.19 – 0.27 |
-| 3  | 0.28 – 0.36 |
-| 4  | 0.37 – 0.45 |
-| 5  | 0.46 – 0.54 |
-| 6  | 0.55 – 0.63 |
-| 7  | 0.64 – 0.72 |
-| 8  | 0.73 – 0.81 |
-| 9  | 0.82 – 0.90 |
-| 10 | 0.91 – 1.00 |
-
-The Ojo del Sol sends the midpoint of each band (e.g. 5 bars on Boktai 1 = 0.61). The emulator should use `floor(normalized_axis * num_levels)` clamped to the max bar count.
-
-#### Pseudocode
-
-```
-// On each frame / input poll:
-if (gamepad.isPressed(UNLOCK_BUTTON)) {        // default: R3
-    float axis = gamepad.getRightStickX();      // default axis; 0.0 to 1.0
-    int num_levels = game_max_bars + 1;         // 9 for Boktai 1, 11 for Boktai 2/3
-    int bars = clamp(floor(axis * num_levels), 0, game_max_bars);
-    setSolarMeter(bars);
-}
-// When UNLOCK_BUTTON is not held, the meter is unchanged by stick input
-```
-
-#### Using with a regular gamepad (no Ojo del Sol)
-
-Players can also use this mode with a standard controller. Hold R3 (or the configured unlock button) and push the right stick to the right to set the solar level — further right means more sun. Release R3 to lock the meter at the current value. This gives players manual analog control over the sensor without needing the Ojo del Sol hardware.
-
-#### Defaults
-
-| Setting | Default | Notes |
-|---------|---------|-------|
-| Axis | Right Stick X+ | Configurable to any of 8 axes via `BLE_SINGLE_ANALOG_AXIS` |
-| Unlock button | R3 (0x4000) | Configurable via `BLE_METER_UNLOCK_BUTTON`; can be disabled |
-
-</details>
+**Emulator developers:** See [For Emulator Devs.md](For%20Emulator%20Devs.md) for the Single Analog Mode specification, band mapping tables, and pseudocode.
 
 ### 3. GBA Link Cable (Real Hardware)
 
