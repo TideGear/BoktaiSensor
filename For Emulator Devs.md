@@ -12,7 +12,7 @@ The controller sends two simultaneous inputs:
 1. **Meter unlock button** (default: R3) — held down the entire time the meter should be adjustable. The emulator should **only** update the in-game solar meter while this button is held. This prevents normal gameplay stick movement from accidentally changing the meter.
 2. **Analog axis** (default: Right Stick X+) — the deflection amount encodes the bar count.
 
-The 0.0–1.0 range of the axis is divided into equal bands based on the game's bar count. The emulator reads the current deflection, determines which band it falls into, and sets the in-game meter to that bar count.
+The 0.0–1.0 range of the axis is divided into equal bands based on the game's bar count. The emulator reads the current deflection, normalizes it to 0.0–1.0 for the selected axis direction, determines which band it falls into, and sets the in-game meter to that bar count.
 
 ## Band mapping
 
@@ -46,7 +46,7 @@ The 0.0–1.0 range of the axis is divided into equal bands based on the game's 
 | 9  | 0.82 – 0.90 |
 | 10 | 0.91 – 1.00 |
 
-**Note:** The axis ranges above are rounded for readability. The actual band boundaries fall at exact multiples of `1 / num_levels` (1/9 for Boktai 1, 1/11 for Boktai 2 & 3). Use the `floor()` formula below for precise mapping.
+**Note:** The axis ranges above are rounded for readability. The actual band boundaries fall at exact multiples of `1 / num_levels` (1/9 for Boktai 1, 1/11 for Boktai 2 & 3). Use the `floor()` formula below for precise mapping after normalizing the raw axis input.
 
 The Ojo del Sol sends the midpoint of each band (e.g. 5 bars on Boktai 1 = 0.61). This means even 0 bars is sent as a small positive deflection (the midpoint of band 0), not exact center. The emulator should use `floor(normalized_axis * num_levels)` clamped to the max bar count.
 
@@ -54,10 +54,14 @@ The Ojo del Sol sends the midpoint of each band (e.g. 5 bars on Boktai 1 = 0.61)
 
 ```
 // On each frame / input poll:
-if (gamepad.isPressed(UNLOCK_BUTTON)) {        // default: R3
-    float axis = gamepad.getRightStickX();      // default axis; 0.0 to 1.0
-    int num_levels = game_max_bars + 1;         // 9 for Boktai 1, 11 for Boktai 2/3
-    int bars = clamp(floor(axis * num_levels), 0, game_max_bars);
+if (gamepad.isPressed(UNLOCK_BUTTON)) {          // default: R3
+    float raw = gamepad.getRightStickX();        // API-specific signed axis value
+    float raw_norm = normalizeSignedAxis(raw);   // convert API range to -1.0..1.0
+    float axis_sign = +1.0;                      // +1 for X+/Y+, -1 for X-/Y-
+    float signed_axis = raw_norm * axis_sign;
+    float normalized = clamp((signed_axis + 1.0) * 0.5, 0.0, 1.0);
+    int num_levels = game_max_bars + 1;          // 9 for Boktai 1, 11 for Boktai 2/3
+    int bars = clamp(floor(normalized * num_levels), 0, game_max_bars);
     setSolarMeter(bars);
 }
 // When UNLOCK_BUTTON is not held, the meter is unchanged by stick input

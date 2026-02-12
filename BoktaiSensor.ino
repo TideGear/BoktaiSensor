@@ -162,6 +162,7 @@ int16_t screensaverBlockW = 0;
 int16_t screensaverBlockH = 0;
 bool screensaverBatteryVisible = false;
 int screensaverLastLayoutPct = -2;  // Cache key for layout recalculation (-2 = never calculated)
+bool screensaverLastLayoutBleStatus = false;
 
 void wakeDisplayHardware() {
   // Sleep path disables the charge pump; explicitly restore it before drawing.
@@ -225,6 +226,7 @@ void setup() {
   screensaverTextH = (int16_t)ssH;
   calculateScreensaverLayout();
   screensaverLastLayoutPct = cachedBatteryPct;
+  screensaverLastLayoutBleStatus = BLUETOOTH_ENABLED && (bleConnected || blePairingActive);
   screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
   screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
 
@@ -307,13 +309,13 @@ void loop() {
   handlePowerButton();
   updateScreensaverState();
   updateBluetoothState();
+  updateBatteryStatus();
+  handleLowBatteryCutoff();
 
   // Wait for new sensor data
   bool newData = false;
   if (ltr.newDataAvailable()) {
     float uvi = calculateUVI();
-    updateBatteryStatus();
-    handleLowBatteryCutoff();
     float uviForBars = uvi;
     if (UVI_SMOOTHING_ENABLED) {
       if (!hasSmoothedUvi) {
@@ -358,8 +360,13 @@ void noteScreenActivity() {
   }
 }
 
+bool shouldShowScreensaverBluetoothStatus() {
+  return BLUETOOTH_ENABLED && (bleConnected || blePairingActive);
+}
+
 void calculateScreensaverLayout() {
-  screensaverBatteryVisible = (cachedBatteryPct >= 0) || BLUETOOTH_ENABLED;
+  bool bluetoothStatusVisible = shouldShowScreensaverBluetoothStatus();
+  screensaverBatteryVisible = (cachedBatteryPct >= 0) || bluetoothStatusVisible;
   screensaverBatteryText[0] = '\0';
   screensaverBatteryTextW = 0;
   screensaverBatteryTextH = 0;
@@ -379,13 +386,13 @@ void calculateScreensaverLayout() {
     }
 
     int16_t bluetoothW = 0;
-    if (BLUETOOTH_ENABLED) {
+    if (bluetoothStatusVisible) {
       bluetoothW = STATUS_BT_ICON_W;
     }
 
     if (hasBattery) {
       screensaverBatteryW = screensaverBatteryTextW + SCREENSAVER_BATT_GAP + STATUS_BATT_ICON_W;
-      if (BLUETOOTH_ENABLED) {
+      if (bluetoothStatusVisible) {
         screensaverBatteryW += bluetoothW + STATUS_BT_GAP;
       }
       screensaverBatteryH = max(screensaverBatteryTextH, STATUS_BATT_ICON_H);
@@ -394,7 +401,7 @@ void calculateScreensaverLayout() {
       screensaverBatteryH = bluetoothW > 0 ? STATUS_BT_ICON_H : 0;
     }
 
-    if (BLUETOOTH_ENABLED) {
+    if (bluetoothStatusVisible) {
       screensaverBatteryH = max(screensaverBatteryH, STATUS_BT_ICON_H);
     }
   }
@@ -419,10 +426,11 @@ void drawScreensaverBattery(int16_t x, int16_t y) {
   }
 
   bool hasBattery = (cachedBatteryPct >= 0);
+  bool bluetoothStatusVisible = shouldShowScreensaverBluetoothStatus();
   int16_t cursorX = x;
 
   display.setTextSize(1);
-  if (BLUETOOTH_ENABLED) {
+  if (bluetoothStatusVisible) {
     int16_t btY = y + ((screensaverBatteryH - STATUS_BT_ICON_H) / 2);
     drawBluetoothIcon(cursorX, btY, isBluetoothIconOn());
     cursorX += STATUS_BT_ICON_W;
@@ -457,6 +465,7 @@ void updateScreensaverState() {
     screensaverDy = 1;
     calculateScreensaverLayout();
     screensaverLastLayoutPct = cachedBatteryPct;
+    screensaverLastLayoutBleStatus = shouldShowScreensaverBluetoothStatus();
     screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
     screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
     lastScreensaverMoveMs = 0;
@@ -474,9 +483,12 @@ void drawScreensaver() {
   }
   lastScreensaverMoveMs = now;
 
-  if (screensaverLastLayoutPct != cachedBatteryPct) {
+  bool bluetoothStatusVisible = shouldShowScreensaverBluetoothStatus();
+  if (screensaverLastLayoutPct != cachedBatteryPct ||
+      screensaverLastLayoutBleStatus != bluetoothStatusVisible) {
     calculateScreensaverLayout();
     screensaverLastLayoutPct = cachedBatteryPct;
+    screensaverLastLayoutBleStatus = bluetoothStatusVisible;
   }
 
   int16_t maxX = SCREEN_WIDTH - screensaverBlockW;
@@ -978,12 +990,21 @@ void enterDeepSleep() {
 
 // Draw Boktai-style segmented sun gauge (8 or 10 segments)
 void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
-  int barWidth = SCREEN_WIDTH - 4;  // Leave 4px total margin
+  if (totalBars <= 0) {
+    return;
+  }
+
+  int barWidth = SCREEN_WIDTH - 4;  // Target gauge width (keeps side margins)
   int gap = 2;
   int segW = (barWidth - (gap * (totalBars - 1))) / totalBars;
+  if (segW < 1) {
+    segW = 1;
+  }
+  int usedWidth = (segW * totalBars) + (gap * (totalBars - 1));
+  int xStart = (SCREEN_WIDTH - usedWidth) / 2;
 
   for (int i = 0; i < totalBars; i++) {
-    int x = i * (segW + gap);
+    int x = xStart + (i * (segW + gap));
     if (i < filledBars) {
       display.fillRect(x, y, segW, h, SSD1306_WHITE); // Filled segment
     } else {

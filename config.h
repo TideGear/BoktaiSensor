@@ -17,9 +17,9 @@
 // -----------------------------------------------------------------------------
 // AUTOMATIC MODE (Recommended)
 // -----------------------------------------------------------------------------
-// When true, bar thresholds are auto-calculated from UV_MIN and UV_SATURATION.
+// When true, bar thresholds are auto-calculated from AUTO_UV_MIN and AUTO_UV_SATURATION.
 // This uses the same UV range for all games, evenly distributing bars.
-// Note: UV_SATURATION is a ceiling/clamp point, not the first full-bar threshold.
+// Note: AUTO_UV_SATURATION is a ceiling/clamp point, not the first full-bar threshold.
 // Set to false to use the per-game manual calibration arrays below.
 const bool AUTO_MODE = true;
 
@@ -122,8 +122,8 @@ const float BOKTAI_3_UV[10] = {
 // NOTE: The XIAO ESP32S3 does NOT have built-in battery voltage monitoring!
 // You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
 // the midpoint connected to BAT_PIN. Without this, battery % is unavailable.
-// Set BATTERY_SENSE_ENABLED = false if you do not wire the divider.
-const bool BATTERY_SENSE_ENABLED = true;
+// Safe default is disabled until the divider is wired.
+const bool BATTERY_SENSE_ENABLED = false;
 const int BAT_PIN = 2;       // D1/A1 (GPIO2) - connect to voltage divider midpoint
 const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery (must be > VOLT_MIN)
@@ -140,7 +140,8 @@ const float VOLT_DIVIDER_MULT = 2.21;
 // -----------------------------------------------------------------------------
 // LOW-VOLTAGE CUTOFF (requires battery sense divider)
 // -----------------------------------------------------------------------------
-const bool BATTERY_CUTOFF_ENABLED = true;
+// Keep disabled by default; only enable after battery sensing is verified.
+const bool BATTERY_CUTOFF_ENABLED = false;
 const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
 const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 

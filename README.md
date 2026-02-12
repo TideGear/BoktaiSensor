@@ -131,7 +131,7 @@ BAT+ ----[100K]----+---- D1 (GPIO2)
 GND ---------------+
 ```
 
-Without this, set `BATTERY_SENSE_ENABLED = false` in config.h to hide the battery indicator.
+Battery sensing is disabled by default (`BATTERY_SENSE_ENABLED = false`). After wiring the divider, set `BATTERY_SENSE_ENABLED = true` in `config.h` to show battery data.
 
 **Calibration:** If battery % is wrong at full charge, adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if high).
 
@@ -242,7 +242,7 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 
 ### Screensaver
 
-After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan).
+After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan). The status row appears only when battery data is available and/or BLE is actively connected or pairing.
 
 ----------------------------------------------------------------------
 
@@ -314,6 +314,8 @@ If the bar display feels jumpy:
 ### Power Management
 - Sensor power can be GPIO-controlled (`SENSOR_POWER_PIN`) to cut power during sleep
 - Alternatively, set `SENSOR_POWER_ENABLED = false` in config.h and wire LTR390 VIN to 3V3 instead of a GPIO pin
+- Battery sensing and low-voltage cutoff are disabled by default; enable after wiring and validating the battery divider (`BATTERY_SENSE_ENABLED`, `BATTERY_CUTOFF_ENABLED`)
+- Battery sampling/cutoff checks run on a timed loop and are not dependent on UV "new data" events
 - OLED uses Display OFF + Charge Pump OFF commands
 - On wake, firmware explicitly re-enables the OLED charge pump/display before drawing
 - Deep sleep current: ~10µA (varies with module pull-ups)
@@ -335,13 +337,13 @@ Most glass and many plastics block UV strongly (often 90%+). Compensation can co
 4. Indoor UV is near zero — test outside
 
 ### Battery shows 0%
-You need the voltage divider circuit. Without it, set `BATTERY_SENSE_ENABLED = false`.
+You need the voltage divider circuit and `BATTERY_SENSE_ENABLED = true`. Keep battery sensing disabled until the divider is wired.
 
 ### Battery % is wrong
 Adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if high).
 
 ### Device powers off quickly
-Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Disable cutoff if not using the voltage divider.
+Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default; only enable it after battery sensing is wired and validated.
 
 ### Device won't wake
 1. Hold button for full 3 seconds
