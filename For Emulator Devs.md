@@ -46,7 +46,7 @@ The 0.0–1.0 range of the axis is divided into equal bands based on the game's 
 | 9  | 0.82 – 0.90 |
 | 10 | 0.91 – 1.00 |
 
-The Ojo del Sol sends the midpoint of each band (e.g. 5 bars on Boktai 1 = 0.61). The emulator should use `floor(normalized_axis * num_levels)` clamped to the max bar count.
+The Ojo del Sol sends the midpoint of each band (e.g. 5 bars on Boktai 1 = 0.61). This means even 0 bars is sent as a small positive deflection (the midpoint of band 0), not exact center. The emulator should use `floor(normalized_axis * num_levels)` clamped to the max bar count.
 
 ## Pseudocode
 

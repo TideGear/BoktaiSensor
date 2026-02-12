@@ -55,11 +55,11 @@ bool uiScreenChanged = false;
 
 // Battery state
 unsigned long lastBatterySampleTime = 0;
-int cachedBatteryPct = 0;
+const int BATTERY_PCT_UNKNOWN = -1;
+int cachedBatteryPct = BATTERY_PCT_UNKNOWN;
 float cachedBatteryVoltage = -1.0f;
 float cachedBatteryAdcAvg = -1.0f;
 bool hasBatteryReading = false;
-const int BATTERY_PCT_UNKNOWN = -1;
 unsigned long lowBatteryStart = 0;
 
 // Screensaver state
@@ -205,6 +205,8 @@ void setup() {
 
   if (BATTERY_SENSE_ENABLED) {
     analogSetPinAttenuation(BAT_PIN, ADC_11db);
+    cachedBatteryPct = BATTERY_PCT_UNKNOWN;
+    cachedBatteryVoltage = -1.0f;
     cachedBatteryAdcAvg = -1.0f;
     hasBatteryReading = false;
   } else {
@@ -364,7 +366,7 @@ void noteScreenActivity() {
 }
 
 void calculateScreensaverLayout() {
-  screensaverBatteryVisible = (cachedBatteryPct >= 0) || isBluetoothReserved();
+  screensaverBatteryVisible = (cachedBatteryPct >= 0) || BLUETOOTH_ENABLED;
   screensaverBatteryText[0] = '\0';
   screensaverBatteryTextW = 0;
   screensaverBatteryTextH = 0;
@@ -698,7 +700,7 @@ float applyEnclosureCompensation(float measuredUvi) {
 }
 
 float getAutoThreshold(int numBars, int barIndex) {
-  if (AUTO_UV_MAX <= AUTO_UV_MIN) {
+  if (AUTO_UV_SATURATION <= AUTO_UV_MIN) {
     return AUTO_UV_MIN;
   }
   if (barIndex < 1) {
@@ -707,7 +709,7 @@ float getAutoThreshold(int numBars, int barIndex) {
   if (barIndex > numBars) {
     barIndex = numBars;
   }
-  float range = AUTO_UV_MAX - AUTO_UV_MIN;
+  float range = AUTO_UV_SATURATION - AUTO_UV_MIN;
   return AUTO_UV_MIN + (range * (barIndex - 1)) / numBars;
 }
 
@@ -739,7 +741,7 @@ int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
   int numBars = GAME_BARS[game];
   int target = getBoktaiBars(uvi, game);
 
-  if (!BAR_HYSTERESIS_ENABLED || BAR_HYSTERESIS <= 0.0f || (AUTO_MODE && AUTO_UV_MAX <= AUTO_UV_MIN)) {
+  if (!BAR_HYSTERESIS_ENABLED || BAR_HYSTERESIS <= 0.0f || (AUTO_MODE && AUTO_UV_SATURATION <= AUTO_UV_MIN)) {
     return target;
   }
 
@@ -777,30 +779,24 @@ int getBoktaiBars(float uvi, int game) {
   int numBars = GAME_BARS[game];
   
   if (AUTO_MODE) {
-    // Auto mode: linearly interpolate between UV_MIN and UV_MAX
-    // UV < MIN = 0 bars, UV >= MAX = full bars
-    if (AUTO_UV_MAX <= AUTO_UV_MIN) {
+    // Auto mode: linearly interpolate between UV_MIN and UV_SATURATION
+    // UV < MIN = 0 bars, UV >= SATURATION = full bars
+    if (AUTO_UV_SATURATION <= AUTO_UV_MIN) {
       return (uvi >= AUTO_UV_MIN) ? numBars : 0;
     }
     if (uvi < AUTO_UV_MIN) return 0;
-    if (uvi >= AUTO_UV_MAX) return numBars;
+    if (uvi >= AUTO_UV_SATURATION) return numBars;
     
     // Calculate which bar this UV level falls into
-    // Bar 1 starts at UV_MIN, Bar N (full) is at UV_MAX
-    float range = AUTO_UV_MAX - AUTO_UV_MIN;
+    // Bar 1 starts at UV_MIN; highest bar can begin before UV_SATURATION.
+    float range = AUTO_UV_SATURATION - AUTO_UV_MIN;
     float normalized = (uvi - AUTO_UV_MIN) / range;  // 0.0 to 1.0
     int bars = (int)(normalized * numBars) + 1;      // 1 to numBars
     return constrain(bars, 1, numBars);
   }
   
   // Manual mode: use per-game threshold arrays
-  const float* thresholds;
-  switch (game) {
-    case 0: thresholds = BOKTAI_1_UV; break;
-    case 1: thresholds = BOKTAI_2_UV; break;
-    case 2: thresholds = BOKTAI_3_UV; break;
-    default: thresholds = BOKTAI_1_UV; break;
-  }
+  const float* thresholds = getManualThresholds(game);
   
   // Find highest threshold that UV exceeds
   for (int i = numBars - 1; i >= 0; i--) {
@@ -1006,10 +1002,6 @@ void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
   }
 }
 
-bool isBluetoothReserved() {
-  return BLUETOOTH_ENABLED;
-}
-
 bool isBluetoothIconOn() {
   if (!BLUETOOTH_ENABLED) {
     return false;
@@ -1048,7 +1040,7 @@ void drawBatteryGauge(int x, int y, int pct) {
 
 void drawStatusIcons() {
   bool batteryVisible = (cachedBatteryPct >= 0);
-  bool btReserved = isBluetoothReserved();
+  bool btReserved = BLUETOOTH_ENABLED;
   bool btOn = isBluetoothIconOn();
 
   int16_t batteryX = SCREEN_WIDTH - STATUS_BATT_ICON_W - STATUS_RIGHT_MARGIN;

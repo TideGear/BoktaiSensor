@@ -17,13 +17,14 @@
 // -----------------------------------------------------------------------------
 // AUTOMATIC MODE (Recommended)
 // -----------------------------------------------------------------------------
-// When true, bar thresholds are auto-calculated from UV_MIN and UV_MAX.
+// When true, bar thresholds are auto-calculated from UV_MIN and UV_SATURATION.
 // This uses the same UV range for all games, evenly distributing bars.
+// Note: UV_SATURATION is a ceiling/clamp point, not the first full-bar threshold.
 // Set to false to use the per-game manual calibration arrays below.
 const bool AUTO_MODE = true;
 
 const float AUTO_UV_MIN = 0.5;   // UV Index for 1 bar (shade/overcast)
-const float AUTO_UV_MAX = 6.0;   // UV Index for full bars (typical sunny day)
+const float AUTO_UV_SATURATION = 6.0;   // UV Index where output is fully saturated/clamped
 
 // -----------------------------------------------------------------------------
 // UV ENCLOSURE COMPENSATION
@@ -222,7 +223,9 @@ const uint16_t BLE_BUTTON_INC = 0x4000;              // R3 (Right Stick click)
 // 7 = Right Y+  (right stick down)
 const uint8_t BLE_SINGLE_ANALOG_AXIS = 5;
 // When true, a configurable button is held while the analog axis is deflected.
-// The button is released when the stick returns to center (0 bars with 0 deflection).
+// With midpoint band mapping, 0 bars still has a small deflection, so this button
+// remains held during normal Single Analog updates and is released only when the
+// controlled axis is explicitly returned to center.
 const bool BLE_METER_UNLOCK_BUTTON_ENABLED = true;
 const uint16_t BLE_METER_UNLOCK_BUTTON = 0x4000;  // R3 (Right Stick click)
 // How often (ms) to release and re-press the unlock button so that apps/emulators

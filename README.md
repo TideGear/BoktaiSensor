@@ -231,7 +231,7 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 **Single Analog Mode specifics:**
 - Updates immediately on bar change (no rate throttling)
 - Maps bar count to a proportional deflection on a configurable analog axis (default: Right X+)
-- Optionally holds a configurable "meter unlock" button (default: R3) while the axis is deflected (`BLE_METER_UNLOCK_BUTTON_ENABLED`). The button is released and re-pressed on every deflection change and periodically (`BLE_METER_UNLOCK_REFRESH_MS`, default 1000ms) to ensure apps/emulators always register it.
+- Optionally holds a configurable "meter unlock" button (default: R3) while the axis is active (`BLE_METER_UNLOCK_BUTTON_ENABLED`). Single Analog mode uses midpoint band mapping, so even 0 bars sends a small deflection (not exact center). The button is released and re-pressed on every deflection change and periodically (`BLE_METER_UNLOCK_REFRESH_MS`, default 1000ms) to ensure apps/emulators always register it.
 - Axis and unlock button are configurable in config.h (`BLE_SINGLE_ANALOG_AXIS`, `BLE_METER_UNLOCK_BUTTON`)
 
 **Pairing:**
@@ -255,10 +255,10 @@ Bar thresholds are calculated from two values in config.h:
 ```c
 const bool AUTO_MODE = true;
 const float AUTO_UV_MIN = 0.5;   // UV Index for 1 bar
-const float AUTO_UV_MAX = 6.0;   // UV Index for full bars
+const float AUTO_UV_SATURATION = 6.0;   // UV Index ceiling (output clamp)
 ```
 
-Bars are distributed evenly across this range for all games. UV Index 6.0 is typical for a sunny day in temperate climates.
+Bars are distributed evenly across this range for all games. `AUTO_UV_SATURATION` is a saturation ceiling, so the highest bar can begin before this value and then remains clamped at full above it. UV Index 6.0 is typical for a sunny day in temperate climates.
 
 ### Manual Mode
 
