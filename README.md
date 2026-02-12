@@ -193,7 +193,11 @@ The cheap cable routes P1 Pin 3 (GBA's SI) to P2 Pin 6. The breakout board label
 ### Board Settings (Arduino IDE)
 
 - **Boards Manager URL:** `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
-- **Board package:** esp32 by Espressif Systems (2.0.8 or newer)
+- **Board package:** esp32 by Espressif Systems
+- **Recommended version:** `3.3.6`
+- **Known issue:** `3.3.7` may crash during BLE startup with:
+  `assert failed: block_locate_free tlsf_control_functions.h:618`
+  If this happens, roll back to `3.3.6` in Boards Manager.
 - **Board:** XIAO_ESP32S3
 - **USB CDC On Boot:** Enabled (for serial debugging)
 
@@ -317,6 +321,13 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Disable cutoff if not using th
 1. Hold button for full 3 seconds
 2. If you release early, the "Hold 3s to power on" prompt appears for 10 seconds
 3. After 10s of no activity, it returns to sleep
+
+### BLE crashes at startup (`block_locate_free` TLSF assert)
+If Serial Monitor shows:
+`assert failed: block_locate_free tlsf_control_functions.h:618`
+right after BLE/BTDM startup logs, this is a known board-package compatibility issue on some setups with esp32 core `3.3.7`.
+
+**Fix:** In Arduino IDE -> Boards Manager, install esp32 core `3.3.6` (or the last known-good version for your environment), then rebuild and flash.
 
 ----------------------------------------------------------------------
 
