@@ -174,7 +174,7 @@ const int GBA_PIN_SI = 8;   // D9 (GPIO8)  - SI (bit 2)
 const int GBA_PIN_SO = 10;  // D10 (GPIO10) - SO (bit 3)
 
 // -----------------------------------------------------------------------------
-// BLUETOOTH HID (mGBA)
+// BLUETOOTH HID
 // -----------------------------------------------------------------------------
 // Set BLUETOOTH_ENABLED to false to disable BLE entirely.
 const bool BLUETOOTH_ENABLED = true;
@@ -189,13 +189,32 @@ const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // Button press rate
 const bool BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND = true;
 // BLE control mode:
 // 0 = Incremental (default): uses BLE_BUTTON_DEC/INC to step the meter; resync enabled.
-// 1 = Chord: uses dual-stick direction chords per bar count; resync skipped.
+// 1 = Single Analog: maps bar count to a proportional deflection on one analog axis.
 const uint8_t BLE_CONTROL_MODE = 0;
-// Xbox gamepad button values (from XboxGamepadDevice.h)
+
+// Incremental mode button mapping (from XboxGamepadDevice.h)
 // XBOX_BUTTON_LS = 0x2000 (Left Stick click = L3)
 // XBOX_BUTTON_RS = 0x4000 (Right Stick click = R3)
 const uint16_t BLE_BUTTON_DEC = 0x2000;              // L3 (Left Stick click)
 const uint16_t BLE_BUTTON_INC = 0x4000;              // R3 (Right Stick click)
+
+// Single Analog axis (used when BLE_CONTROL_MODE = 1):
+// 0 = Left  X-  (left stick left)
+// 1 = Left  X+  (left stick right)
+// 2 = Left  Y-  (left stick up)
+// 3 = Left  Y+  (left stick down)
+// 4 = Right X-  (right stick left)
+// 5 = Right X+  (right stick right)  [default]
+// 6 = Right Y-  (right stick up)
+// 7 = Right Y+  (right stick down)
+const uint8_t BLE_SINGLE_ANALOG_AXIS = 5;
+// When true, a configurable button is held while the analog axis is deflected.
+// The button is released when the stick returns to center (0 bars with 0 deflection).
+const bool BLE_METER_UNLOCK_BUTTON_ENABLED = true;
+const uint16_t BLE_METER_UNLOCK_BUTTON = 0x4000;  // R3 (Right Stick click)
+// How often (ms) to release and re-press the unlock button so that apps/emulators
+// that start listening mid-session still register it as held. 0 = no periodic refresh.
+const unsigned long BLE_METER_UNLOCK_REFRESH_MS = 1000;
 
 // =============================================================================
 // DEBUG

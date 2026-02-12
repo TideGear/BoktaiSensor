@@ -145,12 +145,12 @@ enum BleSyncPhase {
   BLE_SYNC_REFILL
 };
 BleSyncPhase bleSyncPhase = BLE_SYNC_NONE;
-int bleChordBars = -1;
-int16_t bleChordLeftX = 0;
-int16_t bleChordLeftY = 0;
-int16_t bleChordRightX = 0;
-int16_t bleChordRightY = 0;
-bool bleChordActive = false;
+// Single Analog mode state
+int bleSingleAnalogBars = -1;
+int16_t bleSingleAnalogValue = 0;
+bool bleSingleAnalogActive = false;
+bool bleSingleAnalogButtonHeld = false;
+unsigned long bleSingleAnalogLastRefreshMs = 0;
 
 char screensaverBatteryText[6] = "";
 int16_t screensaverBatteryTextW = 0;
@@ -331,6 +331,7 @@ void loop() {
 
   screensaverJustExited = false;
   handleBlePresses();
+  refreshSingleAnalogButton();
   delay(10); // Short delay for responsive button handling
 }
 
@@ -1217,100 +1218,163 @@ int getBleActiveNumSteps() {
   return getBleMeterStepsForGame(currentGame);
 }
 
-void resetBleChordState() {
-  bleChordBars = -1;
-  bleChordLeftX = 0;
-  bleChordLeftY = 0;
-  bleChordRightX = 0;
-  bleChordRightY = 0;
-  bleChordActive = false;
+// ---------------------------------------------------------------------------
+// Single Analog mode (BLE_CONTROL_MODE == 1)
+// Maps the current bar count to a proportional deflection on one analog axis.
+// The 0.0-1.0 range is divided into (numBars + 1) equal bands; we send the
+// midpoint of the band for the current bar count.
+// ---------------------------------------------------------------------------
+
+void resetSingleAnalogState() {
+  bleSingleAnalogBars = -1;
+  bleSingleAnalogValue = 0;
+  bleSingleAnalogActive = false;
+  bleSingleAnalogButtonHeld = false;
+  bleSingleAnalogLastRefreshMs = 0;
 }
 
-void getBleChordForBars(int bars, int numBars, int16_t &leftX, int16_t &leftY,
-                        int16_t &rightX, int16_t &rightY) {
-  leftX = 0;
-  leftY = 0;
-  rightX = 0;
-  rightY = 0;
-
-  if (numBars < 0) {
-    numBars = 0;
+// Return the midpoint fraction for a given bar count.
+// Boktai 1 (8 bars) → 9 bands, Boktai 2 & 3 (10 bars) → 11 bands.
+float getSingleAnalogFraction(int bars, int numBars) {
+  if (numBars <= 0) {
+    return 0.0f;
   }
-  bars = constrain(bars, 0, numBars);
-
-  switch (bars) {
-    case 0:  leftY = XBOX_STICK_MIN; rightY = XBOX_STICK_MIN; break; // Left up + Right up
-    case 1:  leftY = XBOX_STICK_MIN; rightY = XBOX_STICK_MAX; break; // Left up + Right down
-    case 2:  leftY = XBOX_STICK_MIN; rightX = XBOX_STICK_MIN; break; // Left up + Right left
-    case 3:  leftY = XBOX_STICK_MIN; rightX = XBOX_STICK_MAX; break; // Left up + Right right
-    case 4:  leftY = XBOX_STICK_MAX; rightY = XBOX_STICK_MIN; break; // Left down + Right up
-    case 5:  leftY = XBOX_STICK_MAX; rightY = XBOX_STICK_MAX; break; // Left down + Right down
-    case 6:  leftY = XBOX_STICK_MAX; rightX = XBOX_STICK_MIN; break; // Left down + Right left
-    case 7:  leftY = XBOX_STICK_MAX; rightX = XBOX_STICK_MAX; break; // Left down + Right right
-    case 8:  leftX = XBOX_STICK_MIN; rightY = XBOX_STICK_MIN; break; // Left left + Right up
-    case 9:  leftX = XBOX_STICK_MIN; rightY = XBOX_STICK_MAX; break; // Left left + Right down
-    case 10: leftX = XBOX_STICK_MIN; rightX = XBOX_STICK_MIN; break; // Left left + Right left
-    default: break;
-  }
+  int levels = numBars + 1;            // 0-bar band counts as a level
+  float bandWidth = 1.0f / levels;
+  float midpoint = (bars * bandWidth) + (bandWidth * 0.5f);
+  if (midpoint > 1.0f) midpoint = 1.0f;
+  return midpoint;
 }
 
-void applyBleChord(int bars, int numBars) {
+// Convert a 0.0–1.0 fraction to a signed stick deflection for the chosen axis.
+// Positive axes map fraction to 0…XBOX_STICK_MAX,
+// Negative axes map fraction to 0…XBOX_STICK_MIN (toward negative).
+int16_t fractionToStickValue(float fraction, bool negative) {
+  if (fraction <= 0.0f) return 0;
+  if (fraction > 1.0f) fraction = 1.0f;
+  if (negative) {
+    return (int16_t)(fraction * XBOX_STICK_MIN);  // XBOX_STICK_MIN is negative
+  }
+  return (int16_t)(fraction * XBOX_STICK_MAX);
+}
+
+void applySingleAnalog(int bars, int numBars) {
   if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
     return;
   }
 
-  if (numBars < 0) {
-    numBars = 0;
-  }
+  if (numBars < 0) numBars = 0;
   bars = constrain(bars, 0, numBars);
 
-  bool barsChanged = (!bleChordActive || bars != bleChordBars);
-
-  int16_t leftX = 0;
-  int16_t leftY = 0;
-  int16_t rightX = 0;
-  int16_t rightY = 0;
-  getBleChordForBars(bars, numBars, leftX, leftY, rightX, rightY);
-
-  // Chord mode uses stick directions only (no L3 modifier).
-
-  if (barsChanged || !bleChordActive || leftX != bleChordLeftX || leftY != bleChordLeftY) {
-    xboxGamepad->setLeftThumb(leftX, leftY);
+  bool barsChanged = (!bleSingleAnalogActive || bars != bleSingleAnalogBars);
+  if (!barsChanged) {
+    return;
   }
-  if (barsChanged || !bleChordActive || rightX != bleChordRightX || rightY != bleChordRightY) {
+
+  float frac = getSingleAnalogFraction(bars, numBars);
+  uint8_t axis = BLE_SINGLE_ANALOG_AXIS;
+
+  // Determine which stick and sign from the axis selector
+  bool isLeft  = (axis < 4);
+  bool isX     = (axis % 4) < 2;
+  bool isNeg   = (axis % 2) == 0;
+
+  int16_t value = fractionToStickValue(frac, isNeg);
+
+  // Build the stick values; leave the other stick at its current position (0).
+  int16_t leftX = 0, leftY = 0, rightX = 0, rightY = 0;
+  if (isLeft) {
+    if (isX) leftX = value; else leftY = value;
+  } else {
+    if (isX) rightX = value; else rightY = value;
+  }
+
+  // Release-and-repress the unlock button with every stick change so that
+  // apps/emulators always register it, even if they started listening late.
+  if (BLE_METER_UNLOCK_BUTTON_ENABLED) {
+    bool needButton = (value != 0);
+    if (needButton) {
+      if (bleSingleAnalogButtonHeld) {
+        // Release first, send report, then re-press with the new stick value
+        xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
+        xboxGamepad->sendGamepadReport();
+      }
+      xboxGamepad->press(BLE_METER_UNLOCK_BUTTON);
+      bleSingleAnalogButtonHeld = true;
+      bleSingleAnalogLastRefreshMs = millis();
+    } else if (bleSingleAnalogButtonHeld) {
+      xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
+      bleSingleAnalogButtonHeld = false;
+    }
+  }
+
+  // Only update the stick that this mode controls
+  if (isLeft) {
+    xboxGamepad->setLeftThumb(leftX, leftY);
+  } else {
     xboxGamepad->setRightThumb(rightX, rightY);
   }
-
   xboxGamepad->sendGamepadReport();
 
-  bleChordBars = bars;
-  bleChordLeftX = leftX;
-  bleChordLeftY = leftY;
-  bleChordRightX = rightX;
-  bleChordRightY = rightY;
-  bleChordActive = true;
+  bleSingleAnalogBars = bars;
+  bleSingleAnalogValue = value;
+  bleSingleAnalogActive = true;
 }
 
-void releaseBleChord() {
+void releaseSingleAnalog() {
   if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
-    resetBleChordState();
+    resetSingleAnalogState();
     return;
   }
 
   bool changed = false;
-  if (bleChordLeftX != 0 || bleChordLeftY != 0) {
-    xboxGamepad->setLeftThumb(0, 0);
+  uint8_t axis = BLE_SINGLE_ANALOG_AXIS;
+  bool isLeft = (axis < 4);
+
+  if (BLE_METER_UNLOCK_BUTTON_ENABLED && bleSingleAnalogButtonHeld) {
+    xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
     changed = true;
   }
-  if (bleChordRightX != 0 || bleChordRightY != 0) {
-    xboxGamepad->setRightThumb(0, 0);
+
+  if (bleSingleAnalogValue != 0) {
+    if (isLeft) {
+      xboxGamepad->setLeftThumb(0, 0);
+    } else {
+      xboxGamepad->setRightThumb(0, 0);
+    }
     changed = true;
   }
+
   if (changed) {
     xboxGamepad->sendGamepadReport();
   }
 
-  resetBleChordState();
+  resetSingleAnalogState();
+}
+
+// Periodically release and re-press the unlock button so apps that start
+// listening mid-session still register it as held.
+void refreshSingleAnalogButton() {
+  if (!BLUETOOTH_ENABLED || BLE_CONTROL_MODE != 1) {
+    return;
+  }
+  if (!BLE_METER_UNLOCK_BUTTON_ENABLED || BLE_METER_UNLOCK_REFRESH_MS == 0) {
+    return;
+  }
+  if (!bleSingleAnalogButtonHeld || xboxGamepad == nullptr) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if ((now - bleSingleAnalogLastRefreshMs) < BLE_METER_UNLOCK_REFRESH_MS) {
+    return;
+  }
+
+  xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
+  xboxGamepad->sendGamepadReport();
+  xboxGamepad->press(BLE_METER_UNLOCK_BUTTON);
+  xboxGamepad->sendGamepadReport();
+  bleSingleAnalogLastRefreshMs = now;
 }
 
 void applyBlePressEffect(int direction) {
@@ -1385,7 +1449,7 @@ void updateBluetoothState() {
         bleSyncPending = false;
         resetBlePressState();
         resetBleSyncState();
-        resetBleChordState();
+        resetSingleAnalogState();
       } else {
         bleSyncPending = true;
         bleEstimateValid = false;
@@ -1394,7 +1458,7 @@ void updateBluetoothState() {
       resetBlePressState();
       resetBleSyncState();
       if (BLE_CONTROL_MODE == 1) {
-        releaseBleChord();
+        releaseSingleAnalog();
       }
       stopBleAdvertising();
       // If a connection drops, re-enter pairing/advertising for the usual timeout.
@@ -1427,10 +1491,10 @@ void updateBluetoothMeter(int deviceBars, int numBars) {
 
   if (BLE_CONTROL_MODE == 1) {
     if (bleGameChanged) {
-      resetBleChordState();
+      resetSingleAnalogState();
       bleGameChanged = false;
     }
-    applyBleChord(bleDeviceBars, bleDeviceNumBars);
+    applySingleAnalog(bleDeviceBars, bleDeviceNumBars);
     return;
   }
 

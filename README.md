@@ -14,7 +14,7 @@ https://www.paypal.com/donate/?hosted_button_id=THMF458QTBCAL
 I'm looking for serious contributors to...**
 
 **1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight.**\
-**2. Add support via Chord Control Mode to their emulators.**\
+**2. Add support via Single Analog Control Mode to their emulators.**\
 **3. Test and fix the code if needed.**\
 **4. Test the GBA link cable support.**\
 **5. Create a cool 3D-printable case.**\
@@ -74,26 +74,83 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 | Mode | How it works | Emulator support |
 |------|--------------|------------------|
 | **Incremental (default, mode 0)** | Sends L3/R3 button presses to step the meter up/down | **Works now** with mGBA libretro core |
-| **Chord (mode 1)** | Uses dual-stick direction chords (no L3) to encode bar value directly | **Not yet supported** by most emulators |
+| **Single Analog (mode 1)** | Maps bar count to proportional deflection on one analog axis | Requires emulator support |
 
 **Current recommendation:** Use **Incremental Mode** with the **mGBA libretro core** in RetroArch. This is the only tested, working configuration.
 
-**Chord Mode status:** On January 23, 2026, I submitted a PR to the libretro mGBA core to add chord support (along with other solar tweaks). It may or may not be merged.
-
 <details>
-<summary>Chord mapping (for emulator developers)</summary>
+<summary>Single Analog Mode — guide for emulator developers</summary>
 
-- 0 bars: Left stick up + Right stick up
-- 1 bar: Left stick up + Right stick down
-- 2 bars: Left stick up + Right stick left
-- 3 bars: Left stick up + Right stick right
-- 4 bars: Left stick down + Right stick up
-- 5 bars: Left stick down + Right stick down
-- 6 bars: Left stick down + Right stick left
-- 7 bars: Left stick down + Right stick right
-- 8 bars: Left stick left + Right stick up
-- 9 bars (Boktai 2/3): Left stick left + Right stick down
-- 10 bars (Boktai 2/3): Left stick left + Right stick left
+#### Overview
+
+Single Analog Mode encodes the solar sensor bar count as a proportional deflection on a single analog stick axis. This is simpler and more direct than Incremental Mode (which requires tracking button press sequences) and works naturally with both the Ojo del Sol and a regular gamepad.
+
+#### How it works
+
+The controller sends two simultaneous inputs:
+
+1. **Meter unlock button** (default: R3) — held down the entire time the meter should be adjustable. The emulator should **only** update the in-game solar meter while this button is held. This prevents normal gameplay stick movement from accidentally changing the meter.
+2. **Analog axis** (default: Right Stick X+) — the deflection amount encodes the bar count.
+
+The 0.0–1.0 range of the axis is divided into equal bands based on the game's bar count. The emulator reads the current deflection, determines which band it falls into, and sets the in-game meter to that bar count.
+
+#### Band mapping
+
+**Boktai 1** (8-bar gauge — 9 bands, one per level 0–8):
+
+| Bars | Axis range |
+|------|------------|
+| 0 | 0.00 – 0.11 |
+| 1 | 0.12 – 0.22 |
+| 2 | 0.23 – 0.33 |
+| 3 | 0.34 – 0.44 |
+| 4 | 0.45 – 0.55 |
+| 5 | 0.56 – 0.66 |
+| 6 | 0.67 – 0.77 |
+| 7 | 0.78 – 0.88 |
+| 8 | 0.89 – 1.00 |
+
+**Boktai 2 & 3** (10-bar gauge — 11 bands, one per level 0–10):
+
+| Bars | Axis range |
+|------|------------|
+| 0  | 0.00 – 0.09 |
+| 1  | 0.10 – 0.18 |
+| 2  | 0.19 – 0.27 |
+| 3  | 0.28 – 0.36 |
+| 4  | 0.37 – 0.45 |
+| 5  | 0.46 – 0.54 |
+| 6  | 0.55 – 0.63 |
+| 7  | 0.64 – 0.72 |
+| 8  | 0.73 – 0.81 |
+| 9  | 0.82 – 0.90 |
+| 10 | 0.91 – 1.00 |
+
+The Ojo del Sol sends the midpoint of each band (e.g. 5 bars on Boktai 1 = 0.61). The emulator should use `floor(normalized_axis * num_levels)` clamped to the max bar count.
+
+#### Pseudocode
+
+```
+// On each frame / input poll:
+if (gamepad.isPressed(UNLOCK_BUTTON)) {        // default: R3
+    float axis = gamepad.getRightStickX();      // default axis; 0.0 to 1.0
+    int num_levels = game_max_bars + 1;         // 9 for Boktai 1, 11 for Boktai 2/3
+    int bars = clamp(floor(axis * num_levels), 0, game_max_bars);
+    setSolarMeter(bars);
+}
+// When UNLOCK_BUTTON is not held, the meter is unchanged by stick input
+```
+
+#### Using with a regular gamepad (no Ojo del Sol)
+
+Players can also use this mode with a standard controller. Hold R3 (or the configured unlock button) and push the right stick to the right to set the solar level — further right means more sun. Release R3 to lock the meter at the current value. This gives players manual analog control over the sensor without needing the Ojo del Sol hardware.
+
+#### Defaults
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| Axis | Right Stick X+ | Configurable to any of 8 axes via `BLE_SINGLE_ANALOG_AXIS` |
+| Unlock button | R3 (0x4000) | Configurable via `BLE_METER_UNLOCK_BUTTON`; can be disabled |
 
 </details>
 
@@ -238,9 +295,11 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 - For Boktai 1, mGBA uses 10 internal steps despite 8 visible bars — the firmware compensates (disable via `BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND = false` if fixed)
 - **Button remapping:** Change `BLE_BUTTON_DEC` and `BLE_BUTTON_INC` in config.h to use different buttons (see `XboxGamepadDevice.h` for available constants)
 
-**Chord Mode specifics:**
+**Single Analog Mode specifics:**
 - Updates immediately on bar change (no rate throttling)
-- Uses dual-stick direction chords only (no L3 modifier)
+- Maps bar count to a proportional deflection on a configurable analog axis (default: Right X+)
+- Optionally holds a configurable "meter unlock" button (default: R3) while the axis is deflected (`BLE_METER_UNLOCK_BUTTON_ENABLED`). The button is released and re-pressed on every deflection change and periodically (`BLE_METER_UNLOCK_REFRESH_MS`, default 1000ms) to ensure apps/emulators always register it.
+- Axis and unlock button are configurable in config.h (`BLE_SINGLE_ANALOG_AXIS`, `BLE_METER_UNLOCK_BUTTON`)
 
 **Pairing:**
 - Times out after `BLE_PAIRING_TIMEOUT_MS` (default 60s)
