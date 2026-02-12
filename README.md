@@ -57,7 +57,7 @@ sunlight (UV) instead of artificial light hacks.
 
 **Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 3s) when you are not actively playing a Boktai game.
 
-**Important:** Placing the sensor behind standard glass or plastic blocks UV light. Use the `UV_ENCLOSURE_*` settings in `config.h` to compensate for your enclosure window. Strongly UV-blocking materials can still reduce usable range. The default values will be (not yet) set to adjust for the transmission loss of these boxes: https://a.co/d/092sVvLT
+**Important:** Placing the sensor behind standard glass or plastic blocks some UV light! This device will be (not yet) preconfigured to adjust for this with values specifically chosen for a easily sourced, nicely sized transparent box.
 
 ----------------------------------------------------------------------
 
@@ -259,29 +259,6 @@ Bars are distributed evenly across this range for all games. UV Index 6.0 is typ
 
 Set `AUTO_MODE = false` to use per-game threshold arrays (`BOKTAI_1_UV[8]`, `BOKTAI_2_UV[10]`, `BOKTAI_3_UV[10]`).
 
-### Transparent Enclosure Compensation
-
-If the sensor is behind a transparent window, model that window as transmission loss:
-
-```c
-const bool UV_ENCLOSURE_COMP_ENABLED = true;
-const float UV_ENCLOSURE_TRANSMITTANCE = 0.42; // 42% UV passes through the window
-const float UV_ENCLOSURE_UVI_OFFSET = 0.0;     // Optional bias correction
-```
-
-Firmware applies compensation once after raw-to-UVI conversion:
-
-`corrected_uvi = max(0, (measured_uvi - offset) / transmittance)`
-
-Quick calibration:
-1. Temporarily set `UV_ENCLOSURE_COMP_ENABLED = false` while collecting calibration readings.
-2. Take side-by-side readings at the same time/angle: one sensor open-air, one in-box.
-3. Compute `in_box_uvi / open_air_uvi` across several samples.
-4. Use the median ratio as `UV_ENCLOSURE_TRANSMITTANCE`.
-5. Re-enable compensation (`UV_ENCLOSURE_COMP_ENABLED = true`).
-
-Note: On the DEBUG screen, `UVI` is the measured (pre-compensation) value.
-
 ### Stability Tuning
 
 If the bar display feels jumpy:
@@ -301,8 +278,7 @@ If the bar display feels jumpy:
 
 ### LTR390 UV Sensor
 - Reference sensitivity: 2300 counts/UVI at 18x gain, 400ms integration
-- Formula (measured): `UVI = raw / 2300` (at our settings: gain 18x, 20-bit/400ms, 500ms rate)
-- Formula (corrected, optional enclosure compensation): `UVI = max(0, (measured_uvi - offset) / transmittance)`
+- Formula: `UVI = raw / 2300` (at our settings: gain 18x, 20-bit/400ms, 500ms rate)
 - Peak response: 300-350nm (UV-A/UV-B)
 - **Not inverted**: higher values = more UV
 
@@ -314,7 +290,7 @@ If the bar display feels jumpy:
 - The LTR390 breakout LED is hardwired to VIN — it turns off in sleep if you use GPIO power control
 
 ### UV Blocking Warning
-Most glass and many plastics block UV strongly (often 90%+). Compensation can correct scale loss, but it cannot recover signal if too little UV reaches the sensor. Prefer an open aperture, quartz glass, or UV-transparent acrylic.
+Do not place the sensor behind glass or standard plastic — most glass blocks 90%+ of UV. Use an open aperture, quartz glass, or UV-transparent acrylic if an enclosure window is needed.
 
 ----------------------------------------------------------------------
 
@@ -325,7 +301,7 @@ Most glass and many plastics block UV strongly (often 90%+). Compensation can co
    - At UVI 6, expect ~13800 raw counts (6 × 2300)
    - If raw = 0, sensor may not be in UV mode
 2. Ensure sensor faces the sky (not blocked by hand/case)
-3. If using an enclosure window, verify `UV_ENCLOSURE_TRANSMITTANCE` and use UV-transparent material
+3. No glass/plastic in front of sensor
 4. Indoor UV is near zero — test outside
 
 ### Battery shows 0%
