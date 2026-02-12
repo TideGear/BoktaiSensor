@@ -112,8 +112,8 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 | OLED GND | | GND | |
 | LTR390 VIN | | D3 (GPIO4) | Sensor power (GPIO-controlled) |
 | LTR390 GND | | GND | |
-| OLED + LTR390 SDA | | D4 (GPIO5) | I2C data (shared bus) |
-| OLED + LTR390 SCL | | D5 (GPIO6) | I2C clock (shared bus) |
+| OLED + LTR390 SDA | | D4 (GPIO5) | I2C data (configurable via `I2C_SDA_PIN`) |
+| OLED + LTR390 SCL | | D5 (GPIO6) | I2C clock (configurable via `I2C_SCL_PIN`) |
 | Button | Leg A | D0 (GPIO1) | Signal (internal pull-up) |
 | Button | Leg B | GND | |
 | Battery + | | BAT+ (back pad) | Farthest from USB-C |
@@ -187,7 +187,7 @@ The cheap cable routes P1 Pin 3 (GBA's SI) to P2 Pin 6. The breakout board label
 - NimBLE-Arduino (by h2zero)
 - Callback (by Tom Stewart)
 
-**Install manually (download ZIP from GitHub):**
+**Install manually (included in repo as ESP32-BLE-CompositeHID-master.zip, or download from GitHub):**
 - ESP32-BLE-CompositeHID: https://github.com/Mystfit/ESP32-BLE-CompositeHID
 
 ### Board Settings (Arduino IDE)
@@ -347,6 +347,7 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Disable cutoff if not using th
 1. Hold button for full 3 seconds
 2. A short press should immediately show the "Hold 3s to power on" prompt
 3. After 10s of no activity, it returns to sleep
+4. If the OLED fails to initialize, the device enters deep sleep after 2 seconds — check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
 
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
 If Serial Monitor shows:

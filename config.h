@@ -59,7 +59,7 @@ const float BAR_HYSTERESIS = 0.2;       // UV Index margin for bar changes
 const int NUM_GAMES = 3;
 
 // Game names (shown on display)
-const char* GAME_NAMES[NUM_GAMES] = {
+const char* const GAME_NAMES[NUM_GAMES] = {
   "BOKTAI 1",
   "BOKTAI 2", 
   "BOKTAI 3"
@@ -98,6 +98,7 @@ const float BOKTAI_2_UV[10] = {
 };
 
 // BOKTAI 3 - 10 bars (range: 0.5 to 6.0)
+// Intentionally separate from BOKTAI_2_UV for possible future divergence.
 const float BOKTAI_3_UV[10] = {
   0.5,   // Bar 1
   1.1,   // Bar 2
@@ -125,7 +126,7 @@ const float BOKTAI_3_UV[10] = {
 const bool BATTERY_SENSE_ENABLED = true;
 const int BAT_PIN = 2;       // D1/A1 (GPIO2) - connect to voltage divider midpoint
 const float VOLT_MIN = 3.3;  // 0% Battery
-const float VOLT_MAX = 4.2;  // 100% Battery
+const float VOLT_MAX = 4.2;  // 100% Battery (must be > VOLT_MIN)
 const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 
 // Voltage divider calibration multiplier
@@ -167,12 +168,19 @@ const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 3000;   // Hold 3 seconds to power on/off
 
 // -----------------------------------------------------------------------------
+// DISPLAY / I2C
+// -----------------------------------------------------------------------------
+const int I2C_SDA_PIN = 5;                // D4 (GPIO5)
+const int I2C_SCL_PIN = 6;                // D5 (GPIO6)
+const uint8_t DISPLAY_I2C_ADDR = 0x3C;   // Some SSD1306 modules use 0x3D
+
+// -----------------------------------------------------------------------------
 // DISPLAY SCREENSAVER
 // -----------------------------------------------------------------------------
 // After SCREENSAVER_TIME minutes of no button activity, show a bouncing
 // "Ojo del Sol" screensaver.
 const bool SCREENSAVER_ACTIVE = true;
-const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (same as false)
+const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (equivalent to SCREENSAVER_ACTIVE = false)
 
 // =============================================================================
 // CONNECTIVITY
@@ -193,11 +201,12 @@ const int GBA_PIN_SO = 10;  // D10 (GPIO10) - SO (bit 3)
 // Set BLUETOOTH_ENABLED to false to disable BLE entirely.
 const bool BLUETOOTH_ENABLED = true;
 const char BLE_DEVICE_NAME[] = "Ojo del Sol Sensor";
+const char BLE_MANUFACTURER[] = "Ojo del Sol";
 const unsigned long BLE_PAIRING_TIMEOUT_MS = 60000; // Stop pairing (or re-pairing after
 // dropping connection) after 1 minute
 const bool BLE_RESYNC_ENABLED = true;
 const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
-const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // Button press rate
+const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // Button press rate; 0 disables BLE meter presses
 // Workaround: mGBA uses 10 steps for Boktai 1 even though it has 8 bars.
 // Set false if mGBA is fixed to use 8 steps.
 const bool BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND = true;

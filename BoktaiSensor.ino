@@ -14,6 +14,7 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+// Icon dimensions (shared by status bar and screensaver)
 const int16_t STATUS_BATT_ICON_W = 20;
 const int16_t STATUS_BATT_ICON_H = 9;
 const int16_t STATUS_BT_ICON_W = 8;
@@ -37,7 +38,7 @@ Adafruit_LTR390 ltr = Adafruit_LTR390();
 const float UV_SENSITIVITY_COUNTS_PER_UVI = 2300.0f;
 const float UV_REFERENCE_GAIN = 18.0f;
 const float UV_REFERENCE_INT_MS = 400.0f;
-const float UV_DIVISOR_FALLBACK = 2300.0f;  // Gain 18, 20-bit (400ms)
+const float UV_DIVISOR_FALLBACK = UV_SENSITIVITY_COUNTS_PER_UVI;  // Reference: gain 18, 20-bit (400ms)
 float uvDivisor = UV_DIVISOR_FALLBACK;
 const uint8_t LTR390_MEAS_RATE_500MS = 0x04;
 
@@ -72,11 +73,6 @@ const int16_t SCREENSAVER_IMAGE_H = 24;
 const int16_t SCREENSAVER_IMAGE_TEXT_GAP = 8;
 const int16_t SCREENSAVER_TEXT_BATT_GAP = 8;
 const int16_t SCREENSAVER_BATT_GAP = 2;
-const int16_t SCREENSAVER_BATT_ICON_W = 20;
-const int16_t SCREENSAVER_BATT_ICON_H = 9;
-const int16_t SCREENSAVER_BT_ICON_W = 8;
-const int16_t SCREENSAVER_BT_ICON_H = 10;
-const int16_t SCREENSAVER_BT_GAP = 2;
 
 const uint8_t OJO_DEL_SOL_BITMAP[] PROGMEM = {
   0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x08, 0x0C, 0x00, 0x08, 0x18, 0x00,
@@ -109,8 +105,10 @@ bool hasSmoothedUvi = false;
 bool gameChanged = false;
 bool bleGameChanged = false;
 
+// BLE state
 XboxGamepadDevice* xboxGamepad = nullptr;
-BleCompositeHID compositeHID(BLE_DEVICE_NAME, "Espressif", 100);
+XboxSeriesXControllerDeviceConfiguration* xboxConfig = nullptr;
+BleCompositeHID compositeHID(BLE_DEVICE_NAME, BLE_MANUFACTURER, 100);
 unsigned long blePressIntervalMs = 16;
 unsigned long blePressHoldMs = 8;
 bool bleConnected = false;
@@ -163,13 +161,14 @@ int16_t screensaverBatteryH = 0;
 int16_t screensaverBlockW = 0;
 int16_t screensaverBlockH = 0;
 bool screensaverBatteryVisible = false;
+int screensaverLastLayoutPct = -2;  // Cache key for layout recalculation (-2 = never calculated)
 
 void wakeDisplayHardware() {
   // Sleep path disables the charge pump; explicitly restore it before drawing.
   display.ssd1306_command(SSD1306_CMD_CHARGEPUMP);
   display.ssd1306_command(SSD1306_CHARGEPUMP_ENABLE);
   display.ssd1306_command(SSD1306_DISPLAYON);
-  delay(2);
+  delay(2);  // SSD1306 charge pump stabilization
 }
 
 void showHoldPowerOnPrompt() {
@@ -205,22 +204,15 @@ void setup() {
 
   if (BATTERY_SENSE_ENABLED) {
     analogSetPinAttenuation(BAT_PIN, ADC_11db);
-    cachedBatteryPct = BATTERY_PCT_UNKNOWN;
-    cachedBatteryVoltage = -1.0f;
-    cachedBatteryAdcAvg = -1.0f;
-    hasBatteryReading = false;
-  } else {
-    cachedBatteryPct = BATTERY_PCT_UNKNOWN;
-    cachedBatteryVoltage = -1.0f;
-    cachedBatteryAdcAvg = -1.0f;
-    hasBatteryReading = false;
   }
   // Initialize I2C for XIAO ESP32S3 pins (D4/GPIO5 = SDA, D5/GPIO6 = SCL)
-  Wire.begin(5, 6); 
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR)) {
     Serial.println(F("SSD1306 failed"));
-    for (;;);
+    delay(2000);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
+    esp_deep_sleep_start();
   }
 
   display.clearDisplay();
@@ -232,6 +224,7 @@ void setup() {
   screensaverTextW = (int16_t)ssW;
   screensaverTextH = (int16_t)ssH;
   calculateScreensaverLayout();
+  screensaverLastLayoutPct = cachedBatteryPct;
   screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
   screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
 
@@ -387,22 +380,22 @@ void calculateScreensaverLayout() {
 
     int16_t bluetoothW = 0;
     if (BLUETOOTH_ENABLED) {
-      bluetoothW = SCREENSAVER_BT_ICON_W;
+      bluetoothW = STATUS_BT_ICON_W;
     }
 
     if (hasBattery) {
-      screensaverBatteryW = screensaverBatteryTextW + SCREENSAVER_BATT_GAP + SCREENSAVER_BATT_ICON_W;
+      screensaverBatteryW = screensaverBatteryTextW + SCREENSAVER_BATT_GAP + STATUS_BATT_ICON_W;
       if (BLUETOOTH_ENABLED) {
-        screensaverBatteryW += bluetoothW + SCREENSAVER_BT_GAP;
+        screensaverBatteryW += bluetoothW + STATUS_BT_GAP;
       }
-      screensaverBatteryH = max(screensaverBatteryTextH, SCREENSAVER_BATT_ICON_H);
+      screensaverBatteryH = max(screensaverBatteryTextH, STATUS_BATT_ICON_H);
     } else {
       screensaverBatteryW = bluetoothW;
-      screensaverBatteryH = bluetoothW > 0 ? SCREENSAVER_BT_ICON_H : 0;
+      screensaverBatteryH = bluetoothW > 0 ? STATUS_BT_ICON_H : 0;
     }
 
     if (BLUETOOTH_ENABLED) {
-      screensaverBatteryH = max(screensaverBatteryH, SCREENSAVER_BT_ICON_H);
+      screensaverBatteryH = max(screensaverBatteryH, STATUS_BT_ICON_H);
     }
   }
 
@@ -430,11 +423,11 @@ void drawScreensaverBattery(int16_t x, int16_t y) {
 
   display.setTextSize(1);
   if (BLUETOOTH_ENABLED) {
-    int16_t btY = y + ((screensaverBatteryH - SCREENSAVER_BT_ICON_H) / 2);
+    int16_t btY = y + ((screensaverBatteryH - STATUS_BT_ICON_H) / 2);
     drawBluetoothIcon(cursorX, btY, isBluetoothIconOn());
-    cursorX += SCREENSAVER_BT_ICON_W;
+    cursorX += STATUS_BT_ICON_W;
     if (hasBattery) {
-      cursorX += SCREENSAVER_BT_GAP;
+      cursorX += STATUS_BT_GAP;
     }
   }
   if (hasBattery) {
@@ -442,14 +435,9 @@ void drawScreensaverBattery(int16_t x, int16_t y) {
     display.setCursor(cursorX, textY);
     display.print(screensaverBatteryText);
     cursorX += screensaverBatteryTextW + SCREENSAVER_BATT_GAP;
-  }
-  if (hasBattery) {
-    int16_t iconY = y + ((screensaverBatteryH - SCREENSAVER_BATT_ICON_H) / 2);
-    display.drawRect(cursorX, iconY, 18, 9, SSD1306_WHITE);
-    display.fillRect(cursorX + 18, iconY + 2, 2, 5, SSD1306_WHITE);
 
-    int fillW = (cachedBatteryPct * 14) / 100;
-    display.fillRect(cursorX + 2, iconY + 2, fillW, 5, SSD1306_WHITE);
+    int16_t iconY = y + ((screensaverBatteryH - STATUS_BATT_ICON_H) / 2);
+    drawBatteryGauge(cursorX, iconY, cachedBatteryPct);
   }
 }
 
@@ -468,6 +456,7 @@ void updateScreensaverState() {
     screensaverDx = 1;
     screensaverDy = 1;
     calculateScreensaverLayout();
+    screensaverLastLayoutPct = cachedBatteryPct;
     screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
     screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
     lastScreensaverMoveMs = 0;
@@ -485,7 +474,10 @@ void drawScreensaver() {
   }
   lastScreensaverMoveMs = now;
 
-  calculateScreensaverLayout();
+  if (screensaverLastLayoutPct != cachedBatteryPct) {
+    calculateScreensaverLayout();
+    screensaverLastLayoutPct = cachedBatteryPct;
+  }
 
   int16_t maxX = SCREEN_WIDTH - screensaverBlockW;
   int16_t maxY = SCREEN_HEIGHT - screensaverBlockH;
@@ -624,7 +616,7 @@ void updateGbaLinkOutput(int bars) {
     return;
   }
 
-  uint8_t value = (uint8_t)constrain(bars, 0, 15);
+  uint8_t value = (uint8_t)constrain(bars, 0, 15);  // 4-bit output (max game bars is 10)
   digitalWrite(GBA_PIN_SC, (value & 0x01) ? HIGH : LOW);
   digitalWrite(GBA_PIN_SD, (value & 0x02) ? HIGH : LOW);
   digitalWrite(GBA_PIN_SI, (value & 0x04) ? HIGH : LOW);
@@ -761,9 +753,7 @@ int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
   }
 
   if (target < lastBars) {
-    if (lastBars <= 0) {
-      return lastBars;
-    }
+    // lastBars > 0 guaranteed: clamped to [0, numBars] above and target < lastBars
     float downThreshold = getBarThreshold(game, lastBars);
     if (uvi < (downThreshold - BAR_HYSTERESIS)) {
       return target;
@@ -946,8 +936,8 @@ void enterDeepSleep() {
 
   // Release I2C lines to reduce back-powering during sleep
   Wire.end();
-  pinMode(5, INPUT);
-  pinMode(6, INPUT);
+  pinMode(I2C_SDA_PIN, INPUT);
+  pinMode(I2C_SCL_PIN, INPUT);
 
   // Set GBA link pins to high-impedance
   if (GBA_LINK_ENABLED) {
@@ -978,7 +968,7 @@ void enterDeepSleep() {
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
   
   if (DEBUG_SERIAL) {
-    Serial.println("Entering deep sleep...");
+    Serial.println(F("Entering deep sleep..."));
     Serial.flush();
   }
   
@@ -988,7 +978,7 @@ void enterDeepSleep() {
 
 // Draw Boktai-style segmented sun gauge (8 or 10 segments)
 void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
-  int barWidth = 124;
+  int barWidth = SCREEN_WIDTH - 4;  // Leave 4px total margin
   int gap = 2;
   int segW = (barWidth - (gap * (totalBars - 1))) / totalBars;
 
@@ -1045,7 +1035,6 @@ void drawStatusIcons() {
 
   int16_t batteryX = SCREEN_WIDTH - STATUS_BATT_ICON_W - STATUS_RIGHT_MARGIN;
   int16_t batteryY = 2;
-  int16_t btX = 0;
   int16_t btY = batteryY - 1;
   int16_t textX = 0;
 
@@ -1081,9 +1070,9 @@ void initBluetooth() {
   
   // Create Xbox gamepad device with XInput support for proper L3/R3 buttons
   // Use Xbox Series X controller configuration for proper VID/PID recognition
-  XboxSeriesXControllerDeviceConfiguration* xboxConfig = new XboxSeriesXControllerDeviceConfiguration();
+  xboxConfig = new XboxSeriesXControllerDeviceConfiguration();
   BLEHostConfiguration hostConfig = xboxConfig->getIdealHostConfiguration();
-  
+
   xboxGamepad = new XboxGamepadDevice(xboxConfig);
   compositeHID.addDevice(xboxGamepad);
   compositeHID.begin(hostConfig);
@@ -1160,15 +1149,19 @@ void resetBlePressState() {
   bleLastPressMs = 0;
 }
 
-void resetBleSyncState() {
-  if (!BLUETOOTH_ENABLED) {
-    return;
-  }
+void clearBleSyncPhase() {
   bleSyncPhase = BLE_SYNC_NONE;
   bleSyncRemaining = 0;
   bleRefillRemaining = 0;
   bleSyncDirection = 0;
   bleRefillDirection = 0;
+}
+
+void resetBleSyncState() {
+  if (!BLUETOOTH_ENABLED) {
+    return;
+  }
+  clearBleSyncPhase();
   bleSyncTargetSteps = 0;
   bleSyncStepsMax = 0;
   bleEstimateValid = false;
@@ -1412,11 +1405,7 @@ void finishBleSync() {
   if (!BLUETOOTH_ENABLED) {
     return;
   }
-  bleSyncPhase = BLE_SYNC_NONE;
-  bleSyncRemaining = 0;
-  bleRefillRemaining = 0;
-  bleSyncDirection = 0;
-  bleRefillDirection = 0;
+  clearBleSyncPhase();
   bleEstimatedSteps = bleSyncTargetSteps;
   bleEstimateValid = true;
 }
@@ -1664,25 +1653,27 @@ int readBatteryPercentage() {
   uint32_t sum = 0;
   for (int i = 0; i < 10; i++) {
     sum += analogRead(BAT_PIN);
-    delay(1);
   }
-  float raw = sum / 10.0;
+  float raw = sum / 10.0f;
   cachedBatteryAdcAvg = raw;
   hasBatteryReading = true;
   
   // ESP32-S3 ADC: 12-bit (0-4095), default ~0-3.3V range
   // VOLT_DIVIDER_MULT compensates for voltage divider ratio + ADC variance
   // Calibrate in config.h if battery % is wrong at full charge
-  float voltage = (raw / 4095.0) * 3.3 * VOLT_DIVIDER_MULT;
+  float voltage = (raw / 4095.0f) * 3.3f * VOLT_DIVIDER_MULT;
   cachedBatteryVoltage = voltage;
   
-  // Debug output
   if (DEBUG_SERIAL) {
-    Serial.print("Battery ADC raw: "); Serial.print(raw);
-    Serial.print(" Voltage: "); Serial.println(voltage);
+    Serial.print(F("Battery ADC raw: ")); Serial.print(raw);
+    Serial.print(F(" Voltage: ")); Serial.println(voltage);
   }
 
-  int pct = ((voltage - VOLT_MIN) / (VOLT_MAX - VOLT_MIN)) * 100;
+  float range = VOLT_MAX - VOLT_MIN;
+  if (range <= 0.0f) {
+    return 0;  // Guard: VOLT_MAX must be greater than VOLT_MIN
+  }
+  int pct = ((voltage - VOLT_MIN) / range) * 100;
   return constrain(pct, 0, 100);
 }
 
@@ -1695,9 +1686,9 @@ bool initLTR390() {
     }
 
     if (DEBUG_SERIAL) {
-      Serial.print("LTR390 init failed (");
+      Serial.print(F("LTR390 init failed ("));
       Serial.print(attempt + 1);
-      Serial.println(")");
+      Serial.println(F(")"));
     }
 
     if (SENSOR_POWER_ENABLED) {
@@ -1725,9 +1716,9 @@ float calculateUVI() {
   
   // Debug output
   if (DEBUG_SERIAL) {
-    Serial.print("UV raw: "); Serial.print(rawUVS);
-    Serial.print(" UVI measured: "); Serial.print(measuredUvi);
-    Serial.print(" UVI corrected: "); Serial.println(correctedUvi);
+    Serial.print(F("UV raw: ")); Serial.print(rawUVS);
+    Serial.print(F(" UVI measured: ")); Serial.print(measuredUvi);
+    Serial.print(F(" UVI corrected: ")); Serial.println(correctedUvi);
   }
   
   return correctedUvi;
