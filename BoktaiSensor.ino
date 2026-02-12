@@ -21,6 +21,9 @@ const int16_t STATUS_BT_ICON_H = 10;
 const int16_t STATUS_BT_GAP = 2;
 const int16_t STATUS_TEXT_GAP = 2;
 const int16_t STATUS_RIGHT_MARGIN = 3;
+const uint8_t SSD1306_CMD_CHARGEPUMP = 0x8D;
+const uint8_t SSD1306_CHARGEPUMP_DISABLE = 0x10;
+const uint8_t SSD1306_CHARGEPUMP_ENABLE = 0x14;
 
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
@@ -161,6 +164,23 @@ int16_t screensaverBlockW = 0;
 int16_t screensaverBlockH = 0;
 bool screensaverBatteryVisible = false;
 
+void wakeDisplayHardware() {
+  // Sleep path disables the charge pump; explicitly restore it before drawing.
+  display.ssd1306_command(SSD1306_CMD_CHARGEPUMP);
+  display.ssd1306_command(SSD1306_CHARGEPUMP_ENABLE);
+  display.ssd1306_command(SSD1306_DISPLAYON);
+  delay(2);
+}
+
+void showHoldPowerOnPrompt() {
+  wakeDisplayHardware();
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(4, 28);
+  display.print("Hold 3s to power on");
+  display.display();
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -213,22 +233,13 @@ void setup() {
   screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
   screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
 
-  // Check if we woke from deep sleep or cold boot
-  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-  bool coldBoot = (wakeup_reason != ESP_SLEEP_WAKEUP_EXT0);
-  
-  if (!coldBoot) {
-    // Woke from deep sleep via button - start with display OFF
-    display.ssd1306_command(SSD1306_DISPLAYOFF);
-  }
-  
-  // Wait for power-on: show prompt for 10s, reset on button activity
-  // Cold boot: show message immediately
-  // Wake from sleep: show message on button press/hold
-  if (!waitForPowerOn(coldBoot)) {
+  // Wait for power-on: show prompt for 10s, reset on button activity.
+  // This always shows immediately so a short wake tap reliably shows the prompt.
+  if (!waitForPowerOn()) {
     // Timed out - go back to sleep
     enterDeepSleep();
   }
+  wakeDisplayHardware();
 
   if (SENSOR_POWER_ENABLED) {
     digitalWrite(SENSOR_POWER_PIN, HIGH);
@@ -844,29 +855,19 @@ void handlePowerButton() {
   }
 }
 
-// Wait for power-on with 10-second timeout
-// Shows "Hold 3s to power on" message
-// Button activity resets the 10-second timer
-// coldBoot: if true, show message immediately; if false, show on button press/hold
-// Returns true if 3-second hold completed, false if timed out
-bool waitForPowerOn(bool coldBoot) {
+// Wait for power-on with 10-second timeout.
+// Always shows "Hold 3s to power on" immediately so wake taps are visible.
+// Button activity resets the 10-second timer.
+// Returns true if 3-second hold completed, false if timed out.
+bool waitForPowerOn() {
   const unsigned long DISPLAY_TIMEOUT_MS = 10000;  // 10 seconds
   unsigned long lastActivity = millis();
+  unsigned long lastPromptRefresh = lastActivity;
   unsigned long pressStart = 0;
   bool wasPressed = false;
-  bool displayOn = false;
-  bool pressedAtStart = (!coldBoot && (digitalRead(BUTTON_PIN) == LOW));
+  bool pressedAtStart = (digitalRead(BUTTON_PIN) == LOW);
   
-  // On cold boot, show message immediately
-  if (coldBoot || pressedAtStart) {
-    display.ssd1306_command(SSD1306_DISPLAYON);
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(4, 28);
-    display.print("Hold 3s to power on");
-    display.display();
-    displayOn = true;
-  }
+  showHoldPowerOnPrompt();
   if (pressedAtStart) {
     pressStart = lastActivity;
     wasPressed = true;
@@ -878,9 +879,7 @@ bool waitForPowerOn(bool coldBoot) {
     
     // Check for timeout (10 seconds of no button activity)
     if ((now - lastActivity) >= DISPLAY_TIMEOUT_MS) {
-      if (displayOn) {
-        display.ssd1306_command(SSD1306_DISPLAYOFF);
-      }
+      display.ssd1306_command(SSD1306_DISPLAYOFF);
       return false;  // Timed out - caller should go to sleep
     }
     
@@ -890,20 +889,18 @@ bool waitForPowerOn(bool coldBoot) {
       pressStart = now;
       wasPressed = true;
       
-      // Turn on display and show message if not already showing
-      if (!displayOn) {
-        display.ssd1306_command(SSD1306_DISPLAYON);
-        display.clearDisplay();
-        display.setTextSize(1);
-        display.setCursor(4, 28);
-        display.print("Hold 3s to power on");
-        display.display();
-        displayOn = true;
-      }
+      // Refresh prompt on each press.
+      showHoldPowerOnPrompt();
+      lastPromptRefresh = now;
     }
     // Button held
     else if (pressed && wasPressed) {
       lastActivity = now;  // Reset timeout while holding
+      // Retry prompt draw periodically while held in case the first draw was missed.
+      if ((now - lastPromptRefresh) >= 750UL) {
+        showHoldPowerOnPrompt();
+        lastPromptRefresh = now;
+      }
       
       // Check for 3-second hold
       if ((now - pressStart) >= LONG_PRESS_MS) {
@@ -948,8 +945,8 @@ void enterDeepSleep() {
   display.clearDisplay();
   display.display();
   display.ssd1306_command(SSD1306_DISPLAYOFF);
-  display.ssd1306_command(0x8D); // Charge pump
-  display.ssd1306_command(0x10); // Disable charge pump
+  display.ssd1306_command(SSD1306_CMD_CHARGEPUMP); // Charge pump
+  display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE); // Disable charge pump
 
   // Release I2C lines to reduce back-powering during sleep
   Wire.end();

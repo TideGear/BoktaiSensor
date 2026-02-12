@@ -214,7 +214,8 @@ The cheap cable routes P1 Pin 3 (GBA's SI) to P2 Pin 6. The breakout board label
 
 **When waking from sleep:**
 - **Hold 3s:** Power ON
-- **Short press:** Shows "Hold 3s to power on" for 10 seconds, then returns to sleep
+- **Short press/tap:** Immediately shows "Hold 3s to power on"
+- If there is no button activity for 10 seconds, it returns to sleep
 
 ### Bluetooth Details
 
@@ -314,6 +315,7 @@ If the bar display feels jumpy:
 - Sensor power can be GPIO-controlled (`SENSOR_POWER_PIN`) to cut power during sleep
 - Alternatively, set `SENSOR_POWER_ENABLED = false` in config.h and wire LTR390 VIN to 3V3 instead of a GPIO pin
 - OLED uses Display OFF + Charge Pump OFF commands
+- On wake, firmware explicitly re-enables the OLED charge pump/display before drawing
 - Deep sleep current: ~10µA (varies with module pull-ups)
 - The LTR390 breakout LED is hardwired to VIN — it turns off in sleep if you use GPIO power control
 
@@ -343,7 +345,7 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Disable cutoff if not using th
 
 ### Device won't wake
 1. Hold button for full 3 seconds
-2. If you release early, the "Hold 3s to power on" prompt appears for 10 seconds
+2. A short press should immediately show the "Hold 3s to power on" prompt
 3. After 10s of no activity, it returns to sleep
 
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
