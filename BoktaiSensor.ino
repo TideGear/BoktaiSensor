@@ -258,6 +258,15 @@ void setup() {
   if (DEBUG_SERIAL) {
     Serial.println(F("LTR390 configured: UV mode, 18x gain, 20-bit (~400ms)"));
     Serial.println(F("Expected: ~2300 counts per UVI"));
+    if (UV_ENCLOSURE_COMP_ENABLED) {
+      Serial.print(F("UV enclosure compensation: ON (T="));
+      Serial.print(UV_ENCLOSURE_TRANSMITTANCE, 4);
+      Serial.print(F(", offset="));
+      Serial.print(UV_ENCLOSURE_UVI_OFFSET, 4);
+      Serial.println(F(")"));
+    } else {
+      Serial.println(F("UV enclosure compensation: OFF"));
+    }
   }
   
   // Show wake-up confirmation
@@ -660,6 +669,21 @@ void updateUvDivisorFromSensor() {
     Serial.print(F("UV divisor: "));
     Serial.println(uvDivisor, 4);
   }
+}
+
+float applyEnclosureCompensation(float measuredUvi) {
+  if (!UV_ENCLOSURE_COMP_ENABLED) {
+    return measuredUvi;
+  }
+  if (UV_ENCLOSURE_TRANSMITTANCE <= 0.0f) {
+    return measuredUvi;
+  }
+
+  float corrected = (measuredUvi - UV_ENCLOSURE_UVI_OFFSET) / UV_ENCLOSURE_TRANSMITTANCE;
+  if (corrected < 0.0f) {
+    corrected = 0.0f;
+  }
+  return corrected;
 }
 
 float getAutoThreshold(int numBars, int barIndex) {
@@ -1704,16 +1728,18 @@ bool initLTR390() {
 float calculateUVI() {
   uint32_t rawUVS = ltr.readUVS();
   float divisor = (uvDivisor > 0.0f) ? uvDivisor : UV_DIVISOR_FALLBACK;
-  float uvi = (float)rawUVS / divisor;
+  float measuredUvi = (float)rawUVS / divisor;
+  float correctedUvi = applyEnclosureCompensation(measuredUvi);
 
   cachedRawUVS = rawUVS;
-  cachedUviRaw = uvi;
+  cachedUviRaw = measuredUvi;
   
   // Debug output
   if (DEBUG_SERIAL) {
     Serial.print("UV raw: "); Serial.print(rawUVS);
-    Serial.print(" UVI: "); Serial.println(uvi);
+    Serial.print(" UVI measured: "); Serial.print(measuredUvi);
+    Serial.print(" UVI corrected: "); Serial.println(correctedUvi);
   }
   
-  return uvi;
+  return correctedUvi;
 }

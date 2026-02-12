@@ -26,6 +26,19 @@ const float AUTO_UV_MIN = 0.5;   // UV Index for 1 bar (shade/overcast)
 const float AUTO_UV_MAX = 6.0;   // UV Index for full bars (typical sunny day)
 
 // -----------------------------------------------------------------------------
+// UV ENCLOSURE COMPENSATION
+// -----------------------------------------------------------------------------
+// Model an enclosure window as UV transmission loss and compensate once after
+// raw-to-UVI conversion:
+//   corrected_uvi = max(0, (measured_uvi - UV_ENCLOSURE_UVI_OFFSET) /
+//                           UV_ENCLOSURE_TRANSMITTANCE)
+// Keep UV_ENCLOSURE_TRANSMITTANCE in the 0.0-1.0 range.
+// Example: 0.42 means the window passes 42% of UV.
+const bool UV_ENCLOSURE_COMP_ENABLED = false;
+const float UV_ENCLOSURE_TRANSMITTANCE = 1.0f;
+const float UV_ENCLOSURE_UVI_OFFSET = 0.0f;
+
+// -----------------------------------------------------------------------------
 // UV FILTERING
 // -----------------------------------------------------------------------------
 // Exponential smoothing reduces jitter in the UV bar display.
