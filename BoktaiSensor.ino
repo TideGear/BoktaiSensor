@@ -14,6 +14,7 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+bool displayInitialized = false;
 // Icon dimensions (shared by status bar and screensaver)
 const int16_t STATUS_BATT_ICON_W = 20;
 const int16_t STATUS_BATT_ICON_H = 9;
@@ -210,9 +211,9 @@ void setup() {
   if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR)) {
     Serial.println("SSD1306 failed");
     delay(2000);
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
-    esp_deep_sleep_start();
+    enterDeepSleep();
   }
+  displayInitialized = true;
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
@@ -930,21 +931,26 @@ void enterDeepSleep() {
       xboxGamepad->setRightThumb(0, 0);
       xboxGamepad->sendGamepadReport();
     }
-    // Stop advertising if active
-    stopBleAdvertising();
-    // Give BLE stack time to clean up
-    delay(100);
-    // Fully deinitialize NimBLE (true = release memory)
-    NimBLEDevice::deinit(true);
+    // Only touch NimBLE if BLE stack was initialized.
+    if (xboxGamepad != nullptr || blePairingActive || bleConnected) {
+      // Stop advertising if active
+      stopBleAdvertising();
+      // Give BLE stack time to clean up
+      delay(100);
+      // Fully deinitialize NimBLE (true = release memory)
+      NimBLEDevice::deinit(true);
+    }
     xboxGamepad = nullptr;
   }
 
   // Turn off display
-  display.clearDisplay();
-  display.display();
-  display.ssd1306_command(SSD1306_DISPLAYOFF);
-  display.ssd1306_command(SSD1306_CHARGEPUMP); // Charge pump
-  display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE); // Disable charge pump
+  if (displayInitialized) {
+    display.clearDisplay();
+    display.display();
+    display.ssd1306_command(SSD1306_DISPLAYOFF);
+    display.ssd1306_command(SSD1306_CHARGEPUMP); // Charge pump
+    display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE); // Disable charge pump
+  }
 
   // Release I2C lines to reduce back-powering during sleep
   Wire.end();
@@ -1156,10 +1162,10 @@ void startBlePairing() {
 }
 
 void resetBlePressState() {
-  if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
+  if (!BLUETOOTH_ENABLED) {
     return;
   }
-  if (blePressHolding && bleActiveButton != 0) {
+  if (xboxGamepad != nullptr && blePressHolding && bleActiveButton != 0) {
     xboxGamepad->release(bleActiveButton);
     xboxGamepad->sendGamepadReport();
   }

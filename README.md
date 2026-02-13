@@ -349,7 +349,7 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default;
 1. Hold button for full 3 seconds
 2. A short press should immediately show the "Hold 3s to power on" prompt
 3. After 10s of no activity, it returns to sleep
-4. If the OLED fails to initialize, the device enters deep sleep after 2 seconds — check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
+4. If the OLED fails to initialize, the device enters deep sleep after about 2 seconds using the normal sleep path (same cleanup and button-release debounce as manual sleep). Check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
 
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
 If Serial Monitor shows:
