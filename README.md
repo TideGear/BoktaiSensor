@@ -13,7 +13,7 @@ https://www.paypal.com/donate/?hosted_button_id=THMF458QTBCAL
 **Important!: This project is all very new, experimental, lightly-tested, and subject to change.\
 I'm looking for serious contributors to...**
 
-**1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight.**\
+**1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight. Until I can do some testing, they are just guesses.**\
 **2. Add support via Single Analog Control Mode to their emulators.**\
 **3. Test and fix the code if needed.**\
 **4. Test the GBA link cable support.**\
@@ -57,7 +57,7 @@ sunlight (UV) instead of artificial light hacks.
 
 **Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 3s) when you are not actively playing a Boktai game.
 
-**Important:** Placing the sensor behind standard glass or plastic blocks UV light. Use the `UV_ENCLOSURE_*` settings in `config.h` to compensate for your enclosure window. Strongly UV-blocking materials can still reduce usable range. The default values will be (not yet) set to adjust for the transmission loss of these boxes: https://a.co/d/092sVvLT
+**Important:** Placing the sensor behind standard glass or plastic blocks UV light. Use the `UV_ENCLOSURE_*` settings in `config.h` to compensate for your enclosure window. Strongly UV-blocking materials can still reduce usable range. The default values will be (but not yet) set to adjust for the transmission loss of these boxes: https://a.co/d/092sVvLT
 
 ----------------------------------------------------------------------
 
