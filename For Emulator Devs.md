@@ -59,7 +59,7 @@ if (gamepad.isPressed(UNLOCK_BUTTON)) {          // default: R3
     float raw_norm = normalizeSignedAxis(raw);   // convert API range to -1.0..1.0
     float axis_sign = +1.0;                      // +1 for X+/Y+, -1 for X-/Y-
     float signed_axis = raw_norm * axis_sign;
-    float normalized = clamp((signed_axis + 1.0) * 0.5, 0.0, 1.0);
+    float normalized = clamp(signed_axis, 0.0, 1.0);
     int num_levels = game_max_bars + 1;          // 9 for Boktai 1, 11 for Boktai 2/3
     int bars = clamp(floor(normalized * num_levels), 0, game_max_bars);
     setSolarMeter(bars);

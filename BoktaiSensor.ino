@@ -22,7 +22,6 @@ const int16_t STATUS_BT_ICON_H = 10;
 const int16_t STATUS_BT_GAP = 2;
 const int16_t STATUS_TEXT_GAP = 2;
 const int16_t STATUS_RIGHT_MARGIN = 3;
-const uint8_t SSD1306_CMD_CHARGEPUMP = 0x8D;
 const uint8_t SSD1306_CHARGEPUMP_DISABLE = 0x10;
 const uint8_t SSD1306_CHARGEPUMP_ENABLE = 0x14;
 
@@ -38,9 +37,8 @@ Adafruit_LTR390 ltr = Adafruit_LTR390();
 const float UV_SENSITIVITY_COUNTS_PER_UVI = 2300.0f;
 const float UV_REFERENCE_GAIN = 18.0f;
 const float UV_REFERENCE_INT_MS = 400.0f;
-const float UV_DIVISOR_FALLBACK = UV_SENSITIVITY_COUNTS_PER_UVI;  // Reference: gain 18, 20-bit (400ms)
-float uvDivisor = UV_DIVISOR_FALLBACK;
-const uint8_t LTR390_MEAS_RATE_500MS = 0x04;
+float uvDivisor = UV_SENSITIVITY_COUNTS_PER_UVI;
+const uint8_t MEAS_RATE_500MS = 0x04;
 
 // Power button state tracking
 unsigned long buttonPressStart = 0;
@@ -108,9 +106,9 @@ bool bleGameChanged = false;
 // BLE state
 XboxGamepadDevice* xboxGamepad = nullptr;
 XboxSeriesXControllerDeviceConfiguration* xboxConfig = nullptr;
-BleCompositeHID compositeHID(BLE_DEVICE_NAME, BLE_MANUFACTURER, 100);
-unsigned long blePressIntervalMs = 16;
-unsigned long blePressHoldMs = 8;
+BleCompositeHID compositeHID(BLE_DEVICE_NAME, BLE_MANUFACTURER, 100);  // Initial battery level; updated once battery is read
+unsigned long blePressIntervalMs = 0;  // Set by initBluetooth()
+unsigned long blePressHoldMs = 0;      // Set by initBluetooth()
 bool bleConnected = false;
 bool blePairingActive = false;
 unsigned long blePairingStartMs = 0;
@@ -166,7 +164,7 @@ bool screensaverLastLayoutBleStatus = false;
 
 void wakeDisplayHardware() {
   // Sleep path disables the charge pump; explicitly restore it before drawing.
-  display.ssd1306_command(SSD1306_CMD_CHARGEPUMP);
+  display.ssd1306_command(SSD1306_CHARGEPUMP);
   display.ssd1306_command(SSD1306_CHARGEPUMP_ENABLE);
   display.ssd1306_command(SSD1306_DISPLAYON);
   delay(2);  // SSD1306 charge pump stabilization
@@ -210,7 +208,7 @@ void setup() {
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR)) {
-    Serial.println(F("SSD1306 failed"));
+    Serial.println("SSD1306 failed");
     delay(2000);
     esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
     esp_deep_sleep_start();
@@ -260,20 +258,20 @@ void setup() {
   ltr.setMode(LTR390_MODE_UVS);
   ltr.setGain(LTR390_GAIN_18);
   ltr.setResolution(LTR390_RESOLUTION_20BIT);
-  setMeasurementRate(LTR390_MEAS_RATE_500MS);
+  setMeasurementRate(MEAS_RATE_500MS);
   updateUvDivisorFromSensor();
   
   if (DEBUG_SERIAL) {
-    Serial.println(F("LTR390 configured: UV mode, 18x gain, 20-bit (~400ms)"));
-    Serial.println(F("Expected: ~2300 counts per UVI"));
+    Serial.println("LTR390 configured: UV mode, 18x gain, 20-bit (~400ms)");
+    Serial.println("Expected: ~2300 counts per UVI");
     if (UV_ENCLOSURE_COMP_ENABLED) {
-      Serial.print(F("UV enclosure compensation: ON (T="));
+      Serial.print("UV enclosure compensation: ON (T=");
       Serial.print(UV_ENCLOSURE_TRANSMITTANCE, 4);
-      Serial.print(F(", offset="));
+      Serial.print(", offset=");
       Serial.print(UV_ENCLOSURE_UVI_OFFSET, 4);
-      Serial.println(F(")"));
+      Serial.println(")");
     } else {
-      Serial.println(F("UV enclosure compensation: OFF"));
+      Serial.println("UV enclosure compensation: OFF");
     }
   }
   
@@ -676,14 +674,14 @@ void updateUvDivisorFromSensor() {
   float intMs = resolutionToIntegrationMs(ltr.getResolution());
 
   if (gainFactor <= 0.0f || intMs <= 0.0f) {
-    uvDivisor = UV_DIVISOR_FALLBACK;
+    uvDivisor = UV_SENSITIVITY_COUNTS_PER_UVI;
   } else {
     uvDivisor = (UV_SENSITIVITY_COUNTS_PER_UVI * gainFactor * intMs) /
                 (UV_REFERENCE_GAIN * UV_REFERENCE_INT_MS);
   }
 
   if (DEBUG_SERIAL) {
-    Serial.print(F("UV divisor: "));
+    Serial.print("UV divisor: ");
     Serial.println(uvDivisor, 4);
   }
 }
@@ -920,9 +918,11 @@ void enterDeepSleep() {
   if (BLUETOOTH_ENABLED) {
     // Release any held buttons/sticks
     if (xboxGamepad != nullptr) {
-    // Release buttons that might be held (R3 and any active button)
       if (bleActiveButton != 0) {
         xboxGamepad->release(bleActiveButton);
+      }
+      if (BLE_METER_UNLOCK_BUTTON_ENABLED && bleSingleAnalogButtonHeld) {
+        xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
       }
       xboxGamepad->release(XBOX_BUTTON_LS);
       xboxGamepad->release(XBOX_BUTTON_RS);
@@ -943,7 +943,7 @@ void enterDeepSleep() {
   display.clearDisplay();
   display.display();
   display.ssd1306_command(SSD1306_DISPLAYOFF);
-  display.ssd1306_command(SSD1306_CMD_CHARGEPUMP); // Charge pump
+  display.ssd1306_command(SSD1306_CHARGEPUMP); // Charge pump
   display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE); // Disable charge pump
 
   // Release I2C lines to reduce back-powering during sleep
@@ -980,7 +980,7 @@ void enterDeepSleep() {
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
   
   if (DEBUG_SERIAL) {
-    Serial.println(F("Entering deep sleep..."));
+    Serial.println("Entering deep sleep...");
     Serial.flush();
   }
   
@@ -1483,7 +1483,6 @@ void updateBluetoothState() {
       if (BLE_CONTROL_MODE == 1) {
         releaseSingleAnalog();
       }
-      stopBleAdvertising();
       // If a connection drops, re-enter pairing/advertising for the usual timeout.
       startBlePairing();
     }
@@ -1620,21 +1619,17 @@ void handleBlePresses() {
 
 // Calculate battery % based on analog reading
 void updateBatteryStatus() {
+  if (!BATTERY_SENSE_ENABLED) {
+    return;
+  }
+
   unsigned long now = millis();
   if ((now - lastBatterySampleTime) < BATTERY_SAMPLE_MS) {
     return;
   }
   lastBatterySampleTime = now;
 
-  if (BATTERY_SENSE_ENABLED) {
-    cachedBatteryPct = readBatteryPercentage();
-  } else {
-    cachedBatteryPct = BATTERY_PCT_UNKNOWN;
-    cachedBatteryVoltage = -1.0f;
-    cachedBatteryAdcAvg = -1.0f;
-    hasBatteryReading = false;
-    lowBatteryStart = 0;
-  }
+  cachedBatteryPct = readBatteryPercentage();
 
   if (BLUETOOTH_ENABLED && cachedBatteryPct >= 0) {
     compositeHID.setBatteryLevel((uint8_t)cachedBatteryPct);
@@ -1686,8 +1681,8 @@ int readBatteryPercentage() {
   cachedBatteryVoltage = voltage;
   
   if (DEBUG_SERIAL) {
-    Serial.print(F("Battery ADC raw: ")); Serial.print(raw);
-    Serial.print(F(" Voltage: ")); Serial.println(voltage);
+    Serial.print("Battery ADC raw: "); Serial.print(raw);
+    Serial.print(" Voltage: "); Serial.println(voltage);
   }
 
   float range = VOLT_MAX - VOLT_MIN;
@@ -1707,9 +1702,9 @@ bool initLTR390() {
     }
 
     if (DEBUG_SERIAL) {
-      Serial.print(F("LTR390 init failed ("));
+      Serial.print("LTR390 init failed (");
       Serial.print(attempt + 1);
-      Serial.println(F(")"));
+      Serial.println(")");
     }
 
     if (SENSOR_POWER_ENABLED) {
@@ -1728,7 +1723,7 @@ bool initLTR390() {
 // Calculate UV Index from raw sensor data
 float calculateUVI() {
   uint32_t rawUVS = ltr.readUVS();
-  float divisor = (uvDivisor > 0.0f) ? uvDivisor : UV_DIVISOR_FALLBACK;
+  float divisor = (uvDivisor > 0.0f) ? uvDivisor : UV_SENSITIVITY_COUNTS_PER_UVI;
   float measuredUvi = (float)rawUVS / divisor;
   float correctedUvi = applyEnclosureCompensation(measuredUvi);
 
@@ -1737,9 +1732,9 @@ float calculateUVI() {
   
   // Debug output
   if (DEBUG_SERIAL) {
-    Serial.print(F("UV raw: ")); Serial.print(rawUVS);
-    Serial.print(F(" UVI measured: ")); Serial.print(measuredUvi);
-    Serial.print(F(" UVI corrected: ")); Serial.println(correctedUvi);
+    Serial.print("UV raw: "); Serial.print(rawUVS);
+    Serial.print(" UVI measured: "); Serial.print(measuredUvi);
+    Serial.print(" UVI corrected: "); Serial.println(correctedUvi);
   }
   
   return correctedUvi;
