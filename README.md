@@ -258,7 +258,7 @@ const float AUTO_UV_MIN = 0.500;   // UV Index for 1 bar
 const float AUTO_UV_SATURATION = 6.000;   // UV Index ceiling (output clamp)
 ```
 
-Bars are distributed evenly across this range for all games. `AUTO_UV_SATURATION` is a saturation ceiling, so the highest bar can begin before this value and then remains clamped at full above it. UV Index 6.000 is typical for a sunny day in temperate climates.
+Bars are distributed evenly across this range for all games. `AUTO_UV_SATURATION` is a saturation ceiling, so the highest bar can begin before this value and then remains clamped at full above it. UV Index 6 is typical for a sunny day in temperate climates.
 
 ### Manual Mode
 
@@ -293,7 +293,7 @@ If the bar display feels jumpy:
 - `UVI_SMOOTHING_ENABLED`: Applies exponential smoothing (default: `false`; set `true` to smooth)
 - `UVI_SMOOTHING_ALPHA`: Controls how much weight new readings get vs. the running average (default: `0.5`; higher = faster response, lower = smoother). Setting `UVI_SMOOTHING_ALPHA = 1.0` is the same as `UVI_SMOOTHING_ENABLED = false`.
 - `BAR_HYSTERESIS_ENABLED`: Enables bar hysteresis (default: `false`). Setting `BAR_HYSTERESIS_ENABLED = false` is the same as `BAR_HYSTERESIS = 0.0`.
-- `BAR_HYSTERESIS`: Requires UV margin before changing bars (default: `0.2`; only used when `BAR_HYSTERESIS_ENABLED = true`)
+- `BAR_HYSTERESIS`: Requires UV margin before changing bars (default: `0.200`; only used when `BAR_HYSTERESIS_ENABLED = true`)
 
 ----------------------------------------------------------------------
 
@@ -330,7 +330,7 @@ Most glass and many plastics block UV strongly (often 90%+). Compensation can co
 
 ### UV sensor reads 0 or very low
 1. Enable `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud)
-   - At UVI 6.000, expect ~13800 raw counts (6 × 2300)
+   - At UVI 6, expect ~13800 raw counts (6 × 2300)
    - If raw = 0, sensor may not be in UV mode
 2. Ensure sensor faces the sky (not blocked by hand/case)
 3. If using an enclosure window, verify `UV_ENCLOSURE_TRANSMITTANCE` and use UV-transparent material
