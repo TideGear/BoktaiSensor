@@ -96,6 +96,7 @@ int16_t screensaverTextH = 0;
 // Cached display values
 uint32_t cachedRawUVS = 0;
 float cachedUviRaw = 0.0f;
+float cachedUviCorrected = 0.0f;
 float cachedUvi = 0.0f;
 int cachedFilledBars = 0;
 int cachedNumBars = 0;
@@ -556,12 +557,16 @@ void drawDebugDisplay() {
 
   display.setCursor(0, 20);
   display.print("UVI:");
-  display.print(cachedUviRaw, 2);
+  display.print(cachedUviRaw, 3);
+
+  display.setCursor(0, 30);
+  display.print("UVI comp'ed:");
+  display.print(cachedUviCorrected, 3);
 
   // Battery readings
   bool haveBatteryReading = BATTERY_SENSE_ENABLED && hasBatteryReading;
 
-  display.setCursor(0, 32);
+  display.setCursor(0, 42);
   display.print("ADC avg:");
   if (haveBatteryReading) {
     display.print(cachedBatteryAdcAvg, 0);
@@ -569,19 +574,10 @@ void drawDebugDisplay() {
     display.print("N/A");
   }
 
-  display.setCursor(0, 42);
+  display.setCursor(0, 52);
   display.print("Batt V:");
   if (haveBatteryReading) {
     display.print(cachedBatteryVoltage, 2);
-  } else {
-    display.print("N/A");
-  }
-
-  display.setCursor(0, 52);
-  display.print("Batt %:");
-  if (haveBatteryReading && cachedBatteryPct >= 0) {
-    display.print(cachedBatteryPct);
-    display.print("%");
   } else {
     display.print("N/A");
   }
@@ -614,7 +610,7 @@ void drawMainDisplay() {
   display.setTextSize(1);
   display.setCursor(64, 18);
   display.print("UV:");
-  display.print(cachedUvi, 1);
+  display.print(cachedUvi, 3);
 
   // 5. Draw Sun Gauge (8 or 10 segments depending on game)
   drawBoktaiGauge(38, 20, cachedFilledBars, cachedNumBars);
@@ -1735,12 +1731,13 @@ float calculateUVI() {
 
   cachedRawUVS = rawUVS;
   cachedUviRaw = measuredUvi;
+  cachedUviCorrected = correctedUvi;
   
   // Debug output
   if (DEBUG_SERIAL) {
     Serial.print("UV raw: "); Serial.print(rawUVS);
-    Serial.print(" UVI measured: "); Serial.print(measuredUvi);
-    Serial.print(" UVI corrected: "); Serial.println(correctedUvi);
+    Serial.print(" UVI measured: "); Serial.print(measuredUvi, 3);
+    Serial.print(" UVI corrected: "); Serial.println(correctedUvi, 3);
   }
   
   return correctedUvi;

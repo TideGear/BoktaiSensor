@@ -23,8 +23,8 @@
 // Set to false to use the per-game manual calibration arrays below.
 const bool AUTO_MODE = true;
 
-const float AUTO_UV_MIN = 0.5;   // UV Index for 1 bar (shade/overcast)
-const float AUTO_UV_SATURATION = 6.0;   // UV Index where output is fully saturated/clamped
+const float AUTO_UV_MIN = 0.500;   // UV Index for 1 bar (shade/overcast)
+const float AUTO_UV_SATURATION = 6.000;   // UV Index where output is fully saturated/clamped
 
 // -----------------------------------------------------------------------------
 // UV ENCLOSURE COMPENSATION
@@ -37,7 +37,7 @@ const float AUTO_UV_SATURATION = 6.0;   // UV Index where output is fully satura
 // Example: 0.42 means the window passes 42% of UV.
 const bool UV_ENCLOSURE_COMP_ENABLED = false;
 const float UV_ENCLOSURE_TRANSMITTANCE = 1.0f;
-const float UV_ENCLOSURE_UVI_OFFSET = 0.0f;
+const float UV_ENCLOSURE_UVI_OFFSET = 0.000f;
 
 // -----------------------------------------------------------------------------
 // UV FILTERING
@@ -50,7 +50,7 @@ const float UV_ENCLOSURE_UVI_OFFSET = 0.0f;
 const bool UVI_SMOOTHING_ENABLED = false;
 const float UVI_SMOOTHING_ALPHA = 0.5;  // 0.0-1.0. Controls how much weight new readings get vs. the running average. Higher = faster response.
 const bool BAR_HYSTERESIS_ENABLED = false;
-const float BAR_HYSTERESIS = 0.2;       // UV Index margin for bar changes
+const float BAR_HYSTERESIS = 0.200;       // UV Index margin for bar changes
 
 // -----------------------------------------------------------------------------
 // GAME DEFINITIONS
@@ -71,45 +71,45 @@ const int GAME_BARS[NUM_GAMES] = { 8, 10, 10 };
 // -----------------------------------------------------------------------------
 // MANUAL MODE CALIBRATION (only used when AUTO_MODE = false)
 // -----------------------------------------------------------------------------
-// BOKTAI 1 - 8 bars (range: 0.5 to 6.0)
+// BOKTAI 1 - 8 bars (range: 0.500 to 6.000)
 const float BOKTAI_1_UV[8] = {
-  0.5,   // Bar 1: Minimal UV (shade/overcast)
-  1.3,   // Bar 2: Low UV
-  2.1,   // Bar 3: Low-moderate UV
-  2.9,   // Bar 4: Moderate UV
-  3.6,   // Bar 5: Moderate-high UV
-  4.4,   // Bar 6: High UV (partly sunny)
-  5.2,   // Bar 7: High UV (sunny)
-  6.0    // Bar 8: Full sun
+  0.500,   // Bar 1: Minimal UV (shade/overcast)
+  1.300,   // Bar 2: Low UV
+  2.100,   // Bar 3: Low-moderate UV
+  2.900,   // Bar 4: Moderate UV
+  3.600,   // Bar 5: Moderate-high UV
+  4.400,   // Bar 6: High UV (partly sunny)
+  5.200,   // Bar 7: High UV (sunny)
+  6.000    // Bar 8: Full sun
 };
 
-// BOKTAI 2 - 10 bars (range: 0.5 to 6.0)
+// BOKTAI 2 - 10 bars (range: 0.500 to 6.000)
 const float BOKTAI_2_UV[10] = {
-  0.5,   // Bar 1
-  1.1,   // Bar 2
-  1.7,   // Bar 3
-  2.3,   // Bar 4
-  2.9,   // Bar 5
-  3.5,   // Bar 6
-  4.1,   // Bar 7
-  4.7,   // Bar 8
-  5.3,   // Bar 9
-  6.0    // Bar 10
+  0.500,   // Bar 1
+  1.100,   // Bar 2
+  1.700,   // Bar 3
+  2.300,   // Bar 4
+  2.900,   // Bar 5
+  3.500,   // Bar 6
+  4.100,   // Bar 7
+  4.700,   // Bar 8
+  5.300,   // Bar 9
+  6.000    // Bar 10
 };
 
-// BOKTAI 3 - 10 bars (range: 0.5 to 6.0)
+// BOKTAI 3 - 10 bars (range: 0.500 to 6.000)
 // Intentionally separate from BOKTAI_2_UV for possible future divergence.
 const float BOKTAI_3_UV[10] = {
-  0.5,   // Bar 1
-  1.1,   // Bar 2
-  1.7,   // Bar 3
-  2.3,   // Bar 4
-  2.9,   // Bar 5
-  3.5,   // Bar 6
-  4.1,   // Bar 7
-  4.7,   // Bar 8
-  5.3,   // Bar 9
-  6.0    // Bar 10
+  0.500,   // Bar 1
+  1.100,   // Bar 2
+  1.700,   // Bar 3
+  2.300,   // Bar 4
+  2.900,   // Bar 5
+  3.500,   // Bar 6
+  4.100,   // Bar 7
+  4.700,   // Bar 8
+  5.300,   // Bar 9
+  6.000    // Bar 10
 };
 
 // =============================================================================
@@ -248,7 +248,7 @@ const unsigned long BLE_METER_UNLOCK_REFRESH_MS = 1000;
 // Enables Serial debug logging (115200 baud) for UV/battery readings and sensor init.
 const bool DEBUG_SERIAL = true;
 
-// Adds a 4th screen (after Boktai 3) showing raw UV + battery values for tuning.
+// Adds a 4th screen (after Boktai 3) showing UV, UVI, compensated UVI, and battery values for tuning.
 // Set false to remove it from the button cycle.
 const bool DEBUG_SCREEN_ENABLED = true;
 

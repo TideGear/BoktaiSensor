@@ -51,7 +51,7 @@ sunlight (UV) instead of artificial light hacks.
 3. Pair the device as a Bluetooth controller in your OS
 4. In mGBA (libretro), map **L3** to solar sensor decrease and **R3** to increase
 5. Power on: hold button 3 seconds
-6. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view raw UV/battery values.
+6. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view UV, UVI, compensated UVI, and battery values.
 7. Point sensor toward the sky — the device syncs the in-game meter automatically
 8. Power off: hold button 3 seconds
 
@@ -254,11 +254,11 @@ Bar thresholds are calculated from two values in config.h:
 
 ```c
 const bool AUTO_MODE = true;
-const float AUTO_UV_MIN = 0.5;   // UV Index for 1 bar
-const float AUTO_UV_SATURATION = 6.0;   // UV Index ceiling (output clamp)
+const float AUTO_UV_MIN = 0.500;   // UV Index for 1 bar
+const float AUTO_UV_SATURATION = 6.000;   // UV Index ceiling (output clamp)
 ```
 
-Bars are distributed evenly across this range for all games. `AUTO_UV_SATURATION` is a saturation ceiling, so the highest bar can begin before this value and then remains clamped at full above it. UV Index 6.0 is typical for a sunny day in temperate climates.
+Bars are distributed evenly across this range for all games. `AUTO_UV_SATURATION` is a saturation ceiling, so the highest bar can begin before this value and then remains clamped at full above it. UV Index 6.000 is typical for a sunny day in temperate climates.
 
 ### Manual Mode
 
@@ -271,7 +271,7 @@ If the sensor is behind a transparent window, model that window as transmission 
 ```c
 const bool UV_ENCLOSURE_COMP_ENABLED = true;
 const float UV_ENCLOSURE_TRANSMITTANCE = 0.42; // 42% UV passes through the window
-const float UV_ENCLOSURE_UVI_OFFSET = 0.0;     // Optional bias correction
+const float UV_ENCLOSURE_UVI_OFFSET = 0.000;     // Optional bias correction
 ```
 
 Firmware applies compensation once after raw-to-UVI conversion:
@@ -285,7 +285,7 @@ Quick calibration:
 4. Use the median ratio as `UV_ENCLOSURE_TRANSMITTANCE`.
 5. Re-enable compensation (`UV_ENCLOSURE_COMP_ENABLED = true`).
 
-Note: On the DEBUG screen, `UVI` is the measured (pre-compensation) value.
+Note: On the DEBUG screen, `UVI` is the measured (pre-compensation) value and `UVI comp'ed` is the post-compensation value.
 
 ### Stability Tuning
 
@@ -330,7 +330,7 @@ Most glass and many plastics block UV strongly (often 90%+). Compensation can co
 
 ### UV sensor reads 0 or very low
 1. Enable `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud)
-   - At UVI 6, expect ~13800 raw counts (6 × 2300)
+   - At UVI 6.000, expect ~13800 raw counts (6 × 2300)
    - If raw = 0, sensor may not be in UV mode
 2. Ensure sensor faces the sky (not blocked by hand/case)
 3. If using an enclosure window, verify `UV_ENCLOSURE_TRANSMITTANCE` and use UV-transparent material
