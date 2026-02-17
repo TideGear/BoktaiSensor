@@ -194,7 +194,7 @@ const bool GBA_LINK_ENABLED = true;
 const int GBA_PIN_SC = 44;  // D7 (GPIO44) - SC (bit 0)
 const int GBA_PIN_SD = 7;   // D8 (GPIO7)  - SD (bit 1)
 const int GBA_PIN_SI = 8;   // D9 (GPIO8)  - SI (bit 2)
-const int GBA_PIN_SO = 10;  // D10 (GPIO10) - SO (bit 3)
+const int GBA_PIN_SO = 9;   // D10 (GPIO9)  - SO (bit 3)
 
 // -----------------------------------------------------------------------------
 // BLUETOOTH HID
