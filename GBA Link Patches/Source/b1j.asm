@@ -67,8 +67,8 @@ pop	r15
 .pool
 
 linkstate:
-// low pair, high pair
-dcb	0x00,0x00
+// low pair, high pair (+2 bytes pad for word alignment)
+dcb	0x00,0x00,0x00,0x00
 
 dataarea:
 // GBA GPIO pins are pulled up, so no connection reads as 0xF; treat as no sunlight
