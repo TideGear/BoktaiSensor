@@ -188,6 +188,7 @@ const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (equivalent to
 // =============================================================================
 
 // -----------------------------------------------------------------------------
+// GBA LINK OUTPUT (framed 3-wire)
 // -----------------------------------------------------------------------------
 const bool GBA_LINK_ENABLED = true;
 // Framed 3-wire protocol:
