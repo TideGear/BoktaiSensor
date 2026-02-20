@@ -51,7 +51,7 @@ sunlight (UV) instead of artificial light hacks.
 3. Pair the device as a Bluetooth controller in your OS
 4. In mGBA (libretro), map **L3** to solar sensor decrease and **R3** to increase
 5. Power on: hold button 3 seconds
-6. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view UV, UVI, compensated UVI, and battery values.
+6. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
 7. Point sensor toward the sky — the device syncs the in-game meter automatically
 8. Power off: hold button 3 seconds
 

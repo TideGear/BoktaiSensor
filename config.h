@@ -253,7 +253,7 @@ const unsigned long BLE_METER_UNLOCK_REFRESH_MS = 1000;
 // Enables Serial debug logging (115200 baud) for UV/battery readings and sensor init.
 const bool DEBUG_SERIAL = true;
 
-// Adds a 4th screen (after Boktai 3) showing UV, UVI, compensated UVI, and battery values for tuning.
+// Adds a 4th screen (after Boktai 3) showing UV raw, UVI, compensated UVI, ADC avg, and battery voltage for tuning.
 // Set false to remove it from the button cycle.
 const bool DEBUG_SCREEN_ENABLED = true;
 
