@@ -1,0 +1,5 @@
+Ojo del Sol GPIO,Link Cable Breakout Pads,Link Cable Player 1 (Ojo) Side,Link Cable Player 2 (GBA) Side,GBA Port Pin Type
+D9,SO,Pin 2,Pin 3,SI
+GND,SI,Pin 3,Pin 6,GND
+D8,SD,Pin 4,Pin 4,SD
+D7,SC,Pin 5,Pin 5,SC

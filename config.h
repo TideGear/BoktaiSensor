@@ -131,11 +131,11 @@ const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 
 // Voltage divider calibration multiplier
 // Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
-// Actual default: 2.21 compensates for typical ADC/resistor variance
+// Actual default: 2.22 compensates for typical ADC/resistor variance
 // Adjust if battery % is wrong at full charge:
 //   - If % too LOW:  increase this value
 //   - If % too HIGH: decrease this value
-const float VOLT_DIVIDER_MULT = 2.21;
+const float VOLT_DIVIDER_MULT = 2.22;
 
 // -----------------------------------------------------------------------------
 // LOW-VOLTAGE CUTOFF (requires battery sense divider)
@@ -188,13 +188,17 @@ const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (equivalent to
 // =============================================================================
 
 // -----------------------------------------------------------------------------
-// GBA LINK OUTPUT (D7-D10)
 // -----------------------------------------------------------------------------
 const bool GBA_LINK_ENABLED = true;
-const int GBA_PIN_SC = 44;  // D7 (GPIO44) - SC (bit 0)
-const int GBA_PIN_SD = 7;   // D8 (GPIO7)  - SD (bit 1)
-const int GBA_PIN_SI = 8;   // D9 (GPIO8)  - SI (bit 2)
-const int GBA_PIN_SO = 9;   // D10 (GPIO9)  - SO (bit 3)
+// Framed 3-wire protocol:
+// - SC = frame phase line
+// - SD/SO = 2-bit payload pair
+const int GBA_PIN_SC = 44;  // D7 (GPIO44) - frame phase (SC)
+const int GBA_PIN_SD = 7;   // D8 (GPIO7)  - payload bit 1 (SD)
+const int GBA_PIN_SO = 8;   // D9 (GPIO8)  - payload bit 0 (SO)
+// Per-phase hold time. A full 4-bit value takes two phases.
+// Example: 5ms => one phase every 5ms, full value refresh about every 10ms.
+const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
 
 // -----------------------------------------------------------------------------
 // BLUETOOTH HID

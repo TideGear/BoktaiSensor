@@ -66,7 +66,7 @@ sunlight (UV) instead of artificial light hacks.
 The Ojo del Sol can output bar values in three ways. Choose based on your setup:
 
 ### 1. Display Only (Manual Entry)
-Read the bar count from the OLED and enter it manually using Prof9's ROM hacks or your flash cart's input method.
+Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method below.
 
 ### 2. Bluetooth (Emulators) — Recommended
 The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sends button/stick inputs to control the emulator's solar sensor.
@@ -84,11 +84,14 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 
 ### 3. GBA Link Cable (Real Hardware)
 
-**Status: Untested.** This outputs a 4-bit bar count on GPIO pins for use with a physical GBA via link cable.
+**Status: Partially Tested.** This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a ground bridge for use with a physical GBA via link cable.
 
 **Requirements:**
-- Prof9's ROM hack from the **gba-link-gpio** branch: https://github.com/Prof9/Boktai-Solar-Sensor-Patches/tree/gba-link-gpio/Source
-- Wire the Ojo del Sol to the **Player 2** side of the link cable
+- Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources).
+- Wire the Ojo del Sol to the **Player 1 (P1)** side of the cheap cable.
+- Wire the GBA to the **Player 2 (P2)** side.
+
+**Note:** The English translation of Boktai 3 should work with the patch, but this is currently untested.
 
 **Limitation:** Boktai's normal link-cable modes (e.g., multiplayer) are **not compatible** with this and may never be. To use multiplayer alongside the Ojo del Sol, you'll need an emulator with link support (I've contacted Pizza Boy A Pro and Linkboy devs — TBD).
 
@@ -101,7 +104,7 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 - Adafruit LTR390 UV Sensor (I2C)
 - SSD1306 128x64 OLED Display (I2C)
 - Tactile push button (power/game select)
-- 3.7V LiPo battery (450mAh recommended)
+- 3.7V LiPo battery (300mAh works well; larger capacity is optional but be mindful of your case size)
 - 2x 100K ohm resistors (for battery monitoring — optional but recommended)
 
 ### Wiring
@@ -137,37 +140,50 @@ Battery sensing is disabled by default (`BATTERY_SENSE_ENABLED = false`). After 
 
 ### GBA Link Cable Wiring (Optional)
 
-Only needed if using GBA Link output mode. The GBA connects to the **Player 1 (P1)** side of a cheap GBA link cable. The Ojo del Sol connects to the **Player 2 (P2)** side via a [Palmr breakout board](https://github.com/Palmr/gb-link-cable).
+Only needed if using GBA Link output mode. For the framed 3-wire protocol, the GBA connects to the **Player 2 (P2)** side of a cheap cable. The Ojo del Sol connects to the **Player 1 (P1)** side via a [Palmr breakout board](https://github.com/Palmr/gb-link-cable).
 
-**Signal-to-GPIO mapping** (what GBA signal each XIAO pin handles):
+**Framed 3-wire signal mapping:**
 
-| GBA Signal | GBA Port Pin | XIAO Pin |
-|------------|--------------|----------|
-| SO | 2 | D10 (GPIO10) |
-| SI | 3 | D9 (GPIO8) |
-| SD | 4 | D8 (GPIO7) |
-| SC | 5 | D7 (GPIO44) |
-| GND | 6 | (leave unconnected) |
-| VDD35 | 1 | (leave unconnected) |
+| Function | XIAO Pin | Notes |
+|----------|----------|-------|
+| Frame phase (SC) | D7 (GPIO44) | Phase bit toggles every `GBA_LINK_FRAME_TOGGLE_MS` |
+| Payload bit 1 (SD) | D8 (GPIO7) | Framed data |
+| Payload bit 0 (SO) | D9 (GPIO8) | Framed data |
+| Ground bridge wire | Ojo GND | Connect to P1 SI pad (Pin 3); this routes to GBA ground on P2 Pin 6 |
+| VDD35 | - | Leave unconnected |
 
-**Cheap cable crossover wiring:**
+**Cheap cable continuity and P1-side wiring:**
 
-Cheap GBA link cables have non-standard internal wiring (no mid-cable signal splitter). The cable crosses some lines, so the P2 breakout pad labels **do not match** the GBA signal names. Use the table below to determine which breakout pad to physically wire each XIAO pin to:
+Cheap GBA link cables have non-standard internal wiring (no mid-cable signal splitter), and the two ends are not equivalent. For this method, wire the **P1 breakout** as follows:
 
-| XIAO Pin | GBA Signal | P1 Pin | Cable Routes To | P2 Breakout Pad Label |
-|----------|------------|--------|-----------------|-----------------------|
-| D10 | SO | Pin 2 | P2 Pin 3 | **SI** |
-| D9 | SI | Pin 3 | P2 Pin 6 | **GND** (see note below) |
-| D8 | SD | Pin 4 | P2 Pin 4 | **SD** |
-| D7 | SC | Pin 5 | P2 Pin 5 | **SC** |
+| Ojo Connection | P1 Breakout Pad Label | P1 Pin | Cable Routes To | P2 (GBA) Pin |
+|----------------|------------------------|--------|-----------------|--------------|
+| D9 (GPIO8) | SO | Pin 2 | P2 Pin 3 | SI |
+| D8 (GPIO7) | SD | Pin 4 | P2 Pin 4 | SD |
+| D7 (GPIO44) | SC | Pin 5 | P2 Pin 5 | SC |
+| GND | SI | Pin 3 | P2 Pin 6 | GND |
 
-The SO-to-SI crossover (P1 Pin 2 → P2 Pin 3) is expected — one device's Serial Out arrives at the other's Serial In. SD and SC are straight-through.
+This intentionally repurposes the P1 `SI` conductor as the shared ground path for the Ojo and GBA.
 
 Verify your specific cable's wiring with a multimeter continuity test. See [this sheet](https://docs.google.com/spreadsheets/d/19uAjLaDji9D3lIKIEdB9RHNQ_F-Fo1NnXY90uRH3dQA/edit?usp=sharing) for reference.
 
-**Important — Pin 6 "GND" pad on the breakout:**
+Expected continuity on this cheap-cable variant:
+- P1 Pin 2 -> P2 Pin 3
+- P1 Pin 3 -> P2 Pin 6
+- P1 Pin 4 -> P2 Pin 4
+- P1 Pin 5 -> P2 Pin 5
 
-The cheap cable routes P1 Pin 3 (GBA's SI) to P2 Pin 6. The breakout board labels this pad "GND" because Pin 6 is normally the ground pin on a standard GBA port. However, the Palmr breakout board simply passes through the connector pin — **it is not tied to an actual ground plane**. It is safe to connect D9 here; the pad will carry the SI signal despite its label.
+**Important - shield and "GND" labels:**
+
+- Shell/shield continuity is often missing on cheap cables, so do not assume shield gives ground reference.
+- On this wiring method, shared ground comes from the P1 Pin 3 conductor routed to P2 Pin 6.
+
+**`GBA_LINK_FRAME_TOGGLE_MS` explained:**
+
+- This value is the hold time for one frame phase (`SC` low or high).
+- One full 4-bit bar value needs two phases, so full refresh time is roughly `2 * GBA_LINK_FRAME_TOGGLE_MS`.
+- Example: `5ms` means about `10ms` per full value (~100 full updates/sec).
+- Lower values respond faster but reduce electrical timing margin; higher values are slower but more tolerant.
 
 **Notes:**
 - Keep all signals at 3.3V logic (the XIAO ESP32S3 is 3.3V native, so no level shifting is needed)

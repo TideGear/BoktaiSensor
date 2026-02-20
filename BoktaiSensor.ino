@@ -104,6 +104,8 @@ float smoothedUvi = 0.0f;
 bool hasSmoothedUvi = false;
 bool gameChanged = false;
 bool bleGameChanged = false;
+bool gbaFramePhaseHigh = false;
+unsigned long gbaFrameLastToggleMs = 0;
 
 // BLE state
 XboxGamepadDevice* xboxGamepad = nullptr;
@@ -190,11 +192,9 @@ void setup() {
   if (GBA_LINK_ENABLED) {
     pinMode(GBA_PIN_SC, OUTPUT);
     pinMode(GBA_PIN_SD, OUTPUT);
-    pinMode(GBA_PIN_SI, OUTPUT);
     pinMode(GBA_PIN_SO, OUTPUT);
     digitalWrite(GBA_PIN_SC, LOW);
     digitalWrite(GBA_PIN_SD, LOW);
-    digitalWrite(GBA_PIN_SI, LOW);
     digitalWrite(GBA_PIN_SO, LOW);
   }
 
@@ -334,10 +334,11 @@ void loop() {
       cachedFilledBars = getBoktaiBarsWithHysteresis(uviForBars, currentGame, cachedFilledBars);
     }
     cachedUvi = uviForBars;
-    updateGbaLinkOutput(cachedFilledBars);
     updateBluetoothMeter(cachedFilledBars, cachedNumBars);
     newData = true;
   }
+
+  updateGbaLinkOutput(cachedFilledBars);
 
   if (screensaverActive) {
     drawScreensaver();
@@ -623,11 +624,25 @@ void updateGbaLinkOutput(int bars) {
     return;
   }
 
-  uint8_t value = (uint8_t)constrain(bars, 0, 15);  // 4-bit output (max game bars is 10)
-  digitalWrite(GBA_PIN_SC, (value & 0x01) ? HIGH : LOW);
-  digitalWrite(GBA_PIN_SD, (value & 0x02) ? HIGH : LOW);
-  digitalWrite(GBA_PIN_SI, (value & 0x04) ? HIGH : LOW);
-  digitalWrite(GBA_PIN_SO, (value & 0x08) ? HIGH : LOW);
+  uint8_t value = (uint8_t)constrain(bars, 0, 15);  // 4-bit bar value encoded over two phases
+
+  // Framed 3-wire mode:
+  // - SC carries frame phase (0 = low pair, 1 = high pair)
+  // - SD/SO carry two data bits for that phase
+  // - SI is unused (wired to ground externally)
+  unsigned long now = millis();
+  if ((gbaFrameLastToggleMs == 0) || ((now - gbaFrameLastToggleMs) >= GBA_LINK_FRAME_TOGGLE_MS)) {
+    gbaFramePhaseHigh = !gbaFramePhaseHigh;
+    gbaFrameLastToggleMs = now;
+  }
+
+  uint8_t pair = gbaFramePhaseHigh ? ((value >> 2) & 0x03) : (value & 0x03);
+  bool soBit = (pair & 0x01) != 0;
+  bool sdBit = (pair & 0x02) != 0;
+
+  digitalWrite(GBA_PIN_SC, gbaFramePhaseHigh ? HIGH : LOW);
+  digitalWrite(GBA_PIN_SD, sdBit ? HIGH : LOW);
+  digitalWrite(GBA_PIN_SO, soBit ? HIGH : LOW);
 }
 
 void writeLtr390Register(uint8_t reg, uint8_t value) {
@@ -957,7 +972,6 @@ void enterDeepSleep() {
   if (GBA_LINK_ENABLED) {
     pinMode(GBA_PIN_SC, INPUT);
     pinMode(GBA_PIN_SD, INPUT);
-    pinMode(GBA_PIN_SI, INPUT);
     pinMode(GBA_PIN_SO, INPUT);
   }
 
