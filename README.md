@@ -87,7 +87,7 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 **Status: Partially Tested.** This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a ground bridge for use with a physical GBA via link cable.
 
 **Requirements:**
-- Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources).
+- Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources). Many thanks to Prof9 for the original proof-of-concept code!
 - Wire the Ojo del Sol to the **Player 1 (P1)** side of the cheap cable.
 - Wire the GBA to the **Player 2 (P2)** side.
 
