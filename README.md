@@ -35,6 +35,13 @@ A substitute solar sensor for playing the Boktai series (Boktai 1, 2, 3)
 on flash carts or emulators. Restores "Kojima's Intent" by using real
 sunlight (UV) instead of artificial light hacks.
 
+### Based on Prof9's Work
+
+The GBA link cable ASM patches, IPS patches, and Ojo-del-Sol-side GBA link
+protocol are based on [the gba-link-gpio branch of Prof9's Boktai Solar Sensor Patches](https://github.com/Prof9/Boktai-Solar-Sensor-Patches/tree/gba-link-gpio/Source).
+Prof9's original code is released under the MIT License — see
+[Prof9's license.txt](Prof9's%20license.txt) for details.
+
 **Supported Games:**
 - Boktai 1: The Sun Is in Your Hand (8-bar gauge)
 - Boktai 2: Solar Boy Django (10-bar gauge)
@@ -385,7 +392,7 @@ right after BLE/BTDM startup logs, this is a known board-package compatibility i
 
 ## Credits & Links
 
+- **[Prof9](https://github.com/Prof9/Boktai-Solar-Sensor-Patches)** — GBA link patches, IPS patches, and link protocol are based on Prof9's work (MIT License — see [Prof9's license.txt](Prof9's%20license.txt)) Prof9 also provided a ridiculous amount of help, patience, and kindness. Many thanks!
 - [GBATEK Solar Sensor Documentation](https://problemkaputt.de/gbatek.htm)
-- [Prof9's Boktai ROM Hacks](https://github.com/Prof9/Boktai-Solar-Sensor-Patches)
 - [Seeed XIAO ESP32S3 Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
 - [Adafruit LTR390](https://www.adafruit.com/product/4831)

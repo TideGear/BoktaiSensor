@@ -27,15 +27,15 @@ mov	r2,r0
 lsl	r2,r2,1Fh
 lsr	r2,r2,1Fh	// frame phase from SC
 
-mov	r3,0Ah
-and	r3,r0		// keep SD/SO bits (bit1 + bit3)
+mov	r3,06h
+and	r3,r0		// keep SD/SI bits (bit1 + bit2; SO arrives on SI via cable crossover)
 mov	r0,r3
-lsr	r0,r0,3h	// SO -> bit0
+lsr	r0,r0,2h	// SI -> bit0
 mov	r1,2h
 and	r3,r1		// SD -> bit1
 orr	r3,r0		// 2-bit payload pair
 
-add	r1,=linkstate
+ldr	r1,=0203FFF0h
 cmp	r2,0h
 beq	@@phase0
 
@@ -97,10 +97,6 @@ b	@@darkloop
 pop	r15
 
 .pool
-
-linkstate:
-// low pair, high pair (+2 bytes pad for word alignment)
-dcb	0x00,0x00,0x00,0x00
 
 dataarea:
 // GBA GPIO pins are pulled up, so no connection reads as 0xF; treat as no sunlight
