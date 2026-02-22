@@ -43,17 +43,24 @@ strb	r3,[r1,1h]	// high pair
 ldrb	r0,[r1]
 lsl	r3,r3,2h
 orr	r0,r3
-b	@@sunwrite
+b	@@linkwrite
 
 @@phase0:
 strb	r3,[r1]		// low pair
 ldrb	r0,[r1,1h]
 lsl	r0,r0,2h
 orr	r0,r3
-b	@@sunwrite
+b	@@linkwrite
 
 @@nolink:
 mov	r0,0Fh
+b	@@sunwrite
+
+@@linkwrite:
+ldrb	r2,[r1,2h]	// load last confirmed index
+strb	r0,[r1,2h]	// store current index
+cmp	r0,r2		// same as last frame?
+bne	@@end		// different: skip (glitch or pending change)
 
 @@sunwrite:
 add	r3,=dataarea

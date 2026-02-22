@@ -640,9 +640,10 @@ void updateGbaLinkOutput(int bars) {
   bool soBit = (pair & 0x01) != 0;
   bool sdBit = (pair & 0x02) != 0;
 
-  digitalWrite(GBA_PIN_SC, gbaFramePhaseHigh ? HIGH : LOW);
+  // Data pins first so they're stable before SC signals the new phase
   digitalWrite(GBA_PIN_SD, sdBit ? HIGH : LOW);
   digitalWrite(GBA_PIN_SO, soBit ? HIGH : LOW);
+  digitalWrite(GBA_PIN_SC, gbaFramePhaseHigh ? HIGH : LOW);
 }
 
 void writeLtr390Register(uint8_t reg, uint8_t value) {

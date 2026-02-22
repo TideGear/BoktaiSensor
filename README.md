@@ -194,6 +194,7 @@ Expected continuity on this cheap-cable variant:
 
 **Notes:**
 - Keep all signals at 3.3V logic (the XIAO ESP32S3 is 3.3V native, so no level shifting is needed)
+- The ESP32 writes data pins (SD, SO) before the phase pin (SC) so the GBA always samples stable data when it detects a phase edge. The GBA-side ASM patches include a consecutive-match check that discards any single-frame misread, adding one frame (~17ms) of latency on real bar changes but eliminating visible glitches.
 
 
 ----------------------------------------------------------------------
