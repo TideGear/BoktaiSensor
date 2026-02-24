@@ -23,7 +23,7 @@ I'm looking for serious contributors to...**
 
 **Also contact me if you want to buy a pre-assembled device or kit!**
 
-Photos of a prototype: https://photos.app.goo.gl/sYk1wwQbzPgmbmyS8
+Photos of a prototype: https://photos.app.goo.gl/sYk1wwQbzPgmbmyS8 \
 Made with this 1.7 x 1.7 x 0.79 inch case: https://a.co/d/01qMPdr9
 
 ----------------------------------------------------------------------
