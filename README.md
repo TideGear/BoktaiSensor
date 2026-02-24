@@ -16,9 +16,8 @@ I'm looking for serious contributors to...**
 **1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight. Until I can do some testing, they are just guesses.**\
 **2. Add support via Single Analog Control Mode to their emulators.**\
 **3. Test and fix the code if needed.**\
-**4. Test the GBA link cable support.**\
-**5. Create a cool 3D-printable case.**\
-**6. You tell me!**
+**4. Create a cool 3D-printable case.**\
+**5. You tell me!**
 
 **...so please contact me if you are interested at TideGear @at@ gmail .dot. com !**
 
