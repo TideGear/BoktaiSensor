@@ -207,7 +207,7 @@ const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
 // Control mode:
 // 0 = Incremental: uses HID_BUTTON_DEC/INC to step the emulator meter; resync enabled.
 // 1 = Single Analog: maps bar count to a proportional deflection on one analog axis.
-const uint8_t HID_CONTROL_MODE = 1;
+const uint8_t HID_CONTROL_MODE = 0;
 
 // Workaround: mGBA uses 10 steps for Boktai 1 even though it has 8 bars.
 // Set false if mGBA is fixed to use 8 steps.
