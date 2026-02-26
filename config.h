@@ -166,7 +166,7 @@ const unsigned long SENSOR_POWER_STABLE_MS = 10;
 // D0 (GPIO1) supports RTC wake-up from deep sleep on XIAO ESP32S3.
 const int BUTTON_PIN = 1;    // D0 (GPIO1)
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
-const unsigned long LONG_PRESS_MS = 3000;   // Hold 3 seconds to power on/off
+const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
 
 // -----------------------------------------------------------------------------
 // DISPLAY / I2C
