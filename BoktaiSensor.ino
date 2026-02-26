@@ -10,6 +10,15 @@
 #include <NimBLEDevice.h>
 #include <NimBLEServer.h>
 
+// USB HID (requires USB Mode: USB-OTG/TinyUSB in board settings)
+#if defined(ARDUINO_USB_MODE) && !ARDUINO_USB_MODE
+#include "USB.h"
+#include "USBHIDGamepad.h"
+#define HAS_USB_HID 1
+#else
+#define HAS_USB_HID 0
+#endif
+
 // Display settings
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
@@ -155,6 +164,30 @@ bool bleSingleAnalogActive = false;
 bool bleSingleAnalogButtonHeld = false;
 unsigned long bleSingleAnalogLastRefreshMs = 0;
 
+// USB HID state
+// Global so the USBHID constructor registers the HID interface at static init
+// (before the framework's auto USB.begin() when CDC On Boot is enabled).
+#if HAS_USB_HID
+USBHIDGamepad usbGamepad;
+
+// Early-init: register gamepad device and set product name before USB.begin()
+// auto-runs. Static constructors execute before initArduino()/app_main().
+struct UsbHidEarlyInit {
+  UsbHidEarlyInit() {
+    USB.productName("Ojo del Sol");
+    if (USB_HID_ENABLED) {
+      usbGamepad.begin();
+    }
+  }
+} _usbHidEarlyInit;
+#endif
+bool usbHidActive = false;
+uint32_t usbButtonState = 0;
+int8_t usbStickLX = 0, usbStickLY = 0;
+int8_t usbStickRX = 0, usbStickRY = 0;
+int usbMeterBars = -1;
+int usbMeterNumBars = -1;
+
 char screensaverBatteryText[6] = "";
 int16_t screensaverBatteryTextW = 0;
 int16_t screensaverBatteryTextH = 0;
@@ -174,16 +207,72 @@ void wakeDisplayHardware() {
   delay(2);  // SSD1306 charge pump stabilization
 }
 
+// ---------------------------------------------------------------------------
+// USB HID gamepad helpers
+// ---------------------------------------------------------------------------
+// Maintain shadow state and send via send() so only one report per update.
+
+int8_t scaleAxisToUsb(int16_t xboxValue) {
+  return (int8_t)constrain((int32_t)xboxValue * 127 / 32767, -127, 127);
+}
+
+void usbGamepadPress(uint16_t button) {
+  usbButtonState |= (uint32_t)button;
+}
+
+void usbGamepadRelease(uint16_t button) {
+  usbButtonState &= ~(uint32_t)button;
+}
+
+void usbGamepadSetLeftStick(int16_t x, int16_t y) {
+  usbStickLX = scaleAxisToUsb(x);
+  usbStickLY = scaleAxisToUsb(y);
+}
+
+void usbGamepadSetRightStick(int16_t x, int16_t y) {
+  usbStickRX = scaleAxisToUsb(x);
+  usbStickRY = scaleAxisToUsb(y);
+}
+
+void usbSendReport() {
+  #if HAS_USB_HID
+  if (!usbHidActive) return;
+  // send(x, y, z, rz, rx, ry, hat, buttons)
+  // Right stick on rx/ry (X/Y Rotation) to match Xbox/Windows convention
+  // (z/rz = triggers, rx/ry = right stick in standard DirectInput mapping)
+  usbGamepad.send(usbStickLX, usbStickLY, 0, 0,
+                   usbStickRX, usbStickRY, HAT_CENTER, usbButtonState);
+  #endif
+}
+
+void usbReleaseAll() {
+  usbButtonState = 0;
+  usbStickLX = 0; usbStickLY = 0;
+  usbStickRX = 0; usbStickRY = 0;
+  usbSendReport();
+}
+
+void initUsbHid() {
+  #if HAS_USB_HID
+  if (USB_HID_ENABLED) {
+    usbHidActive = true;
+  }
+  // Safe no-op if already auto-started by CDC On Boot
+  USB.begin();
+  #endif
+}
+
 void showHoldPowerOnPrompt() {
   wakeDisplayHardware();
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(4, 28);
-  display.print("Hold 3s to power on");
+  display.print("Hold 2s to power on");
   display.display();
 }
 
 void setup() {
+  initUsbHid();
   Serial.begin(115200);
 
   // Configure power button with internal pull-up (active LOW)
@@ -218,6 +307,7 @@ void setup() {
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
+
   display.setTextSize(1);
   int16_t ssX1, ssY1;
   uint16_t ssW, ssH;
@@ -335,6 +425,7 @@ void loop() {
     }
     cachedUvi = uviForBars;
     updateBluetoothMeter(cachedFilledBars, cachedNumBars);
+    updateUsbMeter(cachedFilledBars, cachedNumBars);
     newData = true;
   }
 
@@ -820,12 +911,11 @@ int getBoktaiBars(float uvi, int game) {
   return 0;  // Below minimum threshold
 }
 
-// Handle power button: tap to cycle screens, long-press (3s) to sleep
+// Handle power button: tap to cycle screens, long-press (2s) to sleep
 void handlePowerButton() {
   bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
   
   if (buttonPressed && !buttonWasPressed) {
-    // Button just pressed - start timing
     buttonPressStart = millis();
     buttonWasPressed = true;
     if (screensaverActive) {
@@ -834,17 +924,14 @@ void handlePowerButton() {
     noteScreenActivity();
   } 
   else if (buttonPressed && buttonWasPressed) {
-    // Button held - check for long press
     noteScreenActivity();
     if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
       enterDeepSleep();
     }
   }
   else if (!buttonPressed && buttonWasPressed) {
-    // Button released - check if it was a short press (tap)
     unsigned long pressDuration = millis() - buttonPressStart;
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
-      // Short press: cycle to next screen (games + optional DEBUG)
       if (!suppressShortPress) {
         int numScreens = NUM_GAMES + (DEBUG_SCREEN_ENABLED ? 1 : 0);
         currentScreen = (currentScreen + 1) % numScreens;
@@ -865,9 +952,9 @@ void handlePowerButton() {
 }
 
 // Wait for power-on with 10-second timeout.
-// Always shows "Hold 3s to power on" immediately so wake taps are visible.
+// Always shows "Hold 2s to power on" immediately so wake taps are visible.
 // Button activity resets the 10-second timer.
-// Returns true if 3-second hold completed, false if timed out.
+// Returns true if hold completed, false if timed out.
 bool waitForPowerOn() {
   const unsigned long DISPLAY_TIMEOUT_MS = 10000;  // 10 seconds
   unsigned long lastActivity = millis();
@@ -911,7 +998,6 @@ bool waitForPowerOn() {
         lastPromptRefresh = now;
       }
       
-      // Check for 3-second hold
       if ((now - pressStart) >= LONG_PRESS_MS) {
         return true;  // Successfully powered on
       }
@@ -927,6 +1013,9 @@ bool waitForPowerOn() {
 
 // Enter deep sleep mode with button wake-up
 void enterDeepSleep() {
+  // Release USB HID state before sleep
+  usbReleaseAll();
+
   // Shut down Bluetooth first - this is critical for low-power sleep
   if (BLUETOOTH_ENABLED) {
     // Release any held buttons/sticks
@@ -934,8 +1023,8 @@ void enterDeepSleep() {
       if (bleActiveButton != 0) {
         xboxGamepad->release(bleActiveButton);
       }
-      if (BLE_METER_UNLOCK_BUTTON_ENABLED && bleSingleAnalogButtonHeld) {
-        xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
+      if (HID_METER_UNLOCK_BUTTON_ENABLED && bleSingleAnalogButtonHeld) {
+        xboxGamepad->release(HID_METER_UNLOCK_BUTTON);
       }
       xboxGamepad->release(XBOX_BUTTON_LS);
       xboxGamepad->release(XBOX_BUTTON_RS);
@@ -1124,11 +1213,11 @@ void initBluetooth() {
     server->advertiseOnDisconnect(false);
   }
 
-  if (BLE_BUTTONS_PER_SECOND == 0) {
+  if (HID_BUTTONS_PER_SECOND == 0) {
     blePressIntervalMs = 0;
     blePressHoldMs = 0;
   } else {
-    blePressIntervalMs = 1000UL / BLE_BUTTONS_PER_SECOND;
+    blePressIntervalMs = 1000UL / HID_BUTTONS_PER_SECOND;
     if (blePressIntervalMs == 0) {
       blePressIntervalMs = 1;
     }
@@ -1180,6 +1269,10 @@ void resetBlePressState() {
     xboxGamepad->release(bleActiveButton);
     xboxGamepad->sendGamepadReport();
   }
+  if (blePressHolding && bleActiveButton != 0) {
+    usbGamepadRelease(bleActiveButton);
+    usbSendReport();
+  }
   blePressHolding = false;
   bleActiveButton = 0;
   blePressDirection = 0;
@@ -1210,7 +1303,7 @@ int getBleMeterStepsForGame(int game) {
     return GAME_BARS[game];
   }
   if (game == 0) {
-    if (!BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
+    if (!HID_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
       return GAME_BARS[game];
     }
     return BOKTAI1_STEP_COUNT;
@@ -1229,7 +1322,7 @@ int getBleBarFromStep(int game, int step) {
   if (step > stepsMax) {
     step = stepsMax;
   }
-  if (game == 0 && BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
+  if (game == 0 && HID_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
     return BOKTAI1_STEP_TO_BAR[step];
   }
   return step;
@@ -1246,7 +1339,7 @@ int getBleStepFromBar(int game, int bar, bool fromEmpty) {
   if (bar > barsMax) {
     bar = barsMax;
   }
-  if (game == 0 && BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
+  if (game == 0 && HID_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
     return fromEmpty ? BOKTAI1_BAR_TO_STEP_FROM_EMPTY[bar] : BOKTAI1_BAR_TO_STEP_FROM_FULL[bar];
   }
   return bar;
@@ -1263,7 +1356,7 @@ int getBleActiveNumSteps() {
 }
 
 // ---------------------------------------------------------------------------
-// Single Analog mode (BLE_CONTROL_MODE == 1)
+// Single Analog mode (HID_CONTROL_MODE == 1)
 // Maps the current bar count to a proportional deflection on one analog axis.
 // The 0.0-1.0 range is divided into (numBars + 1) equal bands; we send the
 // midpoint of the band for the current bar count.
@@ -1316,7 +1409,7 @@ void applySingleAnalog(int bars, int numBars) {
   }
 
   float frac = getSingleAnalogFraction(bars, numBars);
-  uint8_t axis = BLE_SINGLE_ANALOG_AXIS;
+  uint8_t axis = HID_SINGLE_ANALOG_AXIS;
 
   // Determine which stick and sign from the axis selector
   bool isLeft  = (axis < 4);
@@ -1335,19 +1428,19 @@ void applySingleAnalog(int bars, int numBars) {
 
   // Release-and-repress the unlock button with every stick change so that
   // apps/emulators always register it, even if they started listening late.
-  if (BLE_METER_UNLOCK_BUTTON_ENABLED) {
+  if (HID_METER_UNLOCK_BUTTON_ENABLED) {
     bool needButton = (value != 0);
     if (needButton) {
       if (bleSingleAnalogButtonHeld) {
         // Release first, send report, then re-press with the new stick value
-        xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
+        xboxGamepad->release(HID_METER_UNLOCK_BUTTON);
         xboxGamepad->sendGamepadReport();
       }
-      xboxGamepad->press(BLE_METER_UNLOCK_BUTTON);
+      xboxGamepad->press(HID_METER_UNLOCK_BUTTON);
       bleSingleAnalogButtonHeld = true;
       bleSingleAnalogLastRefreshMs = millis();
     } else if (bleSingleAnalogButtonHeld) {
-      xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
+      xboxGamepad->release(HID_METER_UNLOCK_BUTTON);
       bleSingleAnalogButtonHeld = false;
     }
   }
@@ -1366,17 +1459,22 @@ void applySingleAnalog(int bars, int numBars) {
 }
 
 void releaseSingleAnalog() {
+  // Reset USB meter tracking so next update sends fresh state
+  usbMeterBars = -1;
+  usbMeterNumBars = -1;
+  usbReleaseAll();
+
   if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
     resetSingleAnalogState();
     return;
   }
 
   bool changed = false;
-  uint8_t axis = BLE_SINGLE_ANALOG_AXIS;
+  uint8_t axis = HID_SINGLE_ANALOG_AXIS;
   bool isLeft = (axis < 4);
 
-  if (BLE_METER_UNLOCK_BUTTON_ENABLED && bleSingleAnalogButtonHeld) {
-    xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
+  if (HID_METER_UNLOCK_BUTTON_ENABLED && bleSingleAnalogButtonHeld) {
+    xboxGamepad->release(HID_METER_UNLOCK_BUTTON);
     changed = true;
   }
 
@@ -1399,10 +1497,10 @@ void releaseSingleAnalog() {
 // Periodically release and re-press the unlock button so apps that start
 // listening mid-session still register it as held.
 void refreshSingleAnalogButton() {
-  if (!BLUETOOTH_ENABLED || BLE_CONTROL_MODE != 1) {
+  if (!BLUETOOTH_ENABLED || HID_CONTROL_MODE != 1) {
     return;
   }
-  if (!BLE_METER_UNLOCK_BUTTON_ENABLED || BLE_METER_UNLOCK_REFRESH_MS == 0) {
+  if (!HID_METER_UNLOCK_BUTTON_ENABLED || HID_METER_UNLOCK_REFRESH_MS == 0) {
     return;
   }
   if (!bleSingleAnalogButtonHeld || xboxGamepad == nullptr) {
@@ -1410,14 +1508,18 @@ void refreshSingleAnalogButton() {
   }
 
   unsigned long now = millis();
-  if ((now - bleSingleAnalogLastRefreshMs) < BLE_METER_UNLOCK_REFRESH_MS) {
+  if ((now - bleSingleAnalogLastRefreshMs) < HID_METER_UNLOCK_REFRESH_MS) {
     return;
   }
 
-  xboxGamepad->release(BLE_METER_UNLOCK_BUTTON);
+  xboxGamepad->release(HID_METER_UNLOCK_BUTTON);
   xboxGamepad->sendGamepadReport();
-  xboxGamepad->press(BLE_METER_UNLOCK_BUTTON);
+  usbGamepadRelease(HID_METER_UNLOCK_BUTTON);
+  usbSendReport();
+  xboxGamepad->press(HID_METER_UNLOCK_BUTTON);
   xboxGamepad->sendGamepadReport();
+  usbGamepadPress(HID_METER_UNLOCK_BUTTON);
+  usbSendReport();
   bleSingleAnalogLastRefreshMs = now;
 }
 
@@ -1485,7 +1587,7 @@ void updateBluetoothState() {
     if (bleConnected) {
       blePairingActive = false;
       stopBleAdvertising();
-      if (BLE_CONTROL_MODE == 1) {
+      if (HID_CONTROL_MODE == 1) {
         bleSyncPending = false;
         resetBlePressState();
         resetBleSyncState();
@@ -1497,7 +1599,7 @@ void updateBluetoothState() {
     } else {
       resetBlePressState();
       resetBleSyncState();
-      if (BLE_CONTROL_MODE == 1) {
+      if (HID_CONTROL_MODE == 1) {
         releaseSingleAnalog();
       }
       // If a connection drops, re-enter pairing/advertising for the usual timeout.
@@ -1517,6 +1619,49 @@ void updateBluetoothState() {
   }
 }
 
+void updateUsbMeter(int bars, int numBars) {
+  if (!usbHidActive) return;
+  if (numBars <= 0) return;
+  bars = constrain(bars, 0, numBars);
+  if (bars == usbMeterBars && numBars == usbMeterNumBars) return;
+  usbMeterBars = bars;
+  usbMeterNumBars = numBars;
+
+  if (HID_CONTROL_MODE == 1) {
+    float frac = getSingleAnalogFraction(bars, numBars);
+    uint8_t axis = HID_SINGLE_ANALOG_AXIS;
+    bool isLeft  = (axis < 4);
+    bool isX     = (axis % 4) < 2;
+    bool isNeg   = (axis % 2) == 0;
+    int16_t value = fractionToStickValue(frac, isNeg);
+
+    int16_t lx = 0, ly = 0, rx = 0, ry = 0;
+    if (isLeft) {
+      if (isX) lx = value; else ly = value;
+    } else {
+      if (isX) rx = value; else ry = value;
+    }
+
+    if (HID_METER_UNLOCK_BUTTON_ENABLED) {
+      if (value != 0) {
+        usbGamepadRelease(HID_METER_UNLOCK_BUTTON);
+        usbSendReport();
+        usbGamepadPress(HID_METER_UNLOCK_BUTTON);
+      } else {
+        usbGamepadRelease(HID_METER_UNLOCK_BUTTON);
+      }
+    }
+
+    if (isLeft) {
+      usbGamepadSetLeftStick(lx, ly);
+    } else {
+      usbGamepadSetRightStick(rx, ry);
+    }
+    usbSendReport();
+  }
+  // Incremental mode (0): USB mirrors BLE button presses via handleBlePresses()
+}
+
 void updateBluetoothMeter(int deviceBars, int numBars) {
   if (!BLUETOOTH_ENABLED) {
     return;
@@ -1528,7 +1673,7 @@ void updateBluetoothMeter(int deviceBars, int numBars) {
   bleDeviceBars = constrain(deviceBars, 0, numBars);
   bleDeviceNumBars = numBars;
 
-  if (BLE_CONTROL_MODE == 1) {
+  if (HID_CONTROL_MODE == 1) {
     if (bleGameChanged) {
       resetSingleAnalogState();
       bleGameChanged = false;
@@ -1556,7 +1701,7 @@ void handleBlePresses() {
   if (!BLUETOOTH_ENABLED) {
     return;
   }
-  if (BLE_CONTROL_MODE == 1) {
+  if (HID_CONTROL_MODE == 1) {
     return;
   }
   if (!bleConnected) {
@@ -1571,6 +1716,8 @@ void handleBlePresses() {
         xboxGamepad->release(bleActiveButton);
         xboxGamepad->sendGamepadReport();
       }
+      usbGamepadRelease(bleActiveButton);
+      usbSendReport();
       blePressHolding = false;
       applyBlePressEffect(blePressDirection);
       if (bleSyncPhase != BLE_SYNC_NONE) {
@@ -1624,7 +1771,7 @@ void handleBlePresses() {
   }
 
   blePressDirection = direction;
-  bleActiveButton = (direction > 0) ? BLE_BUTTON_INC : BLE_BUTTON_DEC;
+  bleActiveButton = (direction > 0) ? HID_BUTTON_INC : HID_BUTTON_DEC;
   blePressHolding = true;
   blePressStartMs = now;
   bleLastPressMs = now;
@@ -1632,6 +1779,8 @@ void handleBlePresses() {
     xboxGamepad->press(bleActiveButton);
     xboxGamepad->sendGamepadReport();
   }
+  usbGamepadPress(bleActiveButton);
+  usbSendReport();
 }
 
 // Calculate battery % based on analog reading

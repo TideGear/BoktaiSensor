@@ -202,6 +202,45 @@ const int GBA_PIN_SO = 8;   // D9 (GPIO8)  - payload bit 0 (SO)
 const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
 
 // -----------------------------------------------------------------------------
+// HID CONTROLLER (shared by Bluetooth and USB)
+// -----------------------------------------------------------------------------
+// Control mode:
+// 0 = Incremental: uses HID_BUTTON_DEC/INC to step the emulator meter; resync enabled.
+// 1 = Single Analog: maps bar count to a proportional deflection on one analog axis.
+const uint8_t HID_CONTROL_MODE = 1;
+
+// Workaround: mGBA uses 10 steps for Boktai 1 even though it has 8 bars.
+// Set false if mGBA is fixed to use 8 steps.
+const bool HID_BOKTAI1_MGBA_10_STEP_WORKAROUND = true;
+
+// Incremental mode button mapping
+// XBOX_BUTTON_LS = 0x2000 (Left Stick click = L3)
+// XBOX_BUTTON_RS = 0x4000 (Right Stick click = R3)
+const unsigned int HID_BUTTONS_PER_SECOND = 20;     // Button press rate; 0 disables incremental meter presses
+const uint16_t HID_BUTTON_DEC = 0x2000;              // L3 (Left Stick click)
+const uint16_t HID_BUTTON_INC = 0x4000;              // R3 (Right Stick click)
+
+// Single Analog axis (used when HID_CONTROL_MODE = 1):
+// 0 = Left  X-  (left stick left)
+// 1 = Left  X+  (left stick right)
+// 2 = Left  Y-  (left stick up)
+// 3 = Left  Y+  (left stick down)
+// 4 = Right X-  (right stick left)
+// 5 = Right X+  (right stick right)  [default]
+// 6 = Right Y-  (right stick up)
+// 7 = Right Y+  (right stick down)
+const uint8_t HID_SINGLE_ANALOG_AXIS = 5;
+// When true, a configurable button is held while the analog axis is deflected.
+// With midpoint band mapping, 0 bars still has a small deflection, so this button
+// remains held during normal Single Analog updates and is released only when the
+// controlled axis is explicitly returned to center.
+const bool HID_METER_UNLOCK_BUTTON_ENABLED = true;
+const uint16_t HID_METER_UNLOCK_BUTTON = 0x4000;  // R3 (Right Stick click)
+// How often (ms) to release and re-press the unlock button so that apps/emulators
+// that start listening mid-session still register it as held. 0 = no periodic refresh.
+const unsigned long HID_METER_UNLOCK_REFRESH_MS = 1000;
+
+// -----------------------------------------------------------------------------
 // BLUETOOTH HID
 // -----------------------------------------------------------------------------
 // Set BLUETOOTH_ENABLED to false to disable BLE entirely.
@@ -212,40 +251,16 @@ const char BLE_MANUFACTURER[] = "Ojo del Sol";
 const unsigned long BLE_PAIRING_TIMEOUT_MS = 60000;
 const bool BLE_RESYNC_ENABLED = true;
 const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
-const unsigned int BLE_BUTTONS_PER_SECOND = 20;     // Button press rate; 0 disables BLE meter presses
-// Workaround: mGBA uses 10 steps for Boktai 1 even though it has 8 bars.
-// Set false if mGBA is fixed to use 8 steps.
-const bool BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND = true;
-// BLE control mode:
-// 0 = Incremental (default): uses BLE_BUTTON_DEC/INC to step the meter; resync enabled.
-// 1 = Single Analog: maps bar count to a proportional deflection on one analog axis.
-const uint8_t BLE_CONTROL_MODE = 0;
 
-// Incremental mode button mapping (from XboxGamepadDevice.h)
-// XBOX_BUTTON_LS = 0x2000 (Left Stick click = L3)
-// XBOX_BUTTON_RS = 0x4000 (Right Stick click = R3)
-const uint16_t BLE_BUTTON_DEC = 0x2000;              // L3 (Left Stick click)
-const uint16_t BLE_BUTTON_INC = 0x4000;              // R3 (Right Stick click)
-
-// Single Analog axis (used when BLE_CONTROL_MODE = 1):
-// 0 = Left  X-  (left stick left)
-// 1 = Left  X+  (left stick right)
-// 2 = Left  Y-  (left stick up)
-// 3 = Left  Y+  (left stick down)
-// 4 = Right X-  (right stick left)
-// 5 = Right X+  (right stick right)  [default]
-// 6 = Right Y-  (right stick up)
-// 7 = Right Y+  (right stick down)
-const uint8_t BLE_SINGLE_ANALOG_AXIS = 5;
-// When true, a configurable button is held while the analog axis is deflected.
-// With midpoint band mapping, 0 bars still has a small deflection, so this button
-// remains held during normal Single Analog updates and is released only when the
-// controlled axis is explicitly returned to center.
-const bool BLE_METER_UNLOCK_BUTTON_ENABLED = true;
-const uint16_t BLE_METER_UNLOCK_BUTTON = 0x4000;  // R3 (Right Stick click)
-// How often (ms) to release and re-press the unlock button so that apps/emulators
-// that start listening mid-session still register it as held. 0 = no periodic refresh.
-const unsigned long BLE_METER_UNLOCK_REFRESH_MS = 1000;
+// -----------------------------------------------------------------------------
+// USB HID
+// -----------------------------------------------------------------------------
+// Requires Arduino IDE board settings:
+//   Tools > USB Mode: "USB-OTG (TinyUSB)"
+//   Tools > USB CDC On Boot: "Enabled"
+// When true, the device enumerates as HID+CDC (USB gamepad + serial).
+// When false, USB is CDC only (serial only, no gamepad).
+const bool USB_HID_ENABLED = true;
 
 // =============================================================================
 // DEBUG

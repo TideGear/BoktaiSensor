@@ -57,12 +57,12 @@ Prof9's original code is released under the MIT License — see
 2. Flash the firmware (see [Firmware Setup](#firmware-setup))
 3. Pair the device as a Bluetooth controller in your OS
 4. In mGBA (libretro), map **L3** to solar sensor decrease and **R3** to increase
-5. Power on: hold button 3 seconds
+5. Power on: hold button 2 seconds
 6. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
 7. Point sensor toward the sky — the device syncs the in-game meter automatically
-8. Power off: hold button 3 seconds
+8. Power off: hold button 2 seconds
 
-**Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 3s) when you are not actively playing a Boktai game.
+**Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 2s) when you are not actively playing a Boktai game.
 
 **Important:** Placing the sensor behind standard glass or plastic blocks UV light. Use the `UV_ENCLOSURE_*` settings in `config.h` to compensate for your enclosure window. Strongly UV-blocking materials can still reduce usable range. The default values will be (but not yet) set to adjust for the transmission loss of these boxes: https://a.co/d/092sVvLT
 
@@ -70,7 +70,7 @@ Prof9's original code is released under the MIT License — see
 
 ## Output Modes
 
-The Ojo del Sol can output bar values in three ways. Choose based on your setup:
+The Ojo del Sol can output bar values in four ways. Choose based on your setup:
 
 ### 1. Display Only (Manual Entry)
 Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method below.
@@ -101,6 +101,9 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 **Note:** The English translation of Boktai 3 should work with the patch, but this is currently untested.
 
 **Limitation:** Boktai's normal link-cable modes (e.g., multiplayer) are **not compatible** with this and may never be. To use multiplayer alongside the Ojo del Sol, you'll need an emulator with link support (I've contacted Pizza Boy A Pro and Linkboy devs — TBD).
+
+### 4. USB HID (Emulators / PC)
+When `USB_HID_ENABLED = true`, the device enumerates as **HID + CDC** over USB (gamepad + serial). Set `USB_HID_ENABLED = false` for **CDC only** (serial/debug without USB gamepad input).
 
 ----------------------------------------------------------------------
 
@@ -233,12 +236,12 @@ Expected continuity on this cheap-cable variant:
 
 **When device is ON:**
 - **Tap:** Cycle screens (1 → 2 → 3 → DEBUG → 1...). Set `DEBUG_SCREEN_ENABLED = false` in config.h to remove the DEBUG screen.
-- **Hold 3s:** Power OFF (deep sleep, ~10µA)
+- **Hold 2s:** Power OFF (deep sleep, ~10µA)
 - If screensaver is active, first tap wakes the screen
 
 **When waking from sleep:**
-- **Hold 3s:** Power ON
-- **Short press/tap:** Immediately shows "Hold 3s to power on"
+- **Hold 2s:** Power ON
+- **Short press/tap:** Immediately shows "Hold 2s to power on"
 - If there is no button activity for 10 seconds, it returns to sleep
 
 ### Bluetooth Details
@@ -370,8 +373,8 @@ Adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if hig
 Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default; only enable it after battery sensing is wired and validated.
 
 ### Device won't wake
-1. Hold button for full 3 seconds
-2. A short press should immediately show the "Hold 3s to power on" prompt
+1. Hold button for full 2 seconds
+2. A short press should immediately show the "Hold 2s to power on" prompt
 3. After 10s of no activity, it returns to sleep
 4. If the OLED fails to initialize, the device enters deep sleep after about 2 seconds using the normal sleep path (same cleanup and button-release debounce as manual sleep). Check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
 
@@ -386,7 +389,6 @@ right after BLE/BTDM startup logs, this is a known board-package compatibility i
 
 ## Future Plans
 
-- [ ] USB output for emulators
 - [ ] Lunar Knights support?
 
 ----------------------------------------------------------------------
