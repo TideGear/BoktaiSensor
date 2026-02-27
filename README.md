@@ -16,15 +16,15 @@ I'm looking for serious contributors to...**
 **1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight. Until I can do some testing, they are just guesses.**\
 **2. Add support via Single Analog Control Mode to their emulators.**\
 **3. Test and fix the code if needed.**\
-**4. Test the GBA link cable support.**\
-**5. Create a cool 3D-printable case.**\
-**6. You tell me!**
+**4. Create a cool 3D-printable case.**\
+**5. You tell me!**
 
 **...so please contact me if you are interested at TideGear @at@ gmail .dot. com !**
 
 **Also contact me if you want to buy a pre-assembled device or kit!**
 
-Photos of a unfinished prototype: https://photos.app.goo.gl/ex75rCqATgqSrdCb6
+Photos of a prototype: https://photos.app.goo.gl/sYk1wwQbzPgmbmyS8 \
+Made with this 1.7 x 1.7 x 0.79 inch case: https://a.co/d/01qMPdr9
 
 ----------------------------------------------------------------------
 
@@ -91,7 +91,7 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 
 ### 3. GBA Link Cable (Real Hardware)
 
-**Status: Partially Tested.** This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a ground bridge for use with a physical GBA via link cable.
+This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a ground bridge for use with a physical GBA via link cable.
 
 **Requirements:**
 - Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources). Many thanks to Prof9 for the original proof-of-concept code!
