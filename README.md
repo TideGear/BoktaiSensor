@@ -396,8 +396,7 @@ right after BLE/BTDM startup logs, this is a known board-package compatibility i
 ## Credits & Links
 
 - **[Prof9](https://github.com/Prof9/Boktai-Solar-Sensor-Patches)** — GBA link patches, IPS patches, and link protocol are based on Prof9's work (MIT License — see [Prof9's license.txt](Prof9's%20license.txt)) Prof9 also provided a ridiculous amount of help, patience, and kindness. Many thanks!
-- **[Mystfit](https://github.com/Mystfit/ESP32-BLE-CompositeHID)** � ESP32-BLE-CompositeHID library (included as `ESP32-BLE-CompositeHID-master.zip`)
+- **[Mystfit](https://github.com/Mystfit/ESP32-BLE-CompositeHID)** � ESP32-BLE-CompositeHID library (included as `ESP32-BLE-CompositeHID-master.zip`)
 - [GBATEK Solar Sensor Documentation](https://problemkaputt.de/gbatek.htm)
 - [Seeed XIAO ESP32S3 Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
 - [Adafruit LTR390](https://www.adafruit.com/product/4831)
-
