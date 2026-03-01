@@ -60,7 +60,7 @@ Prof9's original code is released under the MIT License — see
 5. Power on: hold button 2 seconds
 6. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
 7. Point sensor toward the sky — the device syncs the in-game meter automatically
-8. Power off: hold button 2 seconds
+8. Hold button 2 seconds on a game screen to sleep. On the DEBUG screen, hold 2 seconds to reboot into CDC upload mode.
 
 **Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 2s) when you are not actively playing a Boktai game.
 
@@ -102,8 +102,17 @@ This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a g
 
 **Limitation:** Boktai's normal link-cable modes (e.g., multiplayer) are **not compatible** with this and may never be. To use multiplayer alongside the Ojo del Sol, you'll need an emulator with link support (I've contacted Pizza Boy A Pro and Linkboy devs — TBD).
 
-### 4. USB HID (Emulators / PC)
-When `USB_HID_ENABLED = true`, the device enumerates as **HID + CDC** over USB (gamepad + serial). Set `USB_HID_ENABLED = false` for **CDC only** (serial/debug without USB gamepad input).
+### 4. USB XInput (Emulators / PC)
+When `USB_HID_ENABLED = true`, normal boot enumerates as an Xbox 360-compatible USB XInput device (product string: `Ojo del Sol`) for emulator/game compatibility.
+
+USB CDC serial is not active during normal XInput runtime. To enable USB serial for firmware upload:
+1. Go to the DEBUG screen.
+2. Hold the button for 2 seconds.
+3. The device restarts into `CDC MODE` and enumerates as `Ojo del Sol (CDC)`.
+
+While in `CDC MODE`, hold the button for 2 seconds to exit and sleep. On next wake, the device boots back into XInput mode.
+
+If `DEBUG_SCREEN_ENABLED = false`, use BOOT/RESET (ROM download mode) to upload firmware.
 
 ----------------------------------------------------------------------
 
@@ -226,7 +235,8 @@ Expected continuity on this cheap-cable variant:
   `assert failed: block_locate_free tlsf_control_functions.h:618`
   If this happens, roll back to `3.3.6` in Boards Manager.
 - **Board:** XIAO_ESP32S3
-- **USB CDC On Boot:** Enabled (for serial debugging)
+- **USB Mode:** USB-OTG (TinyUSB)
+- **USB CDC On Boot:** Enabled (required for CDC upload mode; normal runtime remains XInput unless you switch to CDC mode from the DEBUG screen)
 
 ----------------------------------------------------------------------
 
@@ -236,7 +246,9 @@ Expected continuity on this cheap-cable variant:
 
 **When device is ON:**
 - **Tap:** Cycle screens (1 → 2 → 3 → DEBUG → 1...). Set `DEBUG_SCREEN_ENABLED = false` in config.h to remove the DEBUG screen.
-- **Hold 2s:** Power OFF (deep sleep, ~10µA)
+- **Hold 2s on a game screen:** Power OFF (deep sleep, ~10uA)
+- **Hold 2s on the DEBUG screen:** Restart into `CDC MODE` for USB serial firmware upload
+- **Hold 2s while in `CDC MODE`:** Exit CDC mode and sleep (next wake returns to XInput mode)
 - If screensaver is active, first tap wakes the screen
 
 **When waking from sleep:**
@@ -397,6 +409,7 @@ right after BLE/BTDM startup logs, this is a known board-package compatibility i
 
 - **[Prof9](https://github.com/Prof9/Boktai-Solar-Sensor-Patches)** — GBA link patches, IPS patches, and link protocol are based on Prof9's work (MIT License — see [Prof9's license.txt](Prof9's%20license.txt)) Prof9 also provided a ridiculous amount of help, patience, and kindness. Many thanks!
 - **[Mystfit](https://github.com/Mystfit/ESP32-BLE-CompositeHID)** � ESP32-BLE-CompositeHID library (included as `ESP32-BLE-CompositeHID-master.zip`)
+- **[Kalasoiro](https://github.com/Kalasoiro/esp32s3-tinyusb-xinput)** - XInput TinyUSB reference implementation (included as `esp32s3-tinyusb-xinput-main.zip`)
 - [GBATEK Solar Sensor Documentation](https://problemkaputt.de/gbatek.htm)
 - [Seeed XIAO ESP32S3 Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
 - [Adafruit LTR390](https://www.adafruit.com/product/4831)

@@ -10,10 +10,10 @@
 #include <NimBLEDevice.h>
 #include <NimBLEServer.h>
 
-// USB HID (requires USB Mode: USB-OTG/TinyUSB in board settings)
+// USB XInput gamepad (requires USB Mode: USB-OTG/TinyUSB in board settings)
 #if defined(ARDUINO_USB_MODE) && !ARDUINO_USB_MODE
 #include "USB.h"
-#include "USBHIDGamepad.h"
+#include "XboxHIDGamepad.h"
 #define HAS_USB_HID 1
 #else
 #define HAS_USB_HID 0
@@ -164,27 +164,15 @@ bool bleSingleAnalogActive = false;
 bool bleSingleAnalogButtonHeld = false;
 unsigned long bleSingleAnalogLastRefreshMs = 0;
 
-// USB HID state
-// Global so the USBHID constructor registers the HID interface at static init
-// (before the framework's auto USB.begin() when CDC On Boot is enabled).
+// USB XInput state
 #if HAS_USB_HID
-USBHIDGamepad usbGamepad;
-
-// Early-init: register gamepad device and set product name before USB.begin()
-// auto-runs. Static constructors execute before initArduino()/app_main().
-struct UsbHidEarlyInit {
-  UsbHidEarlyInit() {
-    USB.productName("Ojo del Sol");
-    if (USB_HID_ENABLED) {
-      usbGamepad.begin();
-    }
-  }
-} _usbHidEarlyInit;
+XboxHIDGamepad usbGamepad;
 #endif
+bool inCdcMode = false;
 bool usbHidActive = false;
-uint32_t usbButtonState = 0;
-int8_t usbStickLX = 0, usbStickLY = 0;
-int8_t usbStickRX = 0, usbStickRY = 0;
+uint16_t usbButtonState = 0;
+int16_t usbStickLX = 0, usbStickLY = 0;
+int16_t usbStickRX = 0, usbStickRY = 0;
 int usbMeterBars = -1;
 int usbMeterNumBars = -1;
 
@@ -208,40 +196,37 @@ void wakeDisplayHardware() {
 }
 
 // ---------------------------------------------------------------------------
-// USB HID gamepad helpers
+// USB XInput gamepad helpers
 // ---------------------------------------------------------------------------
-// Maintain shadow state and send via send() so only one report per update.
-
-int8_t scaleAxisToUsb(int16_t xboxValue) {
-  return (int8_t)constrain((int32_t)xboxValue * 127 / 32767, -127, 127);
-}
+// Maintain shadow state; buttons are mapped from BLE constants to XInput bits.
 
 void usbGamepadPress(uint16_t button) {
-  usbButtonState |= (uint32_t)button;
+  #if HAS_USB_HID
+  usbButtonState |= bleButtonToXInput(button);
+  #endif
 }
 
 void usbGamepadRelease(uint16_t button) {
-  usbButtonState &= ~(uint32_t)button;
+  #if HAS_USB_HID
+  usbButtonState &= ~bleButtonToXInput(button);
+  #endif
 }
 
 void usbGamepadSetLeftStick(int16_t x, int16_t y) {
-  usbStickLX = scaleAxisToUsb(x);
-  usbStickLY = scaleAxisToUsb(y);
+  usbStickLX = x;
+  usbStickLY = y;
 }
 
 void usbGamepadSetRightStick(int16_t x, int16_t y) {
-  usbStickRX = scaleAxisToUsb(x);
-  usbStickRY = scaleAxisToUsb(y);
+  usbStickRX = x;
+  usbStickRY = y;
 }
 
 void usbSendReport() {
   #if HAS_USB_HID
   if (!usbHidActive) return;
-  // send(x, y, z, rz, rx, ry, hat, buttons)
-  // Right stick on rx/ry (X/Y Rotation) to match Xbox/Windows convention
-  // (z/rz = triggers, rx/ry = right stick in standard DirectInput mapping)
-  usbGamepad.send(usbStickLX, usbStickLY, 0, 0,
-                   usbStickRX, usbStickRY, HAT_CENTER, usbButtonState);
+  usbGamepad.sendReport(usbButtonState, 0, 0,
+                        usbStickLX, usbStickLY, usbStickRX, usbStickRY);
   #endif
 }
 
@@ -257,10 +242,98 @@ void initUsbHid() {
   if (USB_HID_ENABLED) {
     usbHidActive = true;
   }
-  // Safe no-op if already auto-started by CDC On Boot
+  // XInput descriptors are provided via TinyUSB callback overrides in
+  // XboxHIDGamepad.h. USB.begin() ensures TinyUSB is started if CDC On
+  // Boot did not already auto-start it.
   USB.begin();
   #endif
 }
+
+// ---------------------------------------------------------------------------
+// CDC mode helpers (firmware upload via USB serial)
+// ---------------------------------------------------------------------------
+
+#if HAS_USB_HID
+void drawCdcModeScreen() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.print("CDC MODE");
+  display.drawLine(0, 10, 47, 10, SSD1306_WHITE);
+  display.setCursor(0, 18);
+  display.print("USB serial active.");
+  display.setCursor(0, 30);
+  display.print("Upload firmware via");
+  display.setCursor(0, 40);
+  display.print("Arduino IDE.");
+  display.setCursor(0, 54);
+  display.print("Hold 2s to exit.");
+  display.display();
+}
+
+void exitCdcModeAndSleep() {
+  clearCdcModeFlag();
+  display.clearDisplay();
+  display.setTextSize(1);
+  const char* msg = "Exiting CDC mode...";
+  int16_t x1, y1; uint16_t w, h;
+  display.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((SCREEN_WIDTH - (int16_t)w) / 2, 28);
+  display.print(msg);
+  display.display();
+  delay(1000);
+
+  display.clearDisplay();
+  display.display();
+  display.ssd1306_command(SSD1306_DISPLAYOFF);
+  display.ssd1306_command(SSD1306_CHARGEPUMP);
+  display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE);
+
+  Wire.end();
+  pinMode(I2C_SDA_PIN, INPUT);
+  pinMode(I2C_SCL_PIN, INPUT);
+
+  while (digitalRead(BUTTON_PIN) == LOW) delay(10);
+  delay(50);
+
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
+  if (DEBUG_SERIAL) {
+    Serial.println("Entering deep sleep from CDC mode...");
+    Serial.flush();
+  }
+  esp_deep_sleep_start();
+}
+
+void cdcModeLoop() {
+  bool pressed = (digitalRead(BUTTON_PIN) == LOW);
+  if (pressed && !buttonWasPressed) {
+    buttonPressStart = millis();
+    buttonWasPressed = true;
+  } else if (pressed && buttonWasPressed) {
+    if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
+      exitCdcModeAndSleep();
+    }
+  } else if (!pressed && buttonWasPressed) {
+    buttonWasPressed = false;
+  }
+  delay(10);
+}
+
+void enterCdcMode() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  const char* msg = "Restarting to CDC...";
+  int16_t x1, y1; uint16_t w, h;
+  display.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((SCREEN_WIDTH - (int16_t)w) / 2, 28);
+  display.print(msg);
+  display.display();
+  delay(1000);
+
+  setCdcModeFlag();
+  esp_restart();
+}
+#endif
 
 void showHoldPowerOnPrompt() {
   wakeDisplayHardware();
@@ -272,7 +345,12 @@ void showHoldPowerOnPrompt() {
 }
 
 void setup() {
-  initUsbHid();
+  #if HAS_USB_HID
+  inCdcMode = isXInputCdcMode();
+  #endif
+  if (!inCdcMode) {
+    initUsbHid();
+  }
   Serial.begin(115200);
 
   // Configure power button with internal pull-up (active LOW)
@@ -301,12 +379,20 @@ void setup() {
   if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR)) {
     Serial.println("SSD1306 failed");
     delay(2000);
+    #if HAS_USB_HID
+    if (inCdcMode) clearCdcModeFlag();
+    #endif
     enterDeepSleep();
   }
   displayInitialized = true;
 
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
+
+  if (inCdcMode) {
+    drawCdcModeScreen();
+    return;
+  }
 
   display.setTextSize(1);
   int16_t ssX1, ssY1;
@@ -395,6 +481,12 @@ void setup() {
 }
 
 void loop() {
+  if (inCdcMode) {
+    #if HAS_USB_HID
+    cdcModeLoop();
+    #endif
+    return;
+  }
   // Check power button for tap (change game) or long-press (sleep)
   handlePowerButton();
   updateScreensaverState();
@@ -926,7 +1018,15 @@ void handlePowerButton() {
   else if (buttonPressed && buttonWasPressed) {
     noteScreenActivity();
     if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
+      #if HAS_USB_HID
+      if (DEBUG_SCREEN_ENABLED && currentScreen == NUM_GAMES) {
+        enterCdcMode();
+      } else {
+        enterDeepSleep();
+      }
+      #else
       enterDeepSleep();
+      #endif
     }
   }
   else if (!buttonPressed && buttonWasPressed) {
@@ -1514,12 +1614,8 @@ void refreshSingleAnalogButton() {
 
   xboxGamepad->release(HID_METER_UNLOCK_BUTTON);
   xboxGamepad->sendGamepadReport();
-  usbGamepadRelease(HID_METER_UNLOCK_BUTTON);
-  usbSendReport();
   xboxGamepad->press(HID_METER_UNLOCK_BUTTON);
   xboxGamepad->sendGamepadReport();
-  usbGamepadPress(HID_METER_UNLOCK_BUTTON);
-  usbSendReport();
   bleSingleAnalogLastRefreshMs = now;
 }
 
@@ -1644,8 +1740,6 @@ void updateUsbMeter(int bars, int numBars) {
 
     if (HID_METER_UNLOCK_BUTTON_ENABLED) {
       if (value != 0) {
-        usbGamepadRelease(HID_METER_UNLOCK_BUTTON);
-        usbSendReport();
         usbGamepadPress(HID_METER_UNLOCK_BUTTON);
       } else {
         usbGamepadRelease(HID_METER_UNLOCK_BUTTON);
