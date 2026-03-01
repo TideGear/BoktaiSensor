@@ -258,8 +258,10 @@ const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
 // Requires Arduino IDE board settings:
 //   Tools > USB Mode: "USB-OTG (TinyUSB)"
 //   Tools > USB CDC On Boot: "Enabled"
-// When true, the device enumerates as HID+CDC (USB gamepad + serial).
-// When false, USB is CDC only (serial only, no gamepad).
+//   Tools > Upload Mode: "USB-OTG CDC (TinyUSB)" (for CDC-mode uploads)
+// When true, normal runtime enumerates as USB XInput.
+// USB CDC serial is entered from the DEBUG screen (hold 2s), then exits back
+// to XInput-on-next-wake with another 2s hold.
 const bool USB_HID_ENABLED = true;
 
 // =============================================================================

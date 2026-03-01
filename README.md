@@ -114,6 +114,10 @@ While in `CDC MODE`, hold the button for 2 seconds to exit and sleep. On next wa
 
 If `DEBUG_SCREEN_ENABLED = false`, use BOOT/RESET (ROM download mode) to upload firmware.
 
+Expected CDC screen behavior:
+- Two-line message: `Firmware Upload Mode` / `Hold 2s to Return`
+- Message moves around the screen (same timing as the main screensaver)
+
 ----------------------------------------------------------------------
 
 ## Hardware
@@ -237,6 +241,8 @@ Expected continuity on this cheap-cable variant:
 - **Board:** XIAO_ESP32S3
 - **USB Mode:** USB-OTG (TinyUSB)
 - **USB CDC On Boot:** Enabled (required for CDC upload mode; normal runtime remains XInput unless you switch to CDC mode from the DEBUG screen)
+- **Upload Mode:** USB-OTG CDC (TinyUSB) (required for CDC-mode uploads; UART0/Hardware CDC will fail to auto-connect in this setup)
+- If CDC UI appears inconsistent/garbled after failed uploads, do one upload with **Erase All Flash Before Sketch Upload = Enabled**, then set it back to Disabled.
 
 ----------------------------------------------------------------------
 
@@ -389,6 +395,11 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default;
 2. A short press should immediately show the "Hold 2s to power on" prompt
 3. After 10s of no activity, it returns to sleep
 4. If the OLED fails to initialize, the device enters deep sleep after about 2 seconds using the normal sleep path (same cleanup and button-release debounce as manual sleep). Check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
+
+### CDC screen is blank, mirrored, or inverted
+1. Update to the latest firmware (CDC mode now re-asserts OLED power and panel mode on each draw)
+2. Confirm `Tools > Upload Mode` is set to `USB-OTG CDC (TinyUSB)`
+3. If needed, re-enter CDC mode once (hold 2s on DEBUG screen), then upload again
 
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
 If Serial Monitor shows:

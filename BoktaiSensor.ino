@@ -34,6 +34,9 @@ const int16_t STATUS_TEXT_GAP = 2;
 const int16_t STATUS_RIGHT_MARGIN = 3;
 const uint8_t SSD1306_CHARGEPUMP_DISABLE = 0x10;
 const uint8_t SSD1306_CHARGEPUMP_ENABLE = 0x14;
+const uint8_t SSD1306_NORMALDISPLAY_CMD = 0xA6;
+const uint8_t SSD1306_SEGREMAP_DEFAULT = 0xA1;
+const uint8_t SSD1306_COMSCANDEC_CMD = 0xC8;
 
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
@@ -167,6 +170,22 @@ unsigned long bleSingleAnalogLastRefreshMs = 0;
 // USB XInput state
 #if HAS_USB_HID
 XboxHIDGamepad usbGamepad;
+const char CDC_LINE1[] = "Firmware Upload Mode";
+const char CDC_LINE2[] = "Hold 2s to Return";
+int16_t cdcLine1W = 0;
+int16_t cdcLine1H = 0;
+int16_t cdcLine2W = 0;
+int16_t cdcLine2H = 0;
+int16_t cdcBlockW = 0;
+int16_t cdcBlockH = 0;
+int16_t cdcX = 0;
+int16_t cdcY = 0;
+int8_t cdcDx = 1;
+int8_t cdcDy = 1;
+unsigned long cdcLastMoveMs = 0;
+bool cdcLayoutReady = false;
+bool cdcFrameDrawn = false;
+bool cdcRequireButtonRelease = false;
 #endif
 bool inCdcMode = false;
 bool usbHidActive = false;
@@ -192,6 +211,10 @@ void wakeDisplayHardware() {
   display.ssd1306_command(SSD1306_CHARGEPUMP);
   display.ssd1306_command(SSD1306_CHARGEPUMP_ENABLE);
   display.ssd1306_command(SSD1306_DISPLAYON);
+  // Re-assert canonical panel mode to recover from occasional restart drift.
+  display.ssd1306_command(SSD1306_NORMALDISPLAY_CMD);
+  display.ssd1306_command(SSD1306_SEGREMAP_DEFAULT);
+  display.ssd1306_command(SSD1306_COMSCANDEC_CMD);
   delay(2);  // SSD1306 charge pump stabilization
 }
 
@@ -254,21 +277,60 @@ void initUsbHid() {
 // ---------------------------------------------------------------------------
 
 #if HAS_USB_HID
+void initCdcModeLayout() {
+  display.setTextSize(1);
+
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds(CDC_LINE1, 0, 0, &x1, &y1, &w, &h);
+  cdcLine1W = (int16_t)w;
+  cdcLine1H = (int16_t)h;
+  display.getTextBounds(CDC_LINE2, 0, 0, &x1, &y1, &w, &h);
+  cdcLine2W = (int16_t)w;
+  cdcLine2H = (int16_t)h;
+
+  const int16_t lineGap = 6;
+  cdcBlockW = max(cdcLine1W, cdcLine2W);
+  cdcBlockH = cdcLine1H + lineGap + cdcLine2H;
+  if (cdcBlockW < 1) cdcBlockW = 1;
+  if (cdcBlockH < 1) cdcBlockH = 1;
+
+  cdcX = (SCREEN_WIDTH - cdcBlockW) / 2;
+  cdcY = (SCREEN_HEIGHT - cdcBlockH) / 2;
+  if (cdcX < 0) cdcX = 0;
+  if (cdcY < 0) cdcY = 0;
+
+  cdcDx = 1;
+  cdcDy = 1;
+  cdcLastMoveMs = millis();
+  cdcLayoutReady = true;
+}
+
 void drawCdcModeScreen() {
+  if (!cdcLayoutReady) {
+    initCdcModeLayout();
+  }
+
+  // Re-assert display power state; this helps recover from occasional
+  // black-screen starts after software restart into CDC mode.
+  wakeDisplayHardware();
+
+  const int16_t lineGap = 6;
+  const int16_t line1X = cdcX + ((cdcBlockW - cdcLine1W) / 2);
+  const int16_t line2X = cdcX + ((cdcBlockW - cdcLine2W) / 2);
+  const int16_t line1Y = cdcY;
+  const int16_t line2Y = cdcY + cdcLine1H + lineGap;
+
   display.clearDisplay();
   display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("CDC MODE");
-  display.drawLine(0, 10, 47, 10, SSD1306_WHITE);
-  display.setCursor(0, 18);
-  display.print("USB serial active.");
-  display.setCursor(0, 30);
-  display.print("Upload firmware via");
-  display.setCursor(0, 40);
-  display.print("Arduino IDE.");
-  display.setCursor(0, 54);
-  display.print("Hold 2s to exit.");
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextWrap(false);
+  display.setCursor(line1X, line1Y);
+  display.print(CDC_LINE1);
+  display.setCursor(line2X, line2Y);
+  display.print(CDC_LINE2);
   display.display();
+  cdcFrameDrawn = true;
 }
 
 void exitCdcModeAndSleep() {
@@ -305,7 +367,59 @@ void exitCdcModeAndSleep() {
 }
 
 void cdcModeLoop() {
+  unsigned long now = millis();
+  bool redraw = false;
+
+  if (!cdcLayoutReady) {
+    initCdcModeLayout();
+    redraw = true;
+  }
+  if (!cdcFrameDrawn) {
+    redraw = true;
+  }
+  if ((now - cdcLastMoveMs) >= SCREENSAVER_MOVE_MS) {
+    int16_t maxX = SCREEN_WIDTH - cdcBlockW;
+    int16_t maxY = SCREEN_HEIGHT - cdcBlockH;
+    if (maxX < 0) maxX = 0;
+    if (maxY < 0) maxY = 0;
+
+    cdcX += cdcDx;
+    cdcY += cdcDy;
+
+    if (cdcX <= 0) {
+      cdcX = 0;
+      cdcDx = 1;
+    } else if (cdcX >= maxX) {
+      cdcX = maxX;
+      cdcDx = -1;
+    }
+
+    if (cdcY <= 0) {
+      cdcY = 0;
+      cdcDy = 1;
+    } else if (cdcY >= maxY) {
+      cdcY = maxY;
+      cdcDy = -1;
+    }
+
+    cdcLastMoveMs = now;
+    redraw = true;
+  }
+
+  if (redraw) {
+    drawCdcModeScreen();
+  }
+
   bool pressed = (digitalRead(BUTTON_PIN) == LOW);
+  if (cdcRequireButtonRelease) {
+    if (!pressed) {
+      cdcRequireButtonRelease = false;
+      buttonWasPressed = false;
+    }
+    delay(10);
+    return;
+  }
+
   if (pressed && !buttonWasPressed) {
     buttonPressStart = millis();
     buttonWasPressed = true;
@@ -329,6 +443,13 @@ void enterCdcMode() {
   display.print(msg);
   display.display();
   delay(1000);
+
+  // Cleanly release I2C before software restart to avoid occasional
+  // bus/display state glitches on the next boot.
+  Wire.end();
+  pinMode(I2C_SDA_PIN, INPUT_PULLUP);
+  pinMode(I2C_SCL_PIN, INPUT_PULLUP);
+  delay(2);
 
   setCdcModeFlag();
   esp_restart();
@@ -376,7 +497,9 @@ void setup() {
   // Initialize I2C for XIAO ESP32S3 pins (D4/GPIO5 = SDA, D5/GPIO6 = SCL)
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR)) {
+  // Keep control of Wire pin config by skipping the library's internal
+  // Wire.begin(); this improves consistency across software restarts.
+  if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR, true, false)) {
     Serial.println("SSD1306 failed");
     delay(2000);
     #if HAS_USB_HID
@@ -390,6 +513,18 @@ void setup() {
   display.setTextColor(SSD1306_WHITE);
 
   if (inCdcMode) {
+    #if HAS_USB_HID
+    // If the button is still held from the "enter CDC mode" long press,
+    // require a release before allowing another long-press action.
+    cdcRequireButtonRelease = (digitalRead(BUTTON_PIN) == LOW);
+    cdcLayoutReady = false;
+    cdcFrameDrawn = false;
+    #endif
+    // Do an explicit wake + double draw on entry; this reduces occasional
+    // blank OLED boots in CDC mode.
+    wakeDisplayHardware();
+    drawCdcModeScreen();
+    delay(10);
     drawCdcModeScreen();
     return;
   }
