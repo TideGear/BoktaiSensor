@@ -105,6 +105,7 @@ This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a g
 
 ### 4. USB XInput (Emulators / PC)
 When `USB_HID_ENABLED = true`, normal boot enumerates as an Xbox 360-compatible USB XInput device (product string: `Ojo del Sol`) for emulator/game compatibility.
+When `USB_HID_ENABLED = false`, the firmware skips USB XInput startup during normal runtime.
 Both HID control modes are available over USB:
 - **Incremental (`HID_CONTROL_MODE = 0`)**: sends `HID_BUTTON_DEC`/`HID_BUTTON_INC` step inputs and works independently of BLE state.
 - **Single Analog (`HID_CONTROL_MODE = 1`)**: sends the configured axis plus optional unlock button (`HID_SINGLE_ANALOG_AXIS`, `HID_METER_UNLOCK_*`).
@@ -208,8 +209,9 @@ Expected continuity on this cheap-cable variant:
 **`GBA_LINK_FRAME_TOGGLE_MS` explained:**
 
 - This value is the hold time for one frame phase (`SC` low or high).
-- One full 4-bit bar value needs two phases, so full refresh time is roughly `2 * GBA_LINK_FRAME_TOGGLE_MS`.
-- Example: `5ms` means about `10ms` per full value (~100 full updates/sec).
+- One full 4-bit bar value needs two phases, so ideal full refresh time is roughly `2 * GBA_LINK_FRAME_TOGGLE_MS`.
+- Firmware schedules phase timing with a microsecond clock, so `GBA_LINK_FRAME_TOGGLE_MS` is now honored much more closely than simple loop-delay timing.
+- Example: `5ms` targets about `10ms` per full value (~100 full updates/sec), subject to normal loop jitter.
 - Lower values respond faster but reduce electrical timing margin; higher values are slower but more tolerant.
 
 **Notes:**
@@ -280,7 +282,9 @@ Expected continuity on this cheap-cable variant:
 - Works over both Bluetooth and USB XInput.
 - Updates immediately on bar change (no rate throttling)
 - Maps bar count to a proportional deflection on a configurable analog axis (default: Right X+)
-- Optionally holds a configurable "meter unlock" button (default: R3) while the axis is active (`HID_METER_UNLOCK_BUTTON_ENABLED`). Single Analog mode uses midpoint band mapping, so even 0 bars sends a small deflection (not exact center). The button is released and re-pressed on every deflection change and periodically (`HID_METER_UNLOCK_REFRESH_MS`, default 1000ms) to ensure apps/emulators always register it.
+- Optionally holds a configurable "meter unlock" button (default: R3) while the axis is active (`HID_METER_UNLOCK_BUTTON_ENABLED`). Single Analog mode uses midpoint band mapping, so even 0 bars sends a small deflection (not exact center).
+- Bluetooth path: the unlock button is released/re-pressed on each deflection change and periodically (`HID_METER_UNLOCK_REFRESH_MS`, default 1000ms) so apps/emulators that start listening late can still register it as held.
+- USB path: the unlock button is held while active and updated with normal USB reports (no periodic release/re-press refresh cycle).
 - Axis and unlock button are configurable in config.h (`HID_SINGLE_ANALOG_AXIS`, `HID_METER_UNLOCK_BUTTON`)
 
 ### Bluetooth-Specific Details

@@ -117,14 +117,14 @@ bool hasSmoothedUvi = false;
 bool gameChanged = false;
 bool bleGameChanged = false;
 bool gbaFramePhaseHigh = false;
-unsigned long gbaFrameLastToggleMs = 0;
+unsigned long gbaFrameLastToggleUs = 0;
 
 // BLE state
 XboxGamepadDevice* xboxGamepad = nullptr;
 XboxSeriesXControllerDeviceConfiguration* xboxConfig = nullptr;
 BleCompositeHID compositeHID(BLE_DEVICE_NAME, BLE_MANUFACTURER, 100);  // Initial battery level; updated once battery is read
-unsigned long blePressIntervalMs = 0;  // Set by initBluetooth()
-unsigned long blePressHoldMs = 0;      // Set by initBluetooth()
+unsigned long blePressIntervalMs = 0;  // Set by initHidPressTiming()
+unsigned long blePressHoldMs = 0;      // Set by initHidPressTiming()
 bool bleConnected = false;
 bool blePairingActive = false;
 unsigned long blePairingStartMs = 0;
@@ -264,9 +264,11 @@ void usbReleaseAll() {
 
 void initUsbHid() {
   #if HAS_USB_HID
-  if (USB_HID_ENABLED) {
-    usbHidActive = true;
+  if (!USB_HID_ENABLED) {
+    usbHidActive = false;
+    return;
   }
+  usbHidActive = true;
   // XInput descriptors are provided via TinyUSB callback overrides in
   // XboxHIDGamepad.h. USB.begin() ensures TinyUSB is started if CDC On
   // Boot did not already auto-start it.
@@ -671,7 +673,7 @@ void loop() {
   screensaverJustExited = false;
   handleBlePresses();
   refreshSingleAnalogButton();
-  delay(10); // Short delay for responsive button handling
+  delay(1); // Keep loop responsive while allowing accurate GBA phase timing
 }
 
 void noteScreenActivity() {
@@ -951,10 +953,24 @@ void updateGbaLinkOutput(int bars) {
   // - SC carries frame phase (0 = low pair, 1 = high pair)
   // - SD/SO carry two data bits for that phase
   // - SI is unused (wired to ground externally)
-  unsigned long now = millis();
-  if ((gbaFrameLastToggleMs == 0) || ((now - gbaFrameLastToggleMs) >= GBA_LINK_FRAME_TOGGLE_MS)) {
+  unsigned long phaseIntervalUs = GBA_LINK_FRAME_TOGGLE_MS * 1000UL;
+  if (phaseIntervalUs == 0) {
+    phaseIntervalUs = 1000UL;  // Guard against invalid config value
+  }
+
+  unsigned long nowUs = micros();
+  if (gbaFrameLastToggleUs == 0) {
     gbaFramePhaseHigh = !gbaFramePhaseHigh;
-    gbaFrameLastToggleMs = now;
+    gbaFrameLastToggleUs = nowUs;
+  } else {
+    unsigned long elapsedUs = nowUs - gbaFrameLastToggleUs;
+    if (elapsedUs >= phaseIntervalUs) {
+      unsigned long toggles = elapsedUs / phaseIntervalUs;
+      if ((toggles & 1UL) != 0) {
+        gbaFramePhaseHigh = !gbaFramePhaseHigh;
+      }
+      gbaFrameLastToggleUs += toggles * phaseIntervalUs;
+    }
   }
 
   uint8_t pair = gbaFramePhaseHigh ? ((value >> 2) & 0x03) : (value & 0x03);
@@ -1279,7 +1295,14 @@ void enterDeepSleep() {
       // Fully deinitialize NimBLE (true = release memory)
       NimBLEDevice::deinit(true);
     }
-    xboxGamepad = nullptr;
+    if (xboxGamepad != nullptr) {
+      delete xboxGamepad;
+      xboxGamepad = nullptr;
+    }
+    if (xboxConfig != nullptr) {
+      delete xboxConfig;
+      xboxConfig = nullptr;
+    }
   }
 
   // Turn off display
@@ -1432,7 +1455,7 @@ void initBluetooth() {
   if (!BLUETOOTH_ENABLED) {
     return;
   }
-  
+
   // Create Xbox gamepad device with XInput support for proper L3/R3 buttons
   // Use Xbox Series X controller configuration for proper VID/PID recognition
   xboxConfig = new XboxSeriesXControllerDeviceConfiguration();
@@ -1450,8 +1473,6 @@ void initBluetooth() {
   if (server) {
     server->advertiseOnDisconnect(false);
   }
-
-  initHidPressTiming();
 
   startBlePairing();
 }
