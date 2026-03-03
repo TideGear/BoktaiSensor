@@ -96,8 +96,8 @@ This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a g
 
 **Requirements:**
 - Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources). Many thanks to Prof9 for the original proof-of-concept code!
-- Wire the Ojo del Sol to the **Player 1 (P1)** side of the cheap cable.
-- Wire the GBA to the **Player 2 (P2)** side.
+- Wire the Ojo del Sol to the **Player 1 (P1)** side of the cheap cable (pins 2–5: SO, SI, SD, SC).
+- Wire the GBA to the **Player 2 (P2)** side (pins 3–6: SI, SD, SC, GND).
 
 **Note:** The English translation of Boktai 3 should work with the patch, but this is currently untested.
 
