@@ -51,16 +51,17 @@ Prof9's original code is released under the MIT License — see
 
 ## Quick Start
 
-**Recommended setup:** Bluetooth Incremental Mode + mGBA libretro core (RetroArch)
+**Recommended setup:** Incremental Mode (`HID_CONTROL_MODE = 0`) with mGBA libretro core (RetroArch), over either Bluetooth or USB XInput
 
 1. Build the hardware (see [Hardware](#hardware) below)
 2. Flash the firmware (see [Firmware Setup](#firmware-setup))
-3. Pair the device as a Bluetooth controller in your OS
-4. In mGBA (libretro), map **L3** to solar sensor decrease and **R3** to increase
-5. Power on: hold button 2 seconds
-6. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
-7. Point sensor toward the sky — the device syncs the in-game meter automatically
-8. Hold button 2 seconds on a game screen to sleep. On the DEBUG screen, hold 2 seconds to reboot into CDC upload mode.
+3. For mGBA libretro, set `HID_CONTROL_MODE = 0` in `config.h`
+4. Pair the device as a Bluetooth controller in your OS
+5. In mGBA (libretro), map **L3** to solar sensor decrease and **R3** to increase
+6. Power on: hold button 2 seconds
+7. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
+8. Point sensor toward the sky — the device syncs the in-game meter automatically
+9. Hold button 2 seconds on a game screen to sleep. On the DEBUG screen, hold 2 seconds to reboot into CDC upload mode.
 
 **Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 2s) when you are not actively playing a Boktai game.
 
@@ -78,14 +79,14 @@ Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (
 ### 2. Bluetooth (Emulators) — Recommended
 The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sends button/stick inputs to control the emulator's solar sensor.
 
-**Two BLE control modes** (set via `BLE_CONTROL_MODE` in config.h):
+**Two HID control modes** (shared by Bluetooth and USB XInput; set via `HID_CONTROL_MODE` in config.h):
 
 | Mode | How it works | Emulator support |
 |------|--------------|------------------|
 | **Incremental (default, mode 0)** | Sends L3/R3 button presses to step the meter up/down | **Works now** with mGBA libretro core |
 | **Single Analog (mode 1)** | Better for Ojo del Sol! Maps bar count to proportional deflection on one analog axis | Requires emulator support |
 
-**Current recommendation:** Use **Incremental Mode** with the **mGBA libretro core** in RetroArch until Single Analog Mode is supported by emulators.
+**Current recommendation:** Use **Incremental Mode** with the **mGBA libretro core** in RetroArch until Single Analog Mode is supported by emulators (transport can be Bluetooth or USB XInput).
 
 **Emulator developers:** See [For Emulator Devs.md](For%20Emulator%20Devs.md) for the Single Analog Mode specification, band mapping tables, and pseudocode.
 
@@ -104,6 +105,9 @@ This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a g
 
 ### 4. USB XInput (Emulators / PC)
 When `USB_HID_ENABLED = true`, normal boot enumerates as an Xbox 360-compatible USB XInput device (product string: `Ojo del Sol`) for emulator/game compatibility.
+Both HID control modes are available over USB:
+- **Incremental (`HID_CONTROL_MODE = 0`)**: sends `HID_BUTTON_DEC`/`HID_BUTTON_INC` step inputs and works independently of BLE state.
+- **Single Analog (`HID_CONTROL_MODE = 1`)**: sends the configured axis plus optional unlock button (`HID_SINGLE_ANALOG_AXIS`, `HID_METER_UNLOCK_*`).
 
 USB CDC serial is not active during normal XInput runtime. To enable USB serial for firmware upload:
 1. Go to the DEBUG screen.
@@ -262,24 +266,28 @@ Expected continuity on this cheap-cable variant:
 - **Short press/tap:** Immediately shows "Hold 2s to power on"
 - If there is no button activity for 10 seconds, it returns to sleep
 
-### Bluetooth Details
+### HID Control Mode Details (Bluetooth + USB)
+
+**Incremental Mode specifics:**
+- Works over both Bluetooth and USB XInput.
+- The firmware tracks the in-game meter state and sends L3/R3 presses to sync it
+- On BLE connections, performs a clamp+refill resync every `BLE_RESYNC_INTERVAL_MS` (default 60s)
+- Press rate controlled by `HID_BUTTONS_PER_SECOND` (default 20)
+- For Boktai 1, mGBA uses 10 internal steps despite 8 visible bars — the firmware compensates (disable via `HID_BOKTAI1_MGBA_10_STEP_WORKAROUND = false` if fixed)
+- **Button remapping:** Change `HID_BUTTON_DEC` and `HID_BUTTON_INC` in config.h to use different buttons (see `XboxGamepadDevice.h` for available constants)
+
+**Single Analog Mode specifics:**
+- Works over both Bluetooth and USB XInput.
+- Updates immediately on bar change (no rate throttling)
+- Maps bar count to a proportional deflection on a configurable analog axis (default: Right X+)
+- Optionally holds a configurable "meter unlock" button (default: R3) while the axis is active (`HID_METER_UNLOCK_BUTTON_ENABLED`). Single Analog mode uses midpoint band mapping, so even 0 bars sends a small deflection (not exact center). The button is released and re-pressed on every deflection change and periodically (`HID_METER_UNLOCK_REFRESH_MS`, default 1000ms) to ensure apps/emulators always register it.
+- Axis and unlock button are configurable in config.h (`HID_SINGLE_ANALOG_AXIS`, `HID_METER_UNLOCK_BUTTON`)
+
+### Bluetooth-Specific Details
 
 The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME`).
 
-**Incremental Mode specifics:**
-- The firmware tracks the in-game meter state and sends L3/R3 presses to sync it
-- Performs a clamp+refill resync every `BLE_RESYNC_INTERVAL_MS` (default 60s)
-- Press rate controlled by `BLE_BUTTONS_PER_SECOND` (default 20)
-- For Boktai 1, mGBA uses 10 internal steps despite 8 visible bars — the firmware compensates (disable via `BLE_BOKTAI1_MGBA_10_STEP_WORKAROUND = false` if fixed)
-- **Button remapping:** Change `BLE_BUTTON_DEC` and `BLE_BUTTON_INC` in config.h to use different buttons (see `XboxGamepadDevice.h` for available constants)
-
-**Single Analog Mode specifics:**
-- Updates immediately on bar change (no rate throttling)
-- Maps bar count to a proportional deflection on a configurable analog axis (default: Right X+)
-- Optionally holds a configurable "meter unlock" button (default: R3) while the axis is active (`BLE_METER_UNLOCK_BUTTON_ENABLED`). Single Analog mode uses midpoint band mapping, so even 0 bars sends a small deflection (not exact center). The button is released and re-pressed on every deflection change and periodically (`BLE_METER_UNLOCK_REFRESH_MS`, default 1000ms) to ensure apps/emulators always register it.
-- Axis and unlock button are configurable in config.h (`BLE_SINGLE_ANALOG_AXIS`, `BLE_METER_UNLOCK_BUTTON`)
-
-**Pairing:**
+**Pairing/connection behavior:**
 - Times out after `BLE_PAIRING_TIMEOUT_MS` (default 60s)
 - Re-enters pairing if connection drops
 - **Pairing restarts on wake** — after waking from sleep, the device re-advertises for pairing

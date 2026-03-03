@@ -75,5 +75,5 @@ Players can also use this mode with a standard controller. Hold R3 (or the confi
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| Axis | Right Stick X+ | Configurable to any of 8 axes via `BLE_SINGLE_ANALOG_AXIS` |
-| Unlock button | R3 (0x4000) | Configurable via `BLE_METER_UNLOCK_BUTTON`; can be disabled |
+| Axis | Right Stick X+ | Configurable to any of 8 axes via `HID_SINGLE_ANALOG_AXIS` |
+| Unlock button | R3 (0x4000) | Configurable via `HID_METER_UNLOCK_BUTTON`; can be disabled |

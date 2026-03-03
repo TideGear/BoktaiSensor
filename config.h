@@ -204,8 +204,9 @@ const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
 // -----------------------------------------------------------------------------
 // HID CONTROLLER (shared by Bluetooth and USB)
 // -----------------------------------------------------------------------------
-// Control mode:
-// 0 = Incremental: uses HID_BUTTON_DEC/INC to step the emulator meter; resync enabled.
+// Control mode (applies to both Bluetooth HID and USB XInput):
+// 0 = Incremental: uses HID_BUTTON_DEC/INC to step the emulator meter.
+//     (BLE transport also supports clamp+refill resync behavior.)
 // 1 = Single Analog: maps bar count to a proportional deflection on one analog axis.
 const uint8_t HID_CONTROL_MODE = 0;
 
@@ -213,14 +214,14 @@ const uint8_t HID_CONTROL_MODE = 0;
 // Set false if mGBA is fixed to use 8 steps.
 const bool HID_BOKTAI1_MGBA_10_STEP_WORKAROUND = true;
 
-// Incremental mode button mapping
+// Incremental mode button mapping (shared by Bluetooth and USB)
 // XBOX_BUTTON_LS = 0x2000 (Left Stick click = L3)
 // XBOX_BUTTON_RS = 0x4000 (Right Stick click = R3)
 const unsigned int HID_BUTTONS_PER_SECOND = 20;     // Button press rate; 0 disables incremental meter presses
 const uint16_t HID_BUTTON_DEC = 0x2000;              // L3 (Left Stick click)
 const uint16_t HID_BUTTON_INC = 0x4000;              // R3 (Right Stick click)
 
-// Single Analog axis (used when HID_CONTROL_MODE = 1):
+// Single Analog axis (shared by Bluetooth and USB; used when HID_CONTROL_MODE = 1):
 // 0 = Left  X-  (left stick left)
 // 1 = Left  X+  (left stick right)
 // 2 = Left  Y-  (left stick up)

@@ -206,6 +206,8 @@ bool screensaverBatteryVisible = false;
 int screensaverLastLayoutPct = -2;  // Cache key for layout recalculation (-2 = never calculated)
 bool screensaverLastLayoutBleStatus = false;
 
+void initHidPressTiming();
+
 void wakeDisplayHardware() {
   // Sleep path disables the charge pump; explicitly restore it before drawing.
   display.ssd1306_command(SSD1306_CHARGEPUMP);
@@ -473,6 +475,7 @@ void setup() {
     initUsbHid();
   }
   Serial.begin(115200);
+  initHidPressTiming();
 
   // Configure power button with internal pull-up (active LOW)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -519,7 +522,6 @@ void setup() {
     cdcRequireButtonRelease = (digitalRead(BUTTON_PIN) == LOW);
     cdcLayoutReady = false;
     cdcFrameDrawn = false;
-    #endif
     // Do an explicit wake + double draw on entry; this reduces occasional
     // blank OLED boots in CDC mode.
     wakeDisplayHardware();
@@ -527,6 +529,7 @@ void setup() {
     delay(10);
     drawCdcModeScreen();
     return;
+    #endif
   }
 
   display.setTextSize(1);
@@ -1448,19 +1451,7 @@ void initBluetooth() {
     server->advertiseOnDisconnect(false);
   }
 
-  if (HID_BUTTONS_PER_SECOND == 0) {
-    blePressIntervalMs = 0;
-    blePressHoldMs = 0;
-  } else {
-    blePressIntervalMs = 1000UL / HID_BUTTONS_PER_SECOND;
-    if (blePressIntervalMs == 0) {
-      blePressIntervalMs = 1;
-    }
-    blePressHoldMs = blePressIntervalMs / 2;
-    if (blePressHoldMs == 0) {
-      blePressHoldMs = 1;
-    }
-  }
+  initHidPressTiming();
 
   startBlePairing();
 }
@@ -1534,9 +1525,6 @@ void resetBleSyncState() {
 }
 
 int getBleMeterStepsForGame(int game) {
-  if (!BLUETOOTH_ENABLED) {
-    return GAME_BARS[game];
-  }
   if (game == 0) {
     if (!HID_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
       return GAME_BARS[game];
@@ -1547,9 +1535,6 @@ int getBleMeterStepsForGame(int game) {
 }
 
 int getBleBarFromStep(int game, int step) {
-  if (!BLUETOOTH_ENABLED) {
-    return step;
-  }
   int stepsMax = getBleMeterStepsForGame(game);
   if (step < 0) {
     step = 0;
@@ -1564,9 +1549,6 @@ int getBleBarFromStep(int game, int step) {
 }
 
 int getBleStepFromBar(int game, int bar, bool fromEmpty) {
-  if (!BLUETOOTH_ENABLED) {
-    return bar;
-  }
   int barsMax = GAME_BARS[game];
   if (bar < 0) {
     bar = 0;
@@ -1581,9 +1563,6 @@ int getBleStepFromBar(int game, int bar, bool fromEmpty) {
 }
 
 int getBleActiveNumSteps() {
-  if (!BLUETOOTH_ENABLED) {
-    return getBleMeterStepsForGame(currentGame);
-  }
   if (bleSyncPhase != BLE_SYNC_NONE && bleSyncStepsMax > 0) {
     return bleSyncStepsMax;
   }
@@ -1755,9 +1734,6 @@ void refreshSingleAnalogButton() {
 }
 
 void applyBlePressEffect(int direction) {
-  if (!BLUETOOTH_ENABLED) {
-    return;
-  }
   if (!bleEstimateValid) {
     return;
   }
@@ -1854,7 +1830,10 @@ void updateUsbMeter(int bars, int numBars) {
   if (!usbHidActive) return;
   if (numBars <= 0) return;
   bars = constrain(bars, 0, numBars);
-  if (bars == usbMeterBars && numBars == usbMeterNumBars) return;
+  bool usbIncrementalNeedsRefresh = (HID_CONTROL_MODE == 0) &&
+                                    (!BLUETOOTH_ENABLED || !bleConnected) &&
+                                    bleGameChanged;
+  if (bars == usbMeterBars && numBars == usbMeterNumBars && !usbIncrementalNeedsRefresh) return;
   usbMeterBars = bars;
   usbMeterNumBars = numBars;
 
@@ -1887,8 +1866,22 @@ void updateUsbMeter(int bars, int numBars) {
       usbGamepadSetRightStick(rx, ry);
     }
     usbSendReport();
+  } else {
+    // In Incremental mode, USB must keep working even when BLE is disabled
+    // or currently disconnected.
+    if (!BLUETOOTH_ENABLED || !bleConnected) {
+      if (bleGameChanged || bleDeviceNumBars != numBars) {
+        bleEstimateValid = false;
+        bleGameChanged = false;
+      }
+      bleDeviceBars = bars;
+      bleDeviceNumBars = numBars;
+      if (!bleEstimateValid) {
+        bleEstimatedSteps = getBleStepFromBar(currentGame, bleDeviceBars, true);
+        bleEstimateValid = true;
+      }
+    }
   }
-  // Incremental mode (0): USB mirrors BLE button presses via handleBlePresses()
 }
 
 void updateBluetoothMeter(int deviceBars, int numBars) {
@@ -1927,13 +1920,12 @@ void updateBluetoothMeter(int deviceBars, int numBars) {
 }
 
 void handleBlePresses() {
-  if (!BLUETOOTH_ENABLED) {
-    return;
-  }
   if (HID_CONTROL_MODE == 1) {
     return;
   }
-  if (!bleConnected) {
+  bool blePathActive = BLUETOOTH_ENABLED && bleConnected;
+  bool usbPathActive = usbHidActive;
+  if (!blePathActive && !usbPathActive) {
     return;
   }
 
@@ -2010,6 +2002,22 @@ void handleBlePresses() {
   }
   usbGamepadPress(bleActiveButton);
   usbSendReport();
+}
+
+void initHidPressTiming() {
+  if (HID_BUTTONS_PER_SECOND == 0) {
+    blePressIntervalMs = 0;
+    blePressHoldMs = 0;
+  } else {
+    blePressIntervalMs = 1000UL / HID_BUTTONS_PER_SECOND;
+    if (blePressIntervalMs == 0) {
+      blePressIntervalMs = 1;
+    }
+    blePressHoldMs = blePressIntervalMs / 2;
+    if (blePressHoldMs == 0) {
+      blePressHoldMs = 1;
+    }
+  }
 }
 
 // Calculate battery % based on analog reading
