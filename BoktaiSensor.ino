@@ -34,9 +34,13 @@ const int16_t STATUS_TEXT_GAP = 2;
 const int16_t STATUS_RIGHT_MARGIN = 3;
 const uint8_t SSD1306_CHARGEPUMP_DISABLE = 0x10;
 const uint8_t SSD1306_CHARGEPUMP_ENABLE = 0x14;
+const uint8_t SSD1306_DEACTIVATE_SCROLL_CMD = 0x2E;
+const uint8_t SSD1306_DISPLAYALLON_RESUME_CMD = 0xA4;
 const uint8_t SSD1306_NORMALDISPLAY_CMD = 0xA6;
 const uint8_t SSD1306_SEGREMAP_DEFAULT = 0xA1;
 const uint8_t SSD1306_COMSCANDEC_CMD = 0xC8;
+const uint8_t SSD1306_SETDISPLAYOFFSET_CMD = 0xD3;
+const uint8_t SSD1306_SETSTARTLINE0_CMD = 0x40;
 
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
@@ -210,13 +214,18 @@ void initHidPressTiming();
 
 void wakeDisplayHardware() {
   // Sleep path disables the charge pump; explicitly restore it before drawing.
+  display.ssd1306_command(SSD1306_DEACTIVATE_SCROLL_CMD);
   display.ssd1306_command(SSD1306_CHARGEPUMP);
   display.ssd1306_command(SSD1306_CHARGEPUMP_ENABLE);
   display.ssd1306_command(SSD1306_DISPLAYON);
   // Re-assert canonical panel mode to recover from occasional restart drift.
+  display.ssd1306_command(SSD1306_DISPLAYALLON_RESUME_CMD);
   display.ssd1306_command(SSD1306_NORMALDISPLAY_CMD);
   display.ssd1306_command(SSD1306_SEGREMAP_DEFAULT);
   display.ssd1306_command(SSD1306_COMSCANDEC_CMD);
+  display.ssd1306_command(SSD1306_SETDISPLAYOFFSET_CMD);
+  display.ssd1306_command(0x00);
+  display.ssd1306_command(SSD1306_SETSTARTLINE0_CMD);
   delay(2);  // SSD1306 charge pump stabilization
 }
 
