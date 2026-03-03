@@ -131,11 +131,11 @@ const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 
 // Voltage divider calibration multiplier
 // Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
-// Actual default: 2.22 compensates for typical ADC/resistor variance
+// Actual default: 2.23 compensates for my ADC/resistor variance
 // Adjust if battery % is wrong at full charge:
 //   - If % too LOW:  increase this value
 //   - If % too HIGH: decrease this value
-const float VOLT_DIVIDER_MULT = 2.22;
+const float VOLT_DIVIDER_MULT = 2.23;
 
 // -----------------------------------------------------------------------------
 // LOW-VOLTAGE CUTOFF (requires battery sense divider)
