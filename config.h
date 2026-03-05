@@ -269,7 +269,7 @@ const bool USB_HID_ENABLED = true;
 // DEBUG
 // =============================================================================
 // Enables Serial debug logging (115200 baud) for UV/battery readings and sensor init.
-const bool DEBUG_SERIAL = true;
+const bool DEBUG_SERIAL = false;
 
 // Adds a 4th screen (after Boktai 3) showing UV raw, UVI, compensated UVI, ADC avg, and battery voltage for tuning.
 // Set false to remove it from the button cycle.

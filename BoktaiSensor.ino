@@ -1203,9 +1203,7 @@ void handlePowerButton() {
         if (currentScreen < NUM_GAMES) {
           currentGame = currentScreen;
           gameChanged = true;
-          if (BLUETOOTH_ENABLED) {
-            bleGameChanged = true;
-          }
+          bleGameChanged = true;
         }
       }
     }
@@ -1639,6 +1637,27 @@ int16_t fractionToStickValue(float fraction, bool negative) {
   return (int16_t)(fraction * XBOX_STICK_MAX);
 }
 
+// Compute the stick outputs for Single Analog mode.
+// Decomposes HID_SINGLE_ANALOG_AXIS into stick/axis/sign, maps frac via
+// fractionToStickValue, and distributes the result to the correct output.
+// Returns the computed scalar value so callers can test value != 0.
+int16_t computeSingleAnalogSticks(float frac,
+                                  int16_t& lx, int16_t& ly,
+                                  int16_t& rx, int16_t& ry) {
+  uint8_t axis = HID_SINGLE_ANALOG_AXIS;
+  bool isLeft = (axis < 4);
+  bool isX    = (axis % 4) < 2;
+  bool isNeg  = (axis % 2) == 0;
+  int16_t value = fractionToStickValue(frac, isNeg);
+  lx = 0; ly = 0; rx = 0; ry = 0;
+  if (isLeft) {
+    if (isX) lx = value; else ly = value;
+  } else {
+    if (isX) rx = value; else ry = value;
+  }
+  return value;
+}
+
 void applySingleAnalog(int bars, int numBars) {
   if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
     return;
@@ -1653,22 +1672,9 @@ void applySingleAnalog(int bars, int numBars) {
   }
 
   float frac = getSingleAnalogFraction(bars, numBars);
-  uint8_t axis = HID_SINGLE_ANALOG_AXIS;
-
-  // Determine which stick and sign from the axis selector
-  bool isLeft  = (axis < 4);
-  bool isX     = (axis % 4) < 2;
-  bool isNeg   = (axis % 2) == 0;
-
-  int16_t value = fractionToStickValue(frac, isNeg);
-
-  // Build the stick values; leave the other stick at its current position (0).
-  int16_t leftX = 0, leftY = 0, rightX = 0, rightY = 0;
-  if (isLeft) {
-    if (isX) leftX = value; else leftY = value;
-  } else {
-    if (isX) rightX = value; else rightY = value;
-  }
+  int16_t lx = 0, ly = 0, rx = 0, ry = 0;
+  int16_t value = computeSingleAnalogSticks(frac, lx, ly, rx, ry);
+  bool isLeft = (HID_SINGLE_ANALOG_AXIS < 4);
 
   // Release-and-repress the unlock button with every stick change so that
   // apps/emulators always register it, even if they started listening late.
@@ -1691,9 +1697,9 @@ void applySingleAnalog(int bars, int numBars) {
 
   // Only update the stick that this mode controls
   if (isLeft) {
-    xboxGamepad->setLeftThumb(leftX, leftY);
+    xboxGamepad->setLeftThumb(lx, ly);
   } else {
-    xboxGamepad->setRightThumb(rightX, rightY);
+    xboxGamepad->setRightThumb(rx, ry);
   }
   xboxGamepad->sendGamepadReport();
 
@@ -1869,18 +1875,9 @@ void updateUsbMeter(int bars, int numBars) {
 
   if (HID_CONTROL_MODE == 1) {
     float frac = getSingleAnalogFraction(bars, numBars);
-    uint8_t axis = HID_SINGLE_ANALOG_AXIS;
-    bool isLeft  = (axis < 4);
-    bool isX     = (axis % 4) < 2;
-    bool isNeg   = (axis % 2) == 0;
-    int16_t value = fractionToStickValue(frac, isNeg);
-
     int16_t lx = 0, ly = 0, rx = 0, ry = 0;
-    if (isLeft) {
-      if (isX) lx = value; else ly = value;
-    } else {
-      if (isX) rx = value; else ry = value;
-    }
+    int16_t value = computeSingleAnalogSticks(frac, lx, ly, rx, ry);
+    bool isLeft = (HID_SINGLE_ANALOG_AXIS < 4);
 
     if (HID_METER_UNLOCK_BUTTON_ENABLED) {
       if (value != 0) {

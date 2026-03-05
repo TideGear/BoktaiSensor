@@ -257,7 +257,7 @@ Expected continuity on this cheap-cable variant:
 ### Button Controls
 
 **When device is ON:**
-- **Tap:** Cycle screens (1 → 2 → 3 → DEBUG → 1...). Set `DEBUG_SCREEN_ENABLED = false` in config.h to remove the DEBUG screen.
+- **Tap:** Cycle screens (1 → 2 → 3 → DEBUG → 1...). The DEBUG screen is enabled by default; set `DEBUG_SCREEN_ENABLED = false` in config.h to remove it.
 - **Hold 2s on a game screen:** Power OFF (deep sleep, ~10uA)
 - **Hold 2s on the DEBUG screen:** Restart into `CDC MODE` for USB serial firmware upload
 - **Hold 2s while in `CDC MODE`:** Exit CDC mode and sleep (next wake returns to XInput mode)
@@ -299,7 +299,7 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 
 ### Screensaver
 
-After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan). The status row appears only when battery data is available and/or BLE is actively connected or pairing.
+After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan). Alternatively, set `SCREENSAVER_ACTIVE = false` to disable it without changing the time value. The status row appears only when battery data is available and/or BLE is actively connected or pairing.
 
 ----------------------------------------------------------------------
 
@@ -386,7 +386,7 @@ Most glass and many plastics block UV strongly (often 90%+). Compensation can co
 ## Troubleshooting
 
 ### UV sensor reads 0 or very low
-1. Enable `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud)
+1. Set `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud)
    - At UVI 6, expect ~13800 raw counts (6 × 2300)
    - If raw = 0, sensor may not be in UV mode
 2. Ensure sensor faces the sky (not blocked by hand/case)
