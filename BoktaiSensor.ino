@@ -174,25 +174,11 @@ unsigned long bleSingleAnalogLastRefreshMs = 0;
 // USB XInput state
 #if HAS_USB_HID
 XboxHIDGamepad usbGamepad;
-const char CDC_LINE1[] = "Firmware Upload Mode";
-const char CDC_LINE2[] = "Hold 2s to Return";
-int16_t cdcLine1W = 0;
-int16_t cdcLine1H = 0;
-int16_t cdcLine2W = 0;
-int16_t cdcLine2H = 0;
-int16_t cdcBlockW = 0;
-int16_t cdcBlockH = 0;
-int16_t cdcX = 0;
-int16_t cdcY = 0;
-int8_t cdcDx = 1;
-int8_t cdcDy = 1;
-unsigned long cdcLastMoveMs = 0;
-bool cdcLayoutReady = false;
-bool cdcFrameDrawn = false;
 bool cdcRequireButtonRelease = false;
 #endif
 bool inCdcMode = false;
 bool usbHidActive = false;
+bool serialEnabled = false;
 uint16_t usbButtonState = 0;
 int16_t usbStickLX = 0, usbStickLY = 0;
 int16_t usbStickRX = 0, usbStickRY = 0;
@@ -286,68 +272,14 @@ void initUsbHid() {
 }
 
 // ---------------------------------------------------------------------------
-// CDC mode helpers (firmware upload via USB serial)
+// CDC mode helpers (full-operation CDC mode with Serial enabled)
 // ---------------------------------------------------------------------------
 
 #if HAS_USB_HID
-void initCdcModeLayout() {
-  display.setTextSize(1);
-
-  int16_t x1, y1;
-  uint16_t w, h;
-  display.getTextBounds(CDC_LINE1, 0, 0, &x1, &y1, &w, &h);
-  cdcLine1W = (int16_t)w;
-  cdcLine1H = (int16_t)h;
-  display.getTextBounds(CDC_LINE2, 0, 0, &x1, &y1, &w, &h);
-  cdcLine2W = (int16_t)w;
-  cdcLine2H = (int16_t)h;
-
-  const int16_t lineGap = 6;
-  cdcBlockW = max(cdcLine1W, cdcLine2W);
-  cdcBlockH = cdcLine1H + lineGap + cdcLine2H;
-  if (cdcBlockW < 1) cdcBlockW = 1;
-  if (cdcBlockH < 1) cdcBlockH = 1;
-
-  cdcX = (SCREEN_WIDTH - cdcBlockW) / 2;
-  cdcY = (SCREEN_HEIGHT - cdcBlockH) / 2;
-  if (cdcX < 0) cdcX = 0;
-  if (cdcY < 0) cdcY = 0;
-
-  cdcDx = 1;
-  cdcDy = 1;
-  cdcLastMoveMs = millis();
-  cdcLayoutReady = true;
-}
-
-void drawCdcModeScreen() {
-  if (!cdcLayoutReady) {
-    initCdcModeLayout();
-  }
-
-  // Re-assert display power state; this helps recover from occasional
-  // black-screen starts after software restart into CDC mode.
-  wakeDisplayHardware();
-
-  const int16_t lineGap = 6;
-  const int16_t line1X = cdcX + ((cdcBlockW - cdcLine1W) / 2);
-  const int16_t line2X = cdcX + ((cdcBlockW - cdcLine2W) / 2);
-  const int16_t line1Y = cdcY;
-  const int16_t line2Y = cdcY + cdcLine1H + lineGap;
-
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setTextWrap(false);
-  display.setCursor(line1X, line1Y);
-  display.print(CDC_LINE1);
-  display.setCursor(line2X, line2Y);
-  display.print(CDC_LINE2);
-  display.display();
-  cdcFrameDrawn = true;
-}
-
 void exitCdcModeAndSleep() {
-  clearCdcModeFlag();
+  if (USB_HID_ENABLED) {
+    clearCdcModeFlag();  // Only return to XInput when it's actually enabled
+  }
   display.clearDisplay();
   display.setTextSize(1);
   const char* msg = "Exiting CDC mode...";
@@ -372,78 +304,11 @@ void exitCdcModeAndSleep() {
   delay(50);
 
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
-  if (DEBUG_SERIAL) {
+  if (serialEnabled) {
     Serial.println("Entering deep sleep from CDC mode...");
     Serial.flush();
   }
   esp_deep_sleep_start();
-}
-
-void cdcModeLoop() {
-  unsigned long now = millis();
-  bool redraw = false;
-
-  if (!cdcLayoutReady) {
-    initCdcModeLayout();
-    redraw = true;
-  }
-  if (!cdcFrameDrawn) {
-    redraw = true;
-  }
-  if ((now - cdcLastMoveMs) >= SCREENSAVER_MOVE_MS) {
-    int16_t maxX = SCREEN_WIDTH - cdcBlockW;
-    int16_t maxY = SCREEN_HEIGHT - cdcBlockH;
-    if (maxX < 0) maxX = 0;
-    if (maxY < 0) maxY = 0;
-
-    cdcX += cdcDx;
-    cdcY += cdcDy;
-
-    if (cdcX <= 0) {
-      cdcX = 0;
-      cdcDx = 1;
-    } else if (cdcX >= maxX) {
-      cdcX = maxX;
-      cdcDx = -1;
-    }
-
-    if (cdcY <= 0) {
-      cdcY = 0;
-      cdcDy = 1;
-    } else if (cdcY >= maxY) {
-      cdcY = maxY;
-      cdcDy = -1;
-    }
-
-    cdcLastMoveMs = now;
-    redraw = true;
-  }
-
-  if (redraw) {
-    drawCdcModeScreen();
-  }
-
-  bool pressed = (digitalRead(BUTTON_PIN) == LOW);
-  if (cdcRequireButtonRelease) {
-    if (!pressed) {
-      cdcRequireButtonRelease = false;
-      buttonWasPressed = false;
-    }
-    delay(10);
-    return;
-  }
-
-  if (pressed && !buttonWasPressed) {
-    buttonPressStart = millis();
-    buttonWasPressed = true;
-  } else if (pressed && buttonWasPressed) {
-    if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
-      exitCdcModeAndSleep();
-    }
-  } else if (!pressed && buttonWasPressed) {
-    buttonWasPressed = false;
-  }
-  delay(10);
 }
 
 void enterCdcMode() {
@@ -481,11 +346,18 @@ void showHoldPowerOnPrompt() {
 void setup() {
   #if HAS_USB_HID
   inCdcMode = isXInputCdcMode();
+  if (!inCdcMode && !USB_HID_ENABLED) {
+    // USB HID disabled — auto-switch to CDC so Serial works.
+    // Must restart once so the descriptor callbacks take effect.
+    setCdcModeFlag();
+    esp_restart();
+  }
   #endif
   if (!inCdcMode) {
     initUsbHid();
   }
-  Serial.begin(115200);
+  serialEnabled = DEBUG_SERIAL && !usbHidActive;
+  if (serialEnabled) Serial.begin(115200);
   initHidPressTiming();
 
   // Configure power button with internal pull-up (active LOW)
@@ -514,7 +386,7 @@ void setup() {
   // Keep control of Wire pin config by skipping the library's internal
   // Wire.begin(); this improves consistency across software restarts.
   if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR, true, false)) {
-    Serial.println("SSD1306 failed");
+    if (serialEnabled) Serial.println("SSD1306 failed");
     delay(2000);
     #if HAS_USB_HID
     if (inCdcMode) clearCdcModeFlag();
@@ -526,22 +398,13 @@ void setup() {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
+  #if HAS_USB_HID
+  // If the button is still held from the "enter CDC mode" long press,
+  // require a release before allowing another long-press action.
   if (inCdcMode) {
-    #if HAS_USB_HID
-    // If the button is still held from the "enter CDC mode" long press,
-    // require a release before allowing another long-press action.
     cdcRequireButtonRelease = (digitalRead(BUTTON_PIN) == LOW);
-    cdcLayoutReady = false;
-    cdcFrameDrawn = false;
-    // Do an explicit wake + double draw on entry; this reduces occasional
-    // blank OLED boots in CDC mode.
-    wakeDisplayHardware();
-    drawCdcModeScreen();
-    delay(10);
-    drawCdcModeScreen();
-    return;
-    #endif
   }
+  #endif
 
   display.setTextSize(1);
   int16_t ssX1, ssY1;
@@ -555,13 +418,27 @@ void setup() {
   screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
   screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
 
-  // Wait for power-on: show prompt for 10s, reset on button activity.
-  // This always shows immediately so a short wake tap reliably shows the prompt.
-  if (!waitForPowerOn()) {
-    // Timed out - go back to sleep
-    enterDeepSleep();
+  if (!inCdcMode) {
+    // Wait for power-on: show prompt for 10s, reset on button activity.
+    // This always shows immediately so a short wake tap reliably shows the prompt.
+    if (!waitForPowerOn()) {
+      // Timed out - go back to sleep
+      enterDeepSleep();
+    }
   }
+  // Re-assert charge pump and canonical panel state after any restart or power-on.
+  // In CDC mode this recovers the display from drift caused by the software restart.
+  // A double flush with a 10ms gap stabilizes the panel against occasional blank boots.
   wakeDisplayHardware();
+  #if HAS_USB_HID
+  if (inCdcMode) {
+    display.clearDisplay();
+    display.display();
+    delay(10);
+    display.clearDisplay();
+    display.display();
+  }
+  #endif
 
   if (SENSOR_POWER_ENABLED) {
     digitalWrite(SENSOR_POWER_PIN, HIGH);
@@ -588,7 +465,7 @@ void setup() {
   setMeasurementRate(MEAS_RATE_500MS);
   updateUvDivisorFromSensor();
   
-  if (DEBUG_SERIAL) {
+  if (serialEnabled) {
     Serial.println("LTR390 configured: UV mode, 18x gain, 20-bit (~400ms)");
     Serial.println("Expected: ~2300 counts per UVI");
     if (UV_ENCLOSURE_COMP_ENABLED) {
@@ -602,40 +479,41 @@ void setup() {
     }
   }
   
-  // Show wake-up confirmation
-  display.clearDisplay();
-  display.setTextSize(1);
-  const char wakeText[] = "Ojo del Sol ON";
-  int16_t wakeX1, wakeY1;
-  uint16_t wakeW, wakeH;
-  display.getTextBounds(wakeText, 0, 0, &wakeX1, &wakeY1, &wakeW, &wakeH);
-  const int16_t wakeGap = 8;
-  int16_t blockW = SCREENSAVER_IMAGE_W + wakeGap + (int16_t)wakeW;
-  int16_t blockH = (SCREENSAVER_IMAGE_H > (int16_t)wakeH) ? SCREENSAVER_IMAGE_H : (int16_t)wakeH;
-  int16_t blockX = (SCREEN_WIDTH - blockW) / 2;
-  int16_t blockY = (SCREEN_HEIGHT - blockH) / 2;
-  int16_t iconX = blockX;
-  int16_t iconY = blockY + ((blockH - SCREENSAVER_IMAGE_H) / 2);
-  int16_t textX = blockX + SCREENSAVER_IMAGE_W + wakeGap;
-  int16_t textY = blockY + ((blockH - (int16_t)wakeH) / 2);
-  display.drawBitmap(iconX, iconY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, SSD1306_WHITE);
-  display.setCursor(textX - wakeX1, textY - wakeY1);
-  display.print(wakeText);
-  display.display();
-  delay(2000);
+  if (!inCdcMode) {
+    // Show wake-up confirmation
+    display.clearDisplay();
+    display.setTextSize(1);
+    const char wakeText[] = "Ojo del Sol ON";
+    int16_t wakeX1, wakeY1;
+    uint16_t wakeW, wakeH;
+    display.getTextBounds(wakeText, 0, 0, &wakeX1, &wakeY1, &wakeW, &wakeH);
+    const int16_t wakeGap = 8;
+    int16_t blockW = SCREENSAVER_IMAGE_W + wakeGap + (int16_t)wakeW;
+    int16_t blockH = (SCREENSAVER_IMAGE_H > (int16_t)wakeH) ? SCREENSAVER_IMAGE_H : (int16_t)wakeH;
+    int16_t blockX = (SCREEN_WIDTH - blockW) / 2;
+    int16_t blockY = (SCREEN_HEIGHT - blockH) / 2;
+    int16_t iconX = blockX;
+    int16_t iconY = blockY + ((blockH - SCREENSAVER_IMAGE_H) / 2);
+    int16_t textX = blockX + SCREENSAVER_IMAGE_W + wakeGap;
+    int16_t textY = blockY + ((blockH - (int16_t)wakeH) / 2);
+    display.drawBitmap(iconX, iconY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, SSD1306_WHITE);
+    display.setCursor(textX - wakeX1, textY - wakeY1);
+    display.print(wakeText);
+    display.display();
+    delay(2000);
+  }
 
   cachedNumBars = GAME_BARS[currentGame];
   lastScreenActivityMs = millis();
+  #if HAS_USB_HID
+  if (inCdcMode) {
+    uiScreenChanged = true;  // Force initial display draw on first loop iteration
+  }
+  #endif
   initBluetooth();
 }
 
 void loop() {
-  if (inCdcMode) {
-    #if HAS_USB_HID
-    cdcModeLoop();
-    #endif
-    return;
-  }
   // Check power button for tap (change game) or long-press (sleep)
   handlePowerButton();
   updateScreensaverState();
@@ -881,7 +759,11 @@ void drawDebugDisplay() {
 
   display.setTextSize(1);
   display.setCursor(0, 0);
+  #if HAS_USB_HID
+  display.print(inCdcMode ? "CDC" : "XInput");
+  #else
   display.print("DEBUG");
+  #endif
 
   // UV readings
   display.setCursor(0, 10);
@@ -1039,7 +921,7 @@ void updateUvDivisorFromSensor() {
                 (UV_REFERENCE_GAIN * UV_REFERENCE_INT_MS);
   }
 
-  if (DEBUG_SERIAL) {
+  if (serialEnabled) {
     Serial.print("UV divisor: ");
     Serial.println(uvDivisor, 4);
   }
@@ -1168,8 +1050,18 @@ int getBoktaiBars(float uvi, int game) {
 
 // Handle power button: tap to cycle screens, long-press (2s) to sleep
 void handlePowerButton() {
+  #if HAS_USB_HID
+  if (cdcRequireButtonRelease) {
+    if (digitalRead(BUTTON_PIN) != LOW) {
+      cdcRequireButtonRelease = false;
+      buttonWasPressed = false;
+    }
+    return;
+  }
+  #endif
+
   bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
-  
+
   if (buttonPressed && !buttonWasPressed) {
     buttonPressStart = millis();
     buttonWasPressed = true;
@@ -1177,12 +1069,18 @@ void handlePowerButton() {
       suppressShortPress = true;
     }
     noteScreenActivity();
-  } 
+  }
   else if (buttonPressed && buttonWasPressed) {
     noteScreenActivity();
     if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
       #if HAS_USB_HID
-      if (DEBUG_SCREEN_ENABLED && currentScreen == NUM_GAMES) {
+      if (inCdcMode) {
+        if (USB_HID_ENABLED) {
+          exitCdcModeAndSleep();  // Return to XInput mode
+        } else {
+          enterDeepSleep();       // USB disabled — just sleep normally
+        }
+      } else if (DEBUG_SCREEN_ENABLED && currentScreen == NUM_GAMES) {
         enterCdcMode();
       } else {
         enterDeepSleep();
@@ -1353,7 +1251,7 @@ void enterDeepSleep() {
   // Configure wake-up source: BUTTON_PIN going LOW (pressed)
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
   
-  if (DEBUG_SERIAL) {
+  if (serialEnabled) {
     Serial.println("Entering deep sleep...");
     Serial.flush();
   }
@@ -2110,7 +2008,7 @@ int readBatteryPercentage() {
   float voltage = (raw / 4095.0f) * 3.3f * VOLT_DIVIDER_MULT;
   cachedBatteryVoltage = voltage;
   
-  if (DEBUG_SERIAL) {
+  if (serialEnabled) {
     Serial.print("Battery ADC raw: "); Serial.print(raw);
     Serial.print(" Voltage: "); Serial.println(voltage);
   }
@@ -2131,7 +2029,7 @@ bool initLTR390() {
       return true;
     }
 
-    if (DEBUG_SERIAL) {
+    if (serialEnabled) {
       Serial.print("LTR390 init failed (");
       Serial.print(attempt + 1);
       Serial.println(")");
@@ -2162,7 +2060,7 @@ float calculateUVI() {
   cachedUviCorrected = correctedUvi;
   
   // Debug output
-  if (DEBUG_SERIAL) {
+  if (serialEnabled) {
     Serial.print("UV raw: "); Serial.print(rawUVS);
     Serial.print(" UVI measured: "); Serial.print(measuredUvi, 3);
     Serial.print(" UVI corrected: "); Serial.println(correctedUvi, 3);

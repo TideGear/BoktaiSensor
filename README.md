@@ -59,9 +59,9 @@ Prof9's original code is released under the MIT License — see
 4. Pair the device as a Bluetooth controller in your OS
 5. In mGBA (libretro), map **L3** to solar sensor decrease and **R3** to increase
 6. Power on: hold button 2 seconds
-7. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the DEBUG screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
+7. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the **XInput** screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
 8. Point sensor toward the sky — the device syncs the in-game meter automatically
-9. Hold button 2 seconds on a game screen to sleep. On the DEBUG screen, hold 2 seconds to reboot into CDC upload mode.
+9. Hold button 2 seconds on a game screen to sleep. On the **XInput** screen, hold 2 seconds to enter CDC mode (USB serial / firmware upload).
 
 **Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 2s) when you are not actively playing a Boktai game.
 
@@ -105,23 +105,19 @@ This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a g
 
 ### 4. USB XInput (Emulators / PC)
 When `USB_HID_ENABLED = true`, normal boot enumerates as an Xbox 360-compatible USB XInput device (product string: `Ojo del Sol`) for emulator/game compatibility.
-When `USB_HID_ENABLED = false`, the firmware skips USB XInput startup during normal runtime.
+When `USB_HID_ENABLED = false`, the device automatically enters CDC mode on boot (one brief restart on first power-on or after a full power cycle; subsequent wakes return directly to CDC).
 Both HID control modes are available over USB:
 - **Incremental (`HID_CONTROL_MODE = 0`)**: sends `HID_BUTTON_DEC`/`HID_BUTTON_INC` step inputs and works independently of BLE state.
 - **Single Analog (`HID_CONTROL_MODE = 1`)**: sends the configured axis plus optional unlock button (`HID_SINGLE_ANALOG_AXIS`, `HID_METER_UNLOCK_*`).
 
-USB CDC serial is not active during normal XInput runtime. To enable USB serial for firmware upload:
-1. Go to the DEBUG screen.
+USB CDC serial is not active during normal XInput runtime. To enable USB serial (for `DEBUG_SERIAL` output or firmware upload):
+1. Tap to the **XInput** screen (last screen in the cycle).
 2. Hold the button for 2 seconds.
-3. The device restarts into `CDC MODE` and enumerates as `Ojo del Sol (CDC)`.
+3. The device restarts into CDC mode and enumerates as `Ojo del Sol (CDC)`.
 
-While in `CDC MODE`, hold the button for 2 seconds to exit and sleep. On next wake, the device boots back into XInput mode.
+In CDC mode the firmware runs fully (UV sensing, game display, screensaver, BLE, GBA link). The screen header shows **CDC** instead of **XInput**. Hold the button for 2 seconds from any screen to exit CDC mode and sleep; on next wake, the device boots back into XInput mode.
 
 If `DEBUG_SCREEN_ENABLED = false`, use BOOT/RESET (ROM download mode) to upload firmware.
-
-Expected CDC screen behavior:
-- Two-line message: `Firmware Upload Mode` / `Hold 2s to Return`
-- Message moves around the screen (same timing as the main screensaver)
 
 ----------------------------------------------------------------------
 
@@ -246,7 +242,7 @@ Expected continuity on this cheap-cable variant:
   If this happens, roll back to `3.3.6` in Boards Manager.
 - **Board:** XIAO_ESP32S3
 - **USB Mode:** USB-OTG (TinyUSB)
-- **USB CDC On Boot:** Enabled (required for CDC upload mode; normal runtime remains XInput unless you switch to CDC mode from the DEBUG screen)
+- **USB CDC On Boot:** Enabled (required for CDC mode; normal runtime remains XInput unless you enter CDC mode from the XInput screen or set `USB_HID_ENABLED = false`)
 - **Upload Mode:** USB-OTG CDC (TinyUSB) (required for CDC-mode uploads; UART0/Hardware CDC will fail to auto-connect in this setup)
 - If CDC UI appears inconsistent/garbled after failed uploads, do one upload with **Erase All Flash Before Sketch Upload = Enabled**, then set it back to Disabled.
 
@@ -257,10 +253,10 @@ Expected continuity on this cheap-cable variant:
 ### Button Controls
 
 **When device is ON:**
-- **Tap:** Cycle screens (1 → 2 → 3 → DEBUG → 1...). The DEBUG screen is enabled by default; set `DEBUG_SCREEN_ENABLED = false` in config.h to remove it.
+- **Tap:** Cycle screens (BOKTAI 1 → 2 → 3 → XInput → 1...). The XInput screen is enabled by default; set `DEBUG_SCREEN_ENABLED = false` in config.h to remove it.
 - **Hold 2s on a game screen:** Power OFF (deep sleep, ~10uA)
-- **Hold 2s on the DEBUG screen:** Restart into `CDC MODE` for USB serial firmware upload
-- **Hold 2s while in `CDC MODE`:** Exit CDC mode and sleep (next wake returns to XInput mode)
+- **Hold 2s on the XInput screen:** Restart into CDC mode for USB serial output and firmware upload
+- **Hold 2s while in CDC mode:** Exit CDC mode and sleep (next wake returns to XInput mode)
 - If screensaver is active, first tap wakes the screen
 
 **When waking from sleep:**
@@ -342,7 +338,7 @@ Quick calibration:
 4. Use the median ratio as `UV_ENCLOSURE_TRANSMITTANCE`.
 5. Re-enable compensation (`UV_ENCLOSURE_COMP_ENABLED = true`).
 
-Note: On the DEBUG screen, `UVI` is the measured (pre-compensation) value and `UVI comp'ed` is the post-compensation value.
+Note: On the XInput screen, `UVI` is the measured (pre-compensation) value and `UVI comp'ed` is the post-compensation value.
 
 ### Stability Tuning
 
@@ -386,7 +382,7 @@ Most glass and many plastics block UV strongly (often 90%+). Compensation can co
 ## Troubleshooting
 
 ### UV sensor reads 0 or very low
-1. Set `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud)
+1. Set `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud). Serial output is only active in CDC mode — enter CDC mode from the XInput screen (hold 2s), or set `USB_HID_ENABLED = false` to always use CDC.
    - At UVI 6, expect ~13800 raw counts (6 × 2300)
    - If raw = 0, sensor may not be in UV mode
 2. Ensure sensor faces the sky (not blocked by hand/case)
@@ -408,10 +404,10 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default;
 3. After 10s of no activity, it returns to sleep
 4. If the OLED fails to initialize, the device enters deep sleep after about 2 seconds using the normal sleep path (same cleanup and button-release debounce as manual sleep). Check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
 
-### CDC screen is blank, mirrored, or inverted
-1. Update to the latest firmware (CDC mode now re-asserts OLED power and panel mode on each draw)
+### Display is blank, mirrored, or inverted after entering CDC mode
+1. Update to the latest firmware (the boot sequence now re-asserts OLED power and canonical panel state after the software restart)
 2. Confirm `Tools > Upload Mode` is set to `USB-OTG CDC (TinyUSB)`
-3. If needed, re-enter CDC mode once (hold 2s on DEBUG screen), then upload again
+3. If needed, re-enter CDC mode once (hold 2s on the XInput screen), then upload again
 
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
 If Serial Monitor shows:
