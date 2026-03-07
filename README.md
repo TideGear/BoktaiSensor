@@ -65,7 +65,7 @@ Prof9's original code is released under the MIT License — see
 
 **Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 2s) when you are not actively playing a Boktai game.
 
-**Important:** Placing the sensor behind standard glass or plastic blocks UV light. Use the `UV_ENCLOSURE_*` settings in `config.h` to compensate for your enclosure window. Strongly UV-blocking materials can still reduce usable range. The default values will be (but not yet) set to adjust for the transmission loss of these boxes: https://a.co/d/092sVvLT
+**Important:** Placing the sensor behind standard glass or plastic blocks UV light. Use the `UV_ENCLOSURE_*` settings in `config.h` to compensate for your enclosure window. Strongly UV-blocking materials can still reduce usable range. The default transmittance (0.833) is currently a very quick and dirty calibration for these boxes: https://a.co/d/092sVvLT — adjust if you use a different enclosure.
 
 ----------------------------------------------------------------------
 

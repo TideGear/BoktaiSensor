@@ -35,8 +35,9 @@ const float AUTO_UV_SATURATION = 6.000;   // UV Index where output is fully satu
 //                           UV_ENCLOSURE_TRANSMITTANCE)
 // Keep UV_ENCLOSURE_TRANSMITTANCE in the 0.0-1.0 range.
 // Example: 0.42 means the window passes 42% of UV.
-const bool UV_ENCLOSURE_COMP_ENABLED = false;
-const float UV_ENCLOSURE_TRANSMITTANCE = 1.0f;
+const bool UV_ENCLOSURE_COMP_ENABLED = true;
+// The default setting below is based on a VERY quick and dirty test with my box of choice, open vs closed.
+const float UV_ENCLOSURE_TRANSMITTANCE = 0.833f;
 const float UV_ENCLOSURE_UVI_OFFSET = 0.000f;
 
 // -----------------------------------------------------------------------------
