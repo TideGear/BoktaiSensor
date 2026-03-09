@@ -966,6 +966,7 @@ const float* getManualThresholds(int game) {
 }
 
 float getBarThreshold(int game, int barIndex) {
+  game = constrain(game, 0, NUM_GAMES - 1);
   int numBars = GAME_BARS[game];
   if (AUTO_MODE) {
     return getAutoThreshold(numBars, barIndex);
@@ -981,6 +982,7 @@ float getBarThreshold(int game, int barIndex) {
 }
 
 int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
+  game = constrain(game, 0, NUM_GAMES - 1);
   int numBars = GAME_BARS[game];
   int target = getBoktaiBars(uvi, game);
 
@@ -1017,6 +1019,7 @@ int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
 
 // Convert UV Index to Boktai bar count based on selected game
 int getBoktaiBars(float uvi, int game) {
+  game = constrain(game, 0, NUM_GAMES - 1);
   int numBars = GAME_BARS[game];
   
   if (AUTO_MODE) {
@@ -1451,6 +1454,7 @@ void resetBleSyncState() {
 }
 
 int getBleMeterStepsForGame(int game) {
+  game = constrain(game, 0, NUM_GAMES - 1);
   if (game == 0) {
     if (!HID_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
       return GAME_BARS[game];
@@ -1461,6 +1465,7 @@ int getBleMeterStepsForGame(int game) {
 }
 
 int getBleBarFromStep(int game, int step) {
+  game = constrain(game, 0, NUM_GAMES - 1);
   int stepsMax = getBleMeterStepsForGame(game);
   if (step < 0) {
     step = 0;
@@ -1475,6 +1480,7 @@ int getBleBarFromStep(int game, int step) {
 }
 
 int getBleStepFromBar(int game, int bar, bool fromEmpty) {
+  game = constrain(game, 0, NUM_GAMES - 1);
   int barsMax = GAME_BARS[game];
   if (bar < 0) {
     bar = 0;
