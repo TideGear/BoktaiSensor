@@ -236,10 +236,7 @@ Expected continuity on this cheap-cable variant:
 
 - **Boards Manager URL:** `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
 - **Board package:** esp32 by Espressif Systems
-- **Recommended version:** `3.3.6`
-- **Known issue:** `3.3.7` may crash during BLE startup with:
-  `assert failed: block_locate_free tlsf_control_functions.h:618`
-  If this happens, roll back to `3.3.6` in Boards Manager.
+- **Recommended version:** `3.3.7`
 - **Board:** XIAO_ESP32S3
 - **USB Mode:** USB-OTG (TinyUSB)
 - **USB CDC On Boot:** Enabled (required for CDC mode; normal runtime remains XInput unless you enter CDC mode from the XInput screen or set `USB_HID_ENABLED = false`)
@@ -410,11 +407,7 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default;
 3. If needed, re-enter CDC mode once (hold 2s on the XInput screen), then upload again
 
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
-If Serial Monitor shows:
-`assert failed: block_locate_free tlsf_control_functions.h:618`
-right after BLE/BTDM startup logs, this is a known board-package compatibility issue on some setups with esp32 core `3.3.7`.
-
-**Fix:** In Arduino IDE -> Boards Manager, install esp32 core `3.3.6` (or the last known-good version for your environment), then rebuild and flash.
+This was a known compatibility issue between esp32 core `3.3.7` and older versions of NimBLE-Arduino. It is resolved as of NimBLE-Arduino v2.3.9 — update the library via Arduino Library Manager and rebuild.
 
 ----------------------------------------------------------------------
 
