@@ -322,11 +322,16 @@ If the sensor is behind a transparent window, model that window as transmission 
 const bool UV_ENCLOSURE_COMP_ENABLED = true;
 const float UV_ENCLOSURE_TRANSMITTANCE = 0.833; // Current default in config.h (device-specific; recalibrate for your enclosure)
 const float UV_ENCLOSURE_UVI_OFFSET = 0.000;     // Optional bias correction
+const bool UV_THRESHOLDS_USE_OPEN_AIR_EQUIVALENT = true; // Default: compare bars against compensated/open-air-equivalent UVI
 ```
 
 Firmware applies compensation once after raw-to-UVI conversion:
 
 `corrected_uvi = max(0, (measured_uvi - offset) / transmittance)`
+
+Threshold comparison behavior:
+- `UV_THRESHOLDS_USE_OPEN_AIR_EQUIVALENT = true` (default): threshold config values are treated as open-air calibration targets (recommended: calibrate with case open, then run with case closed).
+- `UV_THRESHOLDS_USE_OPEN_AIR_EQUIVALENT = false`: threshold config values are treated as raw in-case sensor values (pre-comp).
 
 Quick calibration:
 1. Temporarily set `UV_ENCLOSURE_COMP_ENABLED = false` while collecting calibration readings.

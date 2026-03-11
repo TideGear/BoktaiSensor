@@ -2060,6 +2060,7 @@ float calculateUVI() {
   float divisor = (uvDivisor > 0.0f) ? uvDivisor : UV_SENSITIVITY_COUNTS_PER_UVI;
   float measuredUvi = (float)rawUVS / divisor;
   float correctedUvi = applyEnclosureCompensation(measuredUvi);
+  float barsUvi = UV_THRESHOLDS_USE_OPEN_AIR_EQUIVALENT ? correctedUvi : measuredUvi;
 
   cachedRawUVS = rawUVS;
   cachedUviRaw = measuredUvi;
@@ -2072,5 +2073,5 @@ float calculateUVI() {
     Serial.print(" UVI corrected: "); Serial.println(correctedUvi, 3);
   }
   
-  return correctedUvi;
+  return barsUvi;
 }
