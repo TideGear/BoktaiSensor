@@ -320,7 +320,7 @@ If the sensor is behind a transparent window, model that window as transmission 
 
 ```c
 const bool UV_ENCLOSURE_COMP_ENABLED = true;
-const float UV_ENCLOSURE_TRANSMITTANCE = 0.833; // Current default in config.h (device-specific; recalibrate for your enclosure)
+const float UV_ENCLOSURE_TRANSMITTANCE = 0.42; // 42% UV passes through the window
 const float UV_ENCLOSURE_UVI_OFFSET = 0.000;     // Optional bias correction
 ```
 
