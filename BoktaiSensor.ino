@@ -525,13 +525,13 @@ void loop() {
   bool newData = false;
   if (ltr.newDataAvailable()) {
     float uvi = calculateUVI();
-    float uviForBars = uvi;
+    float uviForBars = UV_THRESHOLDS_CALIBRATED_OPEN_AIR ? uvi : cachedUviRaw;
     if (UVI_SMOOTHING_ENABLED) {
       if (!hasSmoothedUvi) {
-        smoothedUvi = uvi;
+        smoothedUvi = uviForBars;
         hasSmoothedUvi = true;
       } else {
-        smoothedUvi = (UVI_SMOOTHING_ALPHA * uvi) + ((1.0f - UVI_SMOOTHING_ALPHA) * smoothedUvi);
+        smoothedUvi = (UVI_SMOOTHING_ALPHA * uviForBars) + ((1.0f - UVI_SMOOTHING_ALPHA) * smoothedUvi);
       }
       uviForBars = smoothedUvi;
     }

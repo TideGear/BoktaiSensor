@@ -73,10 +73,7 @@ Prof9's original code is released under the MIT License — see
 
 The Ojo del Sol can output bar values in four ways. Choose based on your setup:
 
-### 1. Display Only (Manual Entry)
-Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method below.
-
-### 2. Bluetooth (Emulators) — Recommended
+### 1. Bluetooth (Recommended for Emulators on PC or Mobile)
 The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sends button/stick inputs to control the emulator's solar sensor.
 
 **Two HID control modes** (shared by Bluetooth and USB XInput; set via `HID_CONTROL_MODE` in config.h):
@@ -90,20 +87,7 @@ The device appears as an Xbox Series X controller ("Ojo del Sol Sensor") and sen
 
 **Emulator developers:** See [For Emulator Devs.md](For%20Emulator%20Devs.md) for the Single Analog Mode specification, band mapping tables, and pseudocode.
 
-### 3. GBA Link Cable (Real Hardware)
-
-This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a ground bridge for use with a physical GBA via link cable.
-
-**Requirements:**
-- Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources). Many thanks to Prof9 for the original proof-of-concept code!
-- Wire the Ojo del Sol to the **Player 1 (P1)** side of the cheap cable (pins 2–5: SO, SI, SD, SC).
-- Wire the GBA to the **Player 2 (P2)** side (pins 3–6: SI, SD, SC, GND).
-
-**Note:** The English translation of Boktai 3 should work with the patch, but this is currently untested.
-
-**Limitation:** Boktai's normal link-cable modes (e.g., multiplayer) are **not compatible** with this and may never be. To use multiplayer alongside the Ojo del Sol, you'll need an emulator with link support (I've contacted Pizza Boy A Pro and Linkboy devs — TBD).
-
-### 4. USB XInput (Emulators / PC)
+### 2. USB XInput (Also Great for Emulators on PC or Mobile)
 When `USB_HID_ENABLED = true`, normal boot enumerates as an Xbox 360-compatible USB XInput device (product string: `Ojo del Sol`) for emulator/game compatibility.
 When `USB_HID_ENABLED = false`, the device automatically enters CDC mode on boot (one brief restart on first power-on or after a full power cycle; subsequent wakes return directly to CDC).
 Both HID control modes are available over USB:
@@ -118,6 +102,24 @@ USB CDC serial is not active during normal XInput runtime. To enable USB serial 
 In CDC mode the firmware runs fully (UV sensing, game display, screensaver, BLE, GBA link). The screen header shows **CDC** instead of **XInput**. Hold the button for 2 seconds from any screen to exit CDC mode and sleep; on next wake, the device boots back into XInput mode.
 
 If `DEBUG_SCREEN_ENABLED = false`, use BOOT/RESET (ROM download mode) to upload firmware.
+
+### 3. GBA Link Cable (Best Option for Flash Carts)
+
+This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a ground bridge for use with a physical GBA via link cable.
+
+**Requirements:**
+- Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources). Many thanks to Prof9 for the original proof-of-concept code!
+- Wire the Ojo del Sol to the **Player 1 (P1)** side of the cheap cable (pins 2–5: SO, SI, SD, SC).
+- Wire the GBA to the **Player 2 (P2)** side (pins 3–6: SI, SD, SC, GND).
+
+**Note:** The English translation of Boktai 3 should work with the patch, but this is currently untested.
+
+**Limitation:** Boktai's normal link-cable modes (e.g., multiplayer) are **not compatible** with this and may never be. To use multiplayer alongside the Ojo del Sol, you'll need an emulator with link support (I've contacted Pizza Boy A Pro and Linkboy devs — TBD).
+
+### 4. Display Only / Manual Entry (Not Recommended)
+Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method above.
+
+**Note:** The screen is difficult to read in direct sunlight unless you shade it, so the display is really more for calibration and occasional reference.
 
 ----------------------------------------------------------------------
 
@@ -334,6 +336,10 @@ Quick calibration:
 3. Compute `in_box_uvi / open_air_uvi` across several samples.
 4. Use the median ratio as `UV_ENCLOSURE_TRANSMITTANCE`.
 5. Re-enable compensation (`UV_ENCLOSURE_COMP_ENABLED = true`).
+
+**Threshold calibration mode:** By default (`UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true`), all threshold values in config.h (`AUTO_UV_MIN`, `AUTO_UV_SATURATION`, manual arrays) are assumed to be open-air UVI values — set while the case is open or without an enclosure. The firmware compensates sensor readings to open-air equivalent before comparing against them. Set `UV_THRESHOLDS_CALIBRATED_OPEN_AIR = false` if you instead calibrated thresholds with the sensor inside the closed enclosure; bar comparison will then use the raw (uncompensated) reading directly.
+
+For open-air builds (sensor always exposed when device is in use): set `UV_ENCLOSURE_COMP_ENABLED = false` and leave `UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true`. Compensation is a no-op so raw equals compensated.
 
 Note: On the XInput screen, `UVI` is the measured (pre-compensation) value and `UVI comp'ed` is the post-compensation value.
 

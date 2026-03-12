@@ -40,6 +40,18 @@ const bool UV_ENCLOSURE_COMP_ENABLED = true;
 const float UV_ENCLOSURE_TRANSMITTANCE = 0.833f;
 const float UV_ENCLOSURE_UVI_OFFSET = 0.000f;
 
+// When true (default), the threshold values in this file (AUTO_UV_MIN, AUTO_UV_SATURATION,
+// and the manual calibration arrays) are treated as open-air UVI values — measured with
+// the case open or without any enclosure. Bar comparison uses the compensated
+// (open-air equivalent) UVI so results remain accurate when the case is closed.
+//
+// Set false if your threshold values were calibrated with the sensor inside the closed
+// enclosure. Bar comparison will then use the raw (pre-compensation) sensor reading.
+//
+// For always-open-air builds (sensor never enclosed): leave true and set
+// UV_ENCLOSURE_COMP_ENABLED = false. Compensation becomes a no-op so raw == compensated.
+const bool UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true;
+
 // -----------------------------------------------------------------------------
 // UV FILTERING
 // -----------------------------------------------------------------------------
