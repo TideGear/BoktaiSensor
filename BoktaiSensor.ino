@@ -434,7 +434,7 @@ void setup() {
   if (inCdcMode) {
     display.clearDisplay();
     display.display();
-    delay(10);
+    delay(50);
     display.clearDisplay();
     display.display();
   }
