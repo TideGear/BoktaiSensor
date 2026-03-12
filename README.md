@@ -105,12 +105,13 @@ If `DEBUG_SCREEN_ENABLED = false`, use BOOT/RESET (ROM download mode) to upload 
 
 ### 3. GBA Link Cable (Best Option for Flash Carts)
 
-This outputs a framed 3-wire value (SC + SD + SO), using the SI conductor as a ground bridge for use with a physical GBA via link cable.
+This outputs a framed 3-wire value (SC + SD + SO) for use with a physical GBA via link cable.
 
 **Requirements:**
 - Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources). Many thanks to Prof9 for the original proof-of-concept code!
-- Wire the Ojo del Sol to the **Player 1 (P1)** side of the cheap cable (pins 2–5: SO, SI, SD, SC).
-- Wire the GBA to the **Player 2 (P2)** side (pins 3–6: SI, SD, SC, GND).
+- Recommended: install a real GBA link port on the Ojo del Sol and wire it as shown in [GBA Link Port Wiring.png](GBA%20Link%20Port%20Wiring.png). Link ports can be ordered here: https://a.co/d/00r3xzuj
+- A breakout board also works, but the link cable can come loose easily if you move around much, so the real link port is the more robust option.
+- Connect the Ojo del Sol to the **Player 1 (P1)** side of the cable and the GBA to the **Player 2 (P2)** side.
 
 **Note:** The English translation of Boktai 3 should work with the patch, but this is currently untested.
 
@@ -139,7 +140,7 @@ Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (
 |-----------|-----|--------------|-------|
 | OLED VIN | | 3V3 | 3.3V power |
 | OLED GND | | GND | |
-| LTR390 VIN | | D3 (GPIO4) | Sensor power (GPIO-controlled) |
+| LTR390 VIN | | 3V3 | 3.3V power |
 | LTR390 GND | | GND | |
 | OLED + LTR390 SDA | | D4 (GPIO5) | I2C data (configurable via `I2C_SDA_PIN`) |
 | OLED + LTR390 SCL | | D5 (GPIO6) | I2C clock (configurable via `I2C_SCL_PIN`) |
@@ -166,30 +167,24 @@ Battery sensing is disabled by default (`BATTERY_SENSE_ENABLED = false`). After 
 
 ### GBA Link Cable Wiring (Optional)
 
-Only needed if using GBA Link output mode. For the framed 3-wire protocol, the GBA connects to the **Player 2 (P2)** side of a cheap cable. The Ojo del Sol connects to the **Player 1 (P1)** side via a [Palmr breakout board](https://github.com/Palmr/gb-link-cable).
+Only needed if using GBA Link output mode. Recommended: install a real GBA link port on the Ojo del Sol and wire it as shown in [GBA Link Port Wiring.png](GBA%20Link%20Port%20Wiring.png). Link ports can be ordered here: https://a.co/d/00r3xzuj
 
-**Framed 3-wire signal mapping:**
+A breakout board such as the [Palmr breakout board](https://github.com/Palmr/gb-link-cable) still works, but the link cable can come loose easily if you intend to move around much. An actual link port is a much more robust solution.
 
-| Function | XIAO Pin | Notes |
-|----------|----------|-------|
-| Frame phase (SC) | D7 (GPIO44) | Phase bit toggles every `GBA_LINK_FRAME_TOGGLE_MS` |
-| Payload bit 1 (SD) | D8 (GPIO7) | Framed data |
-| Payload bit 0 (SO) | D9 (GPIO8) | Framed data |
-| Ground bridge wire | Ojo GND | Connect to P1 SI pad (Pin 3); this routes to GBA ground on P2 Pin 6 |
-| VDD35 | - | Leave unconnected |
+**Recommended Ojo-side link port wiring:**
 
-**Cheap cable continuity and P1-side wiring:**
+| Ojo Connection | Ojo-side GBA Port Pin Type | Equivalent P1 Breakout Pad | Notes |
+|----------------|----------------------------|----------------------------|-------|
+| D9 (GPIO8) | SI | SO | Payload bit 0 |
+| GND | GND | SI | Shared ground |
+| D8 (GPIO7) | SD | SD | Payload bit 1 |
+| D7 (GPIO44) | SC | SC | Frame phase; toggles every `GBA_LINK_FRAME_TOGGLE_MS` |
 
-Cheap GBA link cables have non-standard internal wiring (no mid-cable signal splitter), and the two ends are not equivalent. For this method, wire the **P1 breakout** as follows:
+Leave the Ojo-side port `SO` and `VDD35` contacts unconnected. If you use a breakout board instead of a port, wire the equivalent P1 breakout pads listed above.
 
-| Ojo Connection | P1 Breakout Pad Label | P1 Pin | Cable Routes To | P2 (GBA) Pin |
-|----------------|------------------------|--------|-----------------|--------------|
-| D9 (GPIO8) | SO | Pin 2 | P2 Pin 3 | SI |
-| D8 (GPIO7) | SD | Pin 4 | P2 Pin 4 | SD |
-| D7 (GPIO44) | SC | Pin 5 | P2 Pin 5 | SC |
-| GND | SI | Pin 3 | P2 Pin 6 | GND |
+**Cheap cable continuity and cable orientation:**
 
-This intentionally repurposes the P1 `SI` conductor as the shared ground path for the Ojo and GBA.
+Cheap GBA link cables have non-standard internal wiring (no mid-cable signal splitter), and the two ends are not equivalent. Plug the Ojo del Sol into the **Player 1 (P1)** side of the cable and the GBA into the **Player 2 (P2)** side.
 
 Verify your specific cable's wiring with a multimeter continuity test. See [this sheet](https://docs.google.com/spreadsheets/d/19uAjLaDji9D3lIKIEdB9RHNQ_F-Fo1NnXY90uRH3dQA/edit?usp=sharing) for reference.
 
@@ -198,6 +193,8 @@ Expected continuity on this cheap-cable variant:
 - P1 Pin 3 -> P2 Pin 6
 - P1 Pin 4 -> P2 Pin 4
 - P1 Pin 5 -> P2 Pin 5
+
+This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as the shared ground path between the Ojo and GBA.
 
 **Important - shield and "GND" labels:**
 
@@ -368,14 +365,13 @@ If the bar display feels jumpy:
 - **Not inverted**: higher values = more UV
 
 ### Power Management
-- Sensor power can be GPIO-controlled (`SENSOR_POWER_PIN`) to cut power during sleep
-- Alternatively, set `SENSOR_POWER_ENABLED = false` in config.h and wire LTR390 VIN to 3V3 instead of a GPIO pin
+- Wire the LTR390 directly to `3V3`, same as the OLED
+- Cutting the LTR390 breakout LED trace is recommended because the LED is hardwired to VIN
 - Battery sensing and low-voltage cutoff are disabled by default; enable after wiring and validating the battery divider (`BATTERY_SENSE_ENABLED`, `BATTERY_CUTOFF_ENABLED`)
 - Battery sampling/cutoff checks run on a timed loop and are not dependent on UV "new data" events
 - OLED uses Display OFF + Charge Pump OFF commands
 - On wake, firmware explicitly re-enables the OLED charge pump/display before drawing
 - Deep sleep current: ~10µA (varies with module pull-ups)
-- The LTR390 breakout LED is hardwired to VIN — it turns off in sleep if you use GPIO power control
 
 ### UV Blocking Warning
 Most glass and many plastics block UV strongly (often 90%+). Compensation can correct scale loss, but it cannot recover signal if too little UV reaches the sensor. Prefer an open aperture, quartz glass, or UV-transparent acrylic.

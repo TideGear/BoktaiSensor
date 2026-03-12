@@ -372,11 +372,6 @@ void setup() {
     digitalWrite(GBA_PIN_SO, LOW);
   }
 
-  if (SENSOR_POWER_ENABLED) {
-    pinMode(SENSOR_POWER_PIN, OUTPUT);
-    digitalWrite(SENSOR_POWER_PIN, LOW); // keep sensor off until power-on
-  }
-
   if (BATTERY_SENSE_ENABLED) {
     analogSetPinAttenuation(BAT_PIN, ADC_11db);
   }
@@ -439,11 +434,6 @@ void setup() {
     display.display();
   }
   #endif
-
-  if (SENSOR_POWER_ENABLED) {
-    digitalWrite(SENSOR_POWER_PIN, HIGH);
-    delay(SENSOR_POWER_STABLE_MS);
-  }
 
   if (!initLTR390()) {
     display.clearDisplay();
@@ -1229,12 +1219,6 @@ void enterDeepSleep() {
     pinMode(GBA_PIN_SC, INPUT);
     pinMode(GBA_PIN_SD, INPUT);
     pinMode(GBA_PIN_SO, INPUT);
-  }
-
-  // Turn off sensor power and set pin to INPUT for minimum leakage
-  if (SENSOR_POWER_ENABLED) {
-    digitalWrite(SENSOR_POWER_PIN, LOW);
-    pinMode(SENSOR_POWER_PIN, INPUT);
   }
 
   // Set battery sense pin to INPUT (disable ADC pull)
@@ -2035,14 +2019,7 @@ bool initLTR390() {
       Serial.println(")");
     }
 
-    if (SENSOR_POWER_ENABLED) {
-      digitalWrite(SENSOR_POWER_PIN, LOW);
-      delay(50);
-      digitalWrite(SENSOR_POWER_PIN, HIGH);
-      delay(SENSOR_POWER_STABLE_MS);
-    } else {
-      delay(50);
-    }
+    delay(50);
   }
 
   return false;

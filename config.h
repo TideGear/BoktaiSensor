@@ -144,11 +144,11 @@ const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 
 // Voltage divider calibration multiplier
 // Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
-// Actual default: 2.23 compensates for my ADC/resistor variance
+// Actual default: 2.20 compensates for typical ADC/resistor variance
 // Adjust if battery % is wrong at full charge:
 //   - If % too LOW:  increase this value
 //   - If % too HIGH: decrease this value
-const float VOLT_DIVIDER_MULT = 2.23;
+const float VOLT_DIVIDER_MULT = 2.20;
 
 // -----------------------------------------------------------------------------
 // LOW-VOLTAGE CUTOFF (requires battery sense divider)
@@ -158,16 +158,8 @@ const bool BATTERY_CUTOFF_ENABLED = false;
 const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
 const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 
-// -----------------------------------------------------------------------------
-// SENSOR POWER CONTROL
-// -----------------------------------------------------------------------------
-// Optionally power the LTR390 from a GPIO to cut power during sleep.
 // Use a GPIO capable of sourcing a few mA and never power the OLED this way.
 // Default: enabled; wire LTR390 VIN to SENSOR_POWER_PIN (D3/GPIO4).
-// Set to false if powering the sensor from 3V3.
-const bool SENSOR_POWER_ENABLED = true;
-const int SENSOR_POWER_PIN = 4;               // D3 (GPIO4)
-const unsigned long SENSOR_POWER_STABLE_MS = 10;
 
 // =============================================================================
 // USER INTERFACE
