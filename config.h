@@ -158,9 +158,6 @@ const bool BATTERY_CUTOFF_ENABLED = false;
 const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
 const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 
-// Use a GPIO capable of sourcing a few mA and never power the OLED this way.
-// Default: enabled; wire LTR390 VIN to SENSOR_POWER_PIN (D3/GPIO4).
-
 // =============================================================================
 // USER INTERFACE
 // =============================================================================
@@ -275,9 +272,5 @@ const bool USB_HID_ENABLED = true;
 // =============================================================================
 // Enables Serial debug logging (115200 baud) for UV/battery readings and sensor init.
 const bool DEBUG_SERIAL = false;
-
-// Adds a 4th screen (after Boktai 3) showing UV raw, UVI, compensated UVI, ADC avg, and battery voltage for tuning.
-// Set false to remove it from the button cycle.
-const bool DEBUG_SCREEN_ENABLED = true;
 
 #endif

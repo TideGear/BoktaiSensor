@@ -63,9 +63,11 @@ bool buttonWasPressed = false;
 
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
+const int DEBUG_SCREEN_INDEX = NUM_GAMES;
+const int NUM_UI_SCREENS = NUM_GAMES + 1;
 
 // UI screen selection:
-// 0..NUM_GAMES-1 = game screens, NUM_GAMES = DEBUG screen (if enabled)
+// 0..NUM_GAMES-1 = game screens, DEBUG_SCREEN_INDEX = XInput/CDC debug screen
 int currentScreen = 0;
 bool uiScreenChanged = false;
 
@@ -197,6 +199,10 @@ int screensaverLastLayoutPct = -2;  // Cache key for layout recalculation (-2 = 
 bool screensaverLastLayoutBleStatus = false;
 
 void initHidPressTiming();
+int clampGameIndex(int game);
+void refreshGameState(bool refreshOutputs);
+void updateBluetoothMeter(int deviceBars, int numBars);
+void updateUsbMeter(int bars, int numBars);
 
 void wakeDisplayHardware() {
   // Sleep path disables the charge pump; explicitly restore it before drawing.
@@ -493,7 +499,7 @@ void setup() {
     delay(2000);
   }
 
-  cachedNumBars = GAME_BARS[currentGame];
+  refreshGameState(false);
   lastScreenActivityMs = millis();
   #if HAS_USB_HID
   if (inCdcMode) {
@@ -791,7 +797,7 @@ void drawDebugDisplay() {
 }
 
 void drawMainDisplay() {
-  if (DEBUG_SCREEN_ENABLED && currentScreen == NUM_GAMES) {
+  if (currentScreen == DEBUG_SCREEN_INDEX) {
     drawDebugDisplay();
     return;
   }
@@ -955,7 +961,18 @@ const float* getManualThresholds(int game) {
   }
 }
 
+int clampGameIndex(int game) {
+  if (game < 0) {
+    return 0;
+  }
+  if (game >= NUM_GAMES) {
+    return NUM_GAMES - 1;
+  }
+  return game;
+}
+
 float getBarThreshold(int game, int barIndex) {
+  game = clampGameIndex(game);
   int numBars = GAME_BARS[game];
   if (AUTO_MODE) {
     return getAutoThreshold(numBars, barIndex);
@@ -971,6 +988,7 @@ float getBarThreshold(int game, int barIndex) {
 }
 
 int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
+  game = clampGameIndex(game);
   int numBars = GAME_BARS[game];
   int target = getBoktaiBars(uvi, game);
 
@@ -1007,6 +1025,7 @@ int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
 
 // Convert UV Index to Boktai bar count based on selected game
 int getBoktaiBars(float uvi, int game) {
+  game = clampGameIndex(game);
   int numBars = GAME_BARS[game];
   
   if (AUTO_MODE) {
@@ -1036,6 +1055,17 @@ int getBoktaiBars(float uvi, int game) {
     }
   }
   return 0;  // Below minimum threshold
+}
+
+void refreshGameState(bool refreshOutputs) {
+  currentGame = clampGameIndex(currentGame);
+  cachedNumBars = GAME_BARS[currentGame];
+  cachedFilledBars = getBoktaiBars(cachedUvi, currentGame);
+
+  if (refreshOutputs) {
+    updateBluetoothMeter(cachedFilledBars, cachedNumBars);
+    updateUsbMeter(cachedFilledBars, cachedNumBars);
+  }
 }
 
 // Handle power button: tap to cycle screens, long-press (2s) to sleep
@@ -1070,7 +1100,7 @@ void handlePowerButton() {
         } else {
           enterDeepSleep();       // USB disabled — just sleep normally
         }
-      } else if (DEBUG_SCREEN_ENABLED && currentScreen == NUM_GAMES) {
+      } else if (currentScreen == DEBUG_SCREEN_INDEX) {
         enterCdcMode();
       } else {
         enterDeepSleep();
@@ -1084,14 +1114,14 @@ void handlePowerButton() {
     unsigned long pressDuration = millis() - buttonPressStart;
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
       if (!suppressShortPress) {
-        int numScreens = NUM_GAMES + (DEBUG_SCREEN_ENABLED ? 1 : 0);
-        currentScreen = (currentScreen + 1) % numScreens;
+        currentScreen = (currentScreen + 1) % NUM_UI_SCREENS;
         uiScreenChanged = true;
 
         if (currentScreen < NUM_GAMES) {
-          currentGame = currentScreen;
+          currentGame = clampGameIndex(currentScreen);
           gameChanged = true;
           bleGameChanged = true;
+          refreshGameState(true);
         }
       }
     }
@@ -1435,6 +1465,7 @@ void resetBleSyncState() {
 }
 
 int getBleMeterStepsForGame(int game) {
+  game = clampGameIndex(game);
   if (game == 0) {
     if (!HID_BOKTAI1_MGBA_10_STEP_WORKAROUND) {
       return GAME_BARS[game];
@@ -1445,6 +1476,7 @@ int getBleMeterStepsForGame(int game) {
 }
 
 int getBleBarFromStep(int game, int step) {
+  game = clampGameIndex(game);
   int stepsMax = getBleMeterStepsForGame(game);
   if (step < 0) {
     step = 0;
@@ -1459,6 +1491,7 @@ int getBleBarFromStep(int game, int step) {
 }
 
 int getBleStepFromBar(int game, int bar, bool fromEmpty) {
+  game = clampGameIndex(game);
   int barsMax = GAME_BARS[game];
   if (bar < 0) {
     bar = 0;
@@ -1591,11 +1624,6 @@ void applySingleAnalog(int bars, int numBars) {
 }
 
 void releaseSingleAnalog() {
-  // Reset USB meter tracking so next update sends fresh state
-  usbMeterBars = -1;
-  usbMeterNumBars = -1;
-  usbReleaseAll();
-
   if (!BLUETOOTH_ENABLED || xboxGamepad == nullptr) {
     resetSingleAnalogState();
     return;

@@ -379,8 +379,10 @@ public:
     if (!usbd_edpt_claim(0, XINPUT_EP_IN))
       return false;
 
-    usbd_edpt_xfer(0, XINPUT_EP_IN, (uint8_t*)&_report, sizeof(XInputReport_t), false);
-    usbd_edpt_release(0, XINPUT_EP_IN);
+    if (!usbd_edpt_xfer(0, XINPUT_EP_IN, (uint8_t*)&_report, sizeof(XInputReport_t), false)) {
+      usbd_edpt_release(0, XINPUT_EP_IN);
+      return false;
+    }
     return true;
   }
 

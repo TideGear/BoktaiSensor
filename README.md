@@ -95,13 +95,13 @@ Both HID control modes are available over USB:
 - **Single Analog (`HID_CONTROL_MODE = 1`)**: sends the configured axis plus optional unlock button (`HID_SINGLE_ANALOG_AXIS`, `HID_METER_UNLOCK_*`).
 
 USB CDC serial is not active during normal XInput runtime. To enable USB serial (for `DEBUG_SERIAL` output or firmware upload):
-1. Tap to the **XInput** screen (last screen in the cycle).
+1. Tap to the **XInput** screen (last screen in the cycle; this diagnostics screen is always present).
 2. Hold the button for 2 seconds.
 3. The device restarts into CDC mode and enumerates as `Ojo del Sol (CDC)`.
 
 In CDC mode the firmware runs fully (UV sensing, game display, screensaver, BLE, GBA link). The screen header shows **CDC** instead of **XInput**. Hold the button for 2 seconds from any screen to exit CDC mode and sleep; on next wake, the device boots back into XInput mode.
 
-If `DEBUG_SCREEN_ENABLED = false`, use BOOT/RESET (ROM download mode) to upload firmware.
+As an alternative, set `USB_HID_ENABLED = false` to have the firmware boot directly into CDC on wake.
 
 ### 3. GBA Link Cable (Best Option for Flash Carts)
 
@@ -249,7 +249,7 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 ### Button Controls
 
 **When device is ON:**
-- **Tap:** Cycle screens (BOKTAI 1 → 2 → 3 → XInput → 1...). The XInput screen is enabled by default; set `DEBUG_SCREEN_ENABLED = false` in config.h to remove it.
+- **Tap:** Cycle screens (BOKTAI 1 → 2 → 3 → XInput → 1...). The XInput screen is always present and doubles as the diagnostics screen.
 - **Hold 2s on a game screen:** Power OFF (deep sleep, ~10uA)
 - **Hold 2s on the XInput screen:** Restart into CDC mode for USB serial output and firmware upload
 - **Hold 2s while in CDC mode:** Exit CDC mode and sleep (next wake returns to XInput mode)
@@ -322,6 +322,8 @@ const bool UV_ENCLOSURE_COMP_ENABLED = true;
 const float UV_ENCLOSURE_TRANSMITTANCE = 0.42; // 42% UV passes through the window
 const float UV_ENCLOSURE_UVI_OFFSET = 0.000;     // Optional bias correction
 ```
+
+The current repo default in `config.h` is `0.833`, based on the enclosure linked above; expect to recalibrate this value for your own case/window material.
 
 Firmware applies compensation once after raw-to-UVI conversion:
 
