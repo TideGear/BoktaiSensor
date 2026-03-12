@@ -40,12 +40,6 @@ const bool UV_ENCLOSURE_COMP_ENABLED = true;
 const float UV_ENCLOSURE_TRANSMITTANCE = 0.833f;
 const float UV_ENCLOSURE_UVI_OFFSET = 0.000f;
 
-// When true (default), bar-threshold comparisons use OPEN-AIR-EQUIVALENT UVI
-// (i.e., post-compensation). This is ideal when calibrating thresholds with the
-// case/window open, then using the device with the case closed.
-// When false, thresholds are compared against the raw measured UVI (pre-comp).
-const bool UV_THRESHOLDS_USE_OPEN_AIR_EQUIVALENT = true;
-
 // -----------------------------------------------------------------------------
 // UV FILTERING
 // -----------------------------------------------------------------------------
