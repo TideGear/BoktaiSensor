@@ -61,7 +61,7 @@ const bool UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true;
 // Hysteresis adds a small UV margin before changing bars.
 // Setting BAR_HYSTERESIS_ENABLED = false is the same as BAR_HYSTERESIS = 0.0.
 const bool UVI_SMOOTHING_ENABLED = false;
-const float UVI_SMOOTHING_ALPHA = 0.5;  // 0.0-1.0. Controls how much weight new readings get vs. the running average. Higher = faster response.
+const float UVI_SMOOTHING_ALPHA = 0.5;
 const bool BAR_HYSTERESIS_ENABLED = false;
 const float BAR_HYSTERESIS = 0.200;       // UV Index margin for bar changes
 

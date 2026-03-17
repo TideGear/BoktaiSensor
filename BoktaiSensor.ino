@@ -110,6 +110,8 @@ int8_t screensaverDx = 1;
 int8_t screensaverDy = 1;
 int16_t screensaverTextW = 0;
 int16_t screensaverTextH = 0;
+int16_t screensaverTextX1 = 0;
+int16_t screensaverTextY1 = 0;
 
 // Cached display values
 uint32_t cachedRawUVS = 0;
@@ -121,7 +123,7 @@ int cachedNumBars = 0;
 float smoothedUvi = 0.0f;
 bool hasSmoothedUvi = false;
 bool gameChanged = false;
-bool bleGameChanged = false;
+bool hidGameChanged = false;
 bool gbaFramePhaseHigh = false;
 unsigned long gbaFrameLastToggleUs = 0;
 
@@ -413,6 +415,8 @@ void setup() {
   display.getTextBounds(SCREENSAVER_TEXT, 0, 0, &ssX1, &ssY1, &ssW, &ssH);
   screensaverTextW = (int16_t)ssW;
   screensaverTextH = (int16_t)ssH;
+  screensaverTextX1 = ssX1;
+  screensaverTextY1 = ssY1;
   calculateScreensaverLayout();
   screensaverLastLayoutPct = cachedBatteryPct;
   screensaverLastLayoutBleStatus = BLUETOOTH_ENABLED && (bleConnected || blePairingActive);
@@ -658,7 +662,6 @@ void drawScreensaverBattery(int16_t x, int16_t y) {
 
 void updateScreensaverState() {
   if (!SCREENSAVER_ENABLED) {
-    screensaverActive = false;
     return;
   }
   if (screensaverActive) {
@@ -680,10 +683,6 @@ void updateScreensaverState() {
 }
 
 void drawScreensaver() {
-  if (!SCREENSAVER_ENABLED) {
-    return;
-  }
-
   unsigned long now = millis();
   if ((now - lastScreensaverMoveMs) < SCREENSAVER_MOVE_MS) {
     return;
@@ -735,7 +734,7 @@ void drawScreensaver() {
   int16_t textX = screensaverX + ((screensaverBlockW - screensaverTextW) / 2);
   int16_t textY = imageY + SCREENSAVER_IMAGE_H + SCREENSAVER_IMAGE_TEXT_GAP;
   display.setTextSize(1);
-  display.setCursor(textX, textY);
+  display.setCursor(textX - screensaverTextX1, textY - screensaverTextY1);
   display.print(SCREENSAVER_TEXT);
 
   if (screensaverBatteryVisible) {
@@ -772,7 +771,7 @@ void drawDebugDisplay() {
 
   display.setCursor(0, 30);
   display.print("UVI comp'ed:");
-  display.print(cachedUviCorrected, 3);
+  display.print(cachedUvi, 3);
 
   // Battery readings
   bool haveBatteryReading = BATTERY_SENSE_ENABLED && hasBatteryReading;
@@ -1120,7 +1119,7 @@ void handlePowerButton() {
         if (currentScreen < NUM_GAMES) {
           currentGame = clampGameIndex(currentScreen);
           gameChanged = true;
-          bleGameChanged = true;
+          hidGameChanged = true;
           refreshGameState(true);
         }
       }
@@ -1778,7 +1777,7 @@ void updateUsbMeter(int bars, int numBars) {
   bars = constrain(bars, 0, numBars);
   bool usbIncrementalNeedsRefresh = (HID_CONTROL_MODE == 0) &&
                                     (!BLUETOOTH_ENABLED || !bleConnected) &&
-                                    bleGameChanged;
+                                    hidGameChanged;
   if (bars == usbMeterBars && numBars == usbMeterNumBars && !usbIncrementalNeedsRefresh) return;
   usbMeterBars = bars;
   usbMeterNumBars = numBars;
@@ -1807,9 +1806,9 @@ void updateUsbMeter(int bars, int numBars) {
     // In Incremental mode, USB must keep working even when BLE is disabled
     // or currently disconnected.
     if (!BLUETOOTH_ENABLED || !bleConnected) {
-      if (bleGameChanged || bleDeviceNumBars != numBars) {
+      if (hidGameChanged || bleDeviceNumBars != numBars) {
         bleEstimateValid = false;
-        bleGameChanged = false;
+        hidGameChanged = false;
       }
       bleDeviceBars = bars;
       bleDeviceNumBars = numBars;
@@ -1833,18 +1832,18 @@ void updateBluetoothMeter(int deviceBars, int numBars) {
   bleDeviceNumBars = numBars;
 
   if (HID_CONTROL_MODE == 1) {
-    if (bleGameChanged) {
+    if (hidGameChanged) {
       resetSingleAnalogState();
-      bleGameChanged = false;
+      hidGameChanged = false;
     }
     applySingleAnalog(bleDeviceBars, bleDeviceNumBars);
     return;
   }
 
-  if (bleSyncPending || bleGameChanged) {
+  if (bleSyncPending || hidGameChanged) {
     startBleResync(bleDeviceBars, bleDeviceNumBars);
     bleSyncPending = false;
-    bleGameChanged = false;
+    hidGameChanged = false;
     return;
   }
 
@@ -1978,7 +1977,6 @@ void updateBatteryStatus() {
 
 void handleLowBatteryCutoff() {
   if (!BATTERY_SENSE_ENABLED || !BATTERY_CUTOFF_ENABLED) {
-    lowBatteryStart = 0;
     return;
   }
   if (cachedBatteryVoltage <= 0.0f) {

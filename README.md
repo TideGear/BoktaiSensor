@@ -340,7 +340,7 @@ Quick calibration:
 
 For open-air builds (sensor always exposed when device is in use): set `UV_ENCLOSURE_COMP_ENABLED = false` and leave `UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true`. Compensation is a no-op so raw equals compensated.
 
-Note: On the XInput screen, `UVI` is the measured (pre-compensation) value and `UVI comp'ed` is the post-compensation value.
+Note: On the XInput screen, `UVI` is the measured (pre-compensation) value and `UVI comp'ed` is the value used for bar calculation (post-compensation; post-smoothing if `UVI_SMOOTHING_ENABLED = true`).
 
 ### Stability Tuning
 

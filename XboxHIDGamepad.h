@@ -379,6 +379,7 @@ public:
     if (!usbd_edpt_claim(0, XINPUT_EP_IN))
       return false;
 
+    // 5th arg (ZLP flag) is an ESP32-Arduino TinyUSB extension; not present in upstream TinyUSB.
     if (!usbd_edpt_xfer(0, XINPUT_EP_IN, (uint8_t*)&_report, sizeof(XInputReport_t), false)) {
       usbd_edpt_release(0, XINPUT_EP_IN);
       return false;
