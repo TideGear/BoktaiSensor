@@ -1392,6 +1392,14 @@ void initBluetooth() {
     server->advertiseOnDisconnect(false);
   }
 
+  // The library starts advertising without the device name in the payload.
+  // Stop it, add the name, then restart via startBlePairing().
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  if (advertising) {
+    advertising->stop();
+    advertising->setName(BLE_DEVICE_NAME);
+  }
+
   startBlePairing();
 }
 
