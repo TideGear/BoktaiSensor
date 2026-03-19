@@ -2026,7 +2026,7 @@ int readBatteryPercentage() {
   float voltage = (raw / 4095.0f) * 3.3f * VOLT_DIVIDER_MULT;
   cachedBatteryVoltage = voltage;
   
-  if (serialEnabled) {
+  if (serialEnabled && DEBUG_SERIAL_BATTERY) {
     Serial.print("Battery ADC raw: "); Serial.print(raw);
     Serial.print(" Voltage: "); Serial.println(voltage);
   }
@@ -2071,7 +2071,7 @@ float calculateUVI() {
   cachedUviCorrected = correctedUvi;
   
   // Debug output
-  if (serialEnabled) {
+  if (serialEnabled && DEBUG_SERIAL_UV) {
     Serial.print("UV raw: "); Serial.print(rawUVS);
     Serial.print(" UVI measured: "); Serial.print(measuredUvi, 3);
     Serial.print(" UVI corrected: "); Serial.println(correctedUvi, 3);
