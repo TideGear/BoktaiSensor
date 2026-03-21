@@ -205,6 +205,8 @@ int clampGameIndex(int game);
 void refreshGameState(bool refreshOutputs);
 void updateBluetoothMeter(int deviceBars, int numBars);
 void updateUsbMeter(int bars, int numBars);
+void logDeviceButtonPress(const char* context);
+void syncRuntimeButtonStateAfterStartup();
 
 void wakeDisplayHardware() {
   // Sleep path disables the charge pump; explicitly restore it before drawing.
@@ -349,6 +351,32 @@ void showHoldPowerOnPrompt() {
   display.setCursor(4, 28);
   display.print("Hold 2s to power on");
   display.display();
+}
+
+void logDeviceButtonPress(const char* context) {
+  if (!serialEnabled) {
+    return;
+  }
+
+  Serial.print("Device button pressed");
+  if (context != nullptr && context[0] != '\0') {
+    Serial.print(" (");
+    Serial.print(context);
+    Serial.print(")");
+  }
+  Serial.println();
+}
+
+void syncRuntimeButtonStateAfterStartup() {
+  bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
+  buttonWasPressed = buttonPressed;
+  if (buttonPressed) {
+    buttonPressStart = millis();
+    suppressShortPress = true;
+  } else {
+    buttonPressStart = 0;
+    suppressShortPress = false;
+  }
 }
 
 void setup() {
@@ -511,6 +539,13 @@ void setup() {
   }
   #endif
   initBluetooth();
+  #if HAS_USB_HID
+  if (!inCdcMode) {
+    syncRuntimeButtonStateAfterStartup();
+  }
+  #else
+  syncRuntimeButtonStateAfterStartup();
+  #endif
 }
 
 void loop() {
@@ -1091,6 +1126,7 @@ void handlePowerButton() {
   bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
 
   if (buttonPressed && !buttonWasPressed) {
+    logDeviceButtonPress("runtime");
     buttonPressStart = millis();
     buttonWasPressed = true;
     if (screensaverActive) {
@@ -1152,6 +1188,7 @@ bool waitForPowerOn() {
   
   showHoldPowerOnPrompt();
   if (pressedAtStart) {
+    logDeviceButtonPress("wake");
     pressStart = lastActivity;
     wasPressed = true;
   }
@@ -1168,6 +1205,7 @@ bool waitForPowerOn() {
     
     // Button just pressed
     if (pressed && !wasPressed) {
+      logDeviceButtonPress("wake");
       lastActivity = now;  // Reset timeout
       pressStart = now;
       wasPressed = true;

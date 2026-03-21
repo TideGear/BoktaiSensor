@@ -99,6 +99,8 @@ USB CDC serial is not active during normal XInput runtime. To enable USB serial 
 2. Hold the button for 2 seconds.
 3. The device restarts into CDC mode and enumerates as `Ojo del Sol (CDC)`.
 
+With `DEBUG_SERIAL = true`, CDC output includes startup diagnostics, device-button press events, and any enabled UV/battery debug streams.
+
 In CDC mode the firmware runs fully (UV sensing, game display, screensaver, BLE, GBA link). The screen header shows **CDC** instead of **XInput**. Hold the button for 2 seconds from any screen to exit CDC mode and sleep; on next wake, the device boots back into XInput mode.
 
 As an alternative, set `USB_HID_ENABLED = false` to have the firmware boot directly into CDC on wake.
@@ -403,6 +405,7 @@ Most glass and many plastics block UV strongly (often 90%+). Compensation can co
 ## Troubleshooting
 
 ### UV sensor reads 0 or very low
+If button presses are being seen, Serial should print `Device button pressed` whenever the device button is pressed.
 1. Set `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud). Serial output is only active in CDC mode — enter CDC mode from the XInput screen (hold 2s), or set `USB_HID_ENABLED = false` to always use CDC.
    - At UVI 6, expect ~13800 raw counts (6 × 2300)
    - If raw = 0, sensor may not be in UV mode
