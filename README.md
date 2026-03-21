@@ -307,11 +307,31 @@ const float AUTO_UV_MIN = 0.500;   // UV Index for 1 bar
 const float AUTO_UV_SATURATION = 6.000;   // UV Index ceiling (output clamp)
 ```
 
-Bars are distributed evenly across this range for all games. `AUTO_UV_SATURATION` is a saturation ceiling, so the highest bar can begin before this value and then remains clamped at full above it. UV Index 6 is typical for a sunny day in temperate climates.
+Bars are distributed non-linearly following the original Boktai cartridge's thresholds (per [Raphi's sensor graph](https://raphi.xyz/~raphi/boktai/sensor_graph/)), scaled across the configured UV range. `AUTO_UV_MIN` is where bar 1 starts; `AUTO_UV_SATURATION` is where the highest bar starts (and all values above are clamped to max). UV Index 6 is typical for a sunny day in temperate climates.
+
+**Original cartridge bar thresholds** (0–140 scale; source: [raphi.xyz/~raphi/boktai/sensor_graph/](https://raphi.xyz/~raphi/boktai/sensor_graph/)):
+
+```
+Exclusive upper bound
+Bars    Boktai 1    Boktai 2 & 3
+0       1           1
+1       7           6
+2       16          13
+3       28          23
+4       44          35
+5       67          50
+6       98          67
+7       140         87
+8       (max)       110
+9       —           140
+10      —           (max)
+```
+
+`AUTO_UV_MIN` maps to scaled value 1 and `AUTO_UV_SATURATION` maps to 140.
 
 ### Manual Mode
 
-Set `AUTO_MODE = false` to use per-game threshold arrays (`BOKTAI_1_UV[8]`, `BOKTAI_2_UV[10]`, `BOKTAI_3_UV[10]`).
+Set `AUTO_MODE = false` to use per-game `BOKTAI_1/2/3_UV_MIN` and `BOKTAI_1/2/3_UV_SATURATION` values (`BOKTAI_1_UV_MIN`, `BOKTAI_1_UV_SATURATION`, etc.). Bar thresholds follow the same non-linear cartridge curve as AUTO mode, but each game can use a different UV range.
 
 ### Transparent Enclosure Compensation
 
@@ -336,7 +356,7 @@ Quick calibration:
 4. Use the median ratio as `UV_ENCLOSURE_TRANSMITTANCE`.
 5. Re-enable compensation (`UV_ENCLOSURE_COMP_ENABLED = true`).
 
-**Threshold calibration mode:** By default (`UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true`), all threshold values in config.h (`AUTO_UV_MIN`, `AUTO_UV_SATURATION`, manual arrays) are assumed to be open-air UVI values — set while the case is open or without an enclosure. The firmware compensates sensor readings to open-air equivalent before comparing against them. Set `UV_THRESHOLDS_CALIBRATED_OPEN_AIR = false` if you instead calibrated thresholds with the sensor inside the closed enclosure; bar comparison will then use the raw (uncompensated) reading directly.
+**Threshold calibration mode:** By default (`UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true`), all threshold values in config.h (`AUTO_UV_MIN`, `AUTO_UV_SATURATION`, and the per-game `BOKTAI_*_UV_MIN`/`BOKTAI_*_UV_SATURATION` values) are assumed to be open-air UVI values — set while the case is open or without an enclosure. The firmware compensates sensor readings to open-air equivalent before comparing against them. Set `UV_THRESHOLDS_CALIBRATED_OPEN_AIR = false` if you instead calibrated thresholds with the sensor inside the closed enclosure; bar comparison will then use the raw (uncompensated) reading directly.
 
 For open-air builds (sensor always exposed when device is in use): set `UV_ENCLOSURE_COMP_ENABLED = false` and leave `UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true`. Compensation is a no-op so raw equals compensated.
 
@@ -424,8 +444,10 @@ This was a known compatibility issue between esp32 core `3.3.7` and older versio
 ## Credits & Links
 
 - **[Prof9](https://github.com/Prof9/Boktai-Solar-Sensor-Patches)** — GBA link patches, IPS patches, and link protocol are based on Prof9's work (MIT License — see [Prof9's license.txt](Prof9's%20license.txt)) Prof9 also provided a ridiculous amount of help, patience, and kindness. Many thanks!
-- **[Mystfit](https://github.com/Mystfit/ESP32-BLE-CompositeHID)** � ESP32-BLE-CompositeHID library (included as `ESP32-BLE-CompositeHID-master.zip`)
+- **[Raphi](https://raphi.xyz/~raphi/boktai/sensor_graph/)** — Original Boktai cartridge bar threshold tables, reverse-engineered from the original hardware. This saved me a lot of work!
+- **[Mystfit](https://github.com/Mystfit/ESP32-BLE-CompositeHID)** — ESP32-BLE-CompositeHID library (included as `ESP32-BLE-CompositeHID-master.zip`)
 - **[Kalasoiro](https://github.com/Kalasoiro/esp32s3-tinyusb-xinput)** - XInput TinyUSB reference implementation (included as `esp32s3-tinyusb-xinput-main.zip`)
+- **LanHikariDS** — Additional support
 - [GBATEK Solar Sensor Documentation](https://problemkaputt.de/gbatek.htm)
 - [Seeed XIAO ESP32S3 Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
 - [Adafruit LTR390](https://www.adafruit.com/product/4831)

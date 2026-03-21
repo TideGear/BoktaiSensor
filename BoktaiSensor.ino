@@ -937,26 +937,49 @@ float applyEnclosureCompensation(float measuredUvi) {
   return corrected;
 }
 
-float getAutoThreshold(int numBars, int barIndex) {
-  if (AUTO_UV_SATURATION <= AUTO_UV_MIN) {
-    return AUTO_UV_MIN;
-  }
-  if (barIndex < 1) {
-    barIndex = 1;
-  }
-  if (barIndex > numBars) {
-    barIndex = numBars;
-  }
-  float range = AUTO_UV_SATURATION - AUTO_UV_MIN;
-  return AUTO_UV_MIN + (range * (barIndex - 1)) / numBars;
+// Raphi's original Boktai cartridge bar thresholds (raphi.xyz/~raphi/boktai/sensor_graph/).
+// Ratios of the UV range [UV_MIN, UV_SATURATION] at which each bar level starts.
+// Derived from exclusive upper bounds on the 0-140 cartridge scale: ratio = (upper_bound - 1) / 139.
+// Boktai 1 (8 bars): exclusive upper bounds 1, 7, 16, 28, 44, 67, 98, 140
+static const float RAPHI_B1[8] = {
+  0.0f,          // Bar 1: starts at UV_MIN
+  6.0f/139.0f,   // Bar 2
+  15.0f/139.0f,  // Bar 3
+  27.0f/139.0f,  // Bar 4
+  43.0f/139.0f,  // Bar 5
+  66.0f/139.0f,  // Bar 6
+  97.0f/139.0f,  // Bar 7
+  1.0f           // Bar 8: starts at UV_SATURATION
+};
+// Boktai 2 & 3 (10 bars): exclusive upper bounds 1, 6, 13, 23, 35, 50, 67, 87, 110, 140
+static const float RAPHI_B23[10] = {
+  0.0f,           // Bar 1: starts at UV_MIN
+  5.0f/139.0f,    // Bar 2
+  12.0f/139.0f,   // Bar 3
+  22.0f/139.0f,   // Bar 4
+  34.0f/139.0f,   // Bar 5
+  49.0f/139.0f,   // Bar 6
+  66.0f/139.0f,   // Bar 7
+  86.0f/139.0f,   // Bar 8
+  109.0f/139.0f,  // Bar 9
+  1.0f            // Bar 10: starts at UV_SATURATION
+};
+
+const float* getRaphiRatios(int numBars) {
+  return (numBars == 8) ? RAPHI_B1 : RAPHI_B23;
 }
 
-const float* getManualThresholds(int game) {
+void getGameUvRange(int game, float* uvMin, float* uvSat) {
+  if (AUTO_MODE) {
+    *uvMin = AUTO_UV_MIN;
+    *uvSat = AUTO_UV_SATURATION;
+    return;
+  }
   switch (game) {
-    case 0: return BOKTAI_1_UV;
-    case 1: return BOKTAI_2_UV;
-    case 2: return BOKTAI_3_UV;
-    default: return BOKTAI_1_UV;
+    case 0: *uvMin = BOKTAI_1_UV_MIN; *uvSat = BOKTAI_1_UV_SATURATION; break;
+    case 1: *uvMin = BOKTAI_2_UV_MIN; *uvSat = BOKTAI_2_UV_SATURATION; break;
+    case 2: *uvMin = BOKTAI_3_UV_MIN; *uvSat = BOKTAI_3_UV_SATURATION; break;
+    default: *uvMin = AUTO_UV_MIN;    *uvSat = AUTO_UV_SATURATION;      break;
   }
 }
 
@@ -973,17 +996,12 @@ int clampGameIndex(int game) {
 float getBarThreshold(int game, int barIndex) {
   game = clampGameIndex(game);
   int numBars = GAME_BARS[game];
-  if (AUTO_MODE) {
-    return getAutoThreshold(numBars, barIndex);
-  }
-  const float* thresholds = getManualThresholds(game);
-  if (barIndex < 1) {
-    barIndex = 1;
-  }
-  if (barIndex > numBars) {
-    barIndex = numBars;
-  }
-  return thresholds[barIndex - 1];
+  if (barIndex < 1) barIndex = 1;
+  if (barIndex > numBars) barIndex = numBars;
+  float uvMin, uvSat;
+  getGameUvRange(game, &uvMin, &uvSat);
+  if (uvSat <= uvMin) return uvMin;
+  return uvMin + getRaphiRatios(numBars)[barIndex - 1] * (uvSat - uvMin);
 }
 
 int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
@@ -1026,34 +1044,25 @@ int getBoktaiBarsWithHysteresis(float uvi, int game, int lastBars) {
 int getBoktaiBars(float uvi, int game) {
   game = clampGameIndex(game);
   int numBars = GAME_BARS[game];
-  
-  if (AUTO_MODE) {
-    // Auto mode: linearly interpolate between UV_MIN and UV_SATURATION
-    // UV < MIN = 0 bars, UV >= SATURATION = full bars
-    if (AUTO_UV_SATURATION <= AUTO_UV_MIN) {
-      return (uvi >= AUTO_UV_MIN) ? numBars : 0;
-    }
-    if (uvi < AUTO_UV_MIN) return 0;
-    if (uvi >= AUTO_UV_SATURATION) return numBars;
-    
-    // Calculate which bar this UV level falls into
-    // Bar 1 starts at UV_MIN; highest bar can begin before UV_SATURATION.
-    float range = AUTO_UV_SATURATION - AUTO_UV_MIN;
-    float normalized = (uvi - AUTO_UV_MIN) / range;  // 0.0 to 1.0
-    int bars = (int)(normalized * numBars) + 1;      // 1 to numBars
-    return constrain(bars, 1, numBars);
+  float uvMin, uvSat;
+  getGameUvRange(game, &uvMin, &uvSat);
+
+  if (uvSat <= uvMin) {
+    return (uvi >= uvMin) ? numBars : 0;
   }
-  
-  // Manual mode: use per-game threshold arrays
-  const float* thresholds = getManualThresholds(game);
-  
-  // Find highest threshold that UV exceeds
+  if (uvi < uvMin) return 0;
+  if (uvi >= uvSat) return numBars;
+
+  // Scale UVI to [0, 1) within the configured range and look up in Raphi's table.
+  // Bar N+1 starts where bar N's exclusive upper bound falls (ratio = (upper_bound-1)/139).
+  float ratio = (uvi - uvMin) / (uvSat - uvMin);
+  const float* ratios = getRaphiRatios(numBars);
   for (int i = numBars - 1; i >= 0; i--) {
-    if (uvi >= thresholds[i]) {
-      return i + 1;  // Bars are 1-indexed in display
+    if (ratio >= ratios[i]) {
+      return i + 1;
     }
   }
-  return 0;  // Below minimum threshold
+  return 0;
 }
 
 void refreshGameState(bool refreshOutputs) {

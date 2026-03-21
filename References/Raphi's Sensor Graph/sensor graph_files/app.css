@@ -1,0 +1,38 @@
+*, *:before, *:after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+:root {
+	font-family: sans-serif;
+	padding: 1rem;
+	--c1: #0000aa;
+	--c2: #cccc00;
+}
+table { margin-bottom: 1rem; }
+.graph tbody th { padding-right: 1rem; }
+p { line-height: 1.5; text-align: justify; }
+pre { margin-top: 1rem; }
+.row {
+	display: flex;
+	align-items: stretch;
+}
+.row > * {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: bold;
+	color: white;
+	height: 32px;
+}
+.pad_start {
+	background: linear-gradient(to right, transparent, var(--c1));
+	width: 60px;
+}
+.a { background-color: var(--c2); }
+.b { background-color: var(--c1); }
+.pad_end {
+	background: linear-gradient(to right, var(--c1), transparent);
+	width: 60px;
+}
