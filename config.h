@@ -241,8 +241,8 @@ const bool USB_HID_ENABLED = true;
 // =============================================================================
 // DEBUG
 // =============================================================================
-// Enables Serial debug logging (115200 baud) for startup diagnostics and any
-// enabled periodic debug streams below.
+// Enables Serial debug logging (115200 baud) for startup diagnostics,
+// device-button press events, and any enabled periodic debug streams below.
 const bool DEBUG_SERIAL = true;
 // Periodic Serial debug stream controls. These only apply when DEBUG_SERIAL = true.
 const bool DEBUG_SERIAL_BATTERY = true;
