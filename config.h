@@ -107,7 +107,7 @@ const float BOKTAI_3_UV_SATURATION = 6.000;
 // You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
 // the midpoint connected to BAT_PIN. Without this, battery % is unavailable.
 // Safe default is disabled until the divider is wired.
-const bool BATTERY_SENSE_ENABLED = true;
+const bool BATTERY_SENSE_ENABLED = false;
 const int BAT_PIN = 2;       // D1/A1 (GPIO2) - connect to voltage divider midpoint
 const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery (must be > VOLT_MIN)
@@ -125,7 +125,7 @@ const float VOLT_DIVIDER_MULT = 2.20;
 // LOW-VOLTAGE CUTOFF (requires battery sense divider)
 // -----------------------------------------------------------------------------
 // Keep disabled by default; only enable after battery sensing is verified.
-const bool BATTERY_CUTOFF_ENABLED = true;
+const bool BATTERY_CUTOFF_ENABLED = false;
 const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
 const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 
@@ -181,7 +181,7 @@ const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
 // 0 = Incremental: uses HID_BUTTON_DEC/INC to step the emulator meter.
 //     (BLE transport also supports clamp+refill resync behavior.)
 // 1 = Single Analog: maps bar count to a proportional deflection on one analog axis.
-const uint8_t HID_CONTROL_MODE = 1;
+const uint8_t HID_CONTROL_MODE = 0;
 
 // Workaround: mGBA uses 10 steps for Boktai 1 even though it has 8 bars.
 // Set false if mGBA is fixed to use 8 steps.
@@ -245,7 +245,7 @@ const bool USB_HID_ENABLED = true;
 // enabled periodic debug streams below.
 const bool DEBUG_SERIAL = true;
 // Periodic Serial debug stream controls. These only apply when DEBUG_SERIAL = true.
-const bool DEBUG_SERIAL_BATTERY = false;
+const bool DEBUG_SERIAL_BATTERY = true;
 const bool DEBUG_SERIAL_UV = true;
 
 #endif
