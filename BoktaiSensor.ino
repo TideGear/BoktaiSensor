@@ -116,7 +116,6 @@ int16_t screensaverTextY1 = 0;
 // Cached display values
 uint32_t cachedRawUVS = 0;
 float cachedUviRaw = 0.0f;
-float cachedUviCorrected = 0.0f;
 float cachedUvi = 0.0f;
 int cachedFilledBars = 0;
 int cachedNumBars = 0;
@@ -448,9 +447,6 @@ void setup() {
   calculateScreensaverLayout();
   screensaverLastLayoutPct = cachedBatteryPct;
   screensaverLastLayoutBleStatus = BLUETOOTH_ENABLED && (bleConnected || blePairingActive);
-  screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
-  screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
-
   if (!inCdcMode) {
     // Wait for power-on: show prompt for 10s, reset on button activity.
     // This always shows immediately so a short wake tap reliably shows the prompt.
@@ -1258,7 +1254,7 @@ void enterDeepSleep() {
       xboxGamepad->sendGamepadReport();
     }
     // Only touch NimBLE if BLE stack was initialized.
-    if (xboxGamepad != nullptr || blePairingActive || bleConnected) {
+    if (xboxGamepad != nullptr) {
       // Stop advertising if active
       stopBleAdvertising();
       // Give BLE stack time to clean up
@@ -2115,7 +2111,6 @@ float calculateUVI() {
 
   cachedRawUVS = rawUVS;
   cachedUviRaw = measuredUvi;
-  cachedUviCorrected = correctedUvi;
   
   // Debug output
   if (serialEnabled && DEBUG_SERIAL_UV) {
