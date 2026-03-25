@@ -23,8 +23,8 @@
 // Set to false to use per-game UV_MIN/UV_SATURATION values in the manual section below.
 const bool AUTO_MODE = true;
 
-const float AUTO_UV_MIN = 0.500;   // UV Index for 1 bar (shade/overcast)
-const float AUTO_UV_SATURATION = 6.000;   // UV Index where output is fully saturated/clamped
+const float AUTO_UV_MIN = 0.030;   // UV Index for 1 bar (shade/overcast)
+const float AUTO_UV_SATURATION = 1.200;   // UV Index where output is fully saturated/clamped
 
 // -----------------------------------------------------------------------------
 // UV ENCLOSURE COMPENSATION
@@ -61,7 +61,7 @@ const bool UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true;
 // Hysteresis adds a small UV margin before changing bars.
 // Setting BAR_HYSTERESIS_ENABLED = false is the same as BAR_HYSTERESIS = 0.0.
 const bool UVI_SMOOTHING_ENABLED = false;
-const float UVI_SMOOTHING_ALPHA = 0.5;
+const float UVI_SMOOTHING_ALPHA = 0.5;  // 0.0-1.0. Controls how much weight new readings get vs. the running average. Higher = faster response.
 const bool BAR_HYSTERESIS_ENABLED = false;
 const float BAR_HYSTERESIS = 0.200;       // UV Index margin for bar changes
 
@@ -86,15 +86,15 @@ const int GAME_BARS[NUM_GAMES] = { 8, 10, 10 };
 // -----------------------------------------------------------------------------
 // Per-game UV range overrides. Bar thresholds follow the same non-linear cartridge
 // curve as AUTO mode, but each game can use a different UV_MIN/UV_SATURATION.
-const float BOKTAI_1_UV_MIN = 0.500;
-const float BOKTAI_1_UV_SATURATION = 6.000;
+const float BOKTAI_1_UV_MIN = 0.030;
+const float BOKTAI_1_UV_SATURATION = 1.200;
 
-const float BOKTAI_2_UV_MIN = 0.500;
-const float BOKTAI_2_UV_SATURATION = 6.000;
+const float BOKTAI_2_UV_MIN = 0.030;
+const float BOKTAI_2_UV_SATURATION = 1.200;
 
 // Intentionally separate from BOKTAI_2 for possible future divergence.
-const float BOKTAI_3_UV_MIN = 0.500;
-const float BOKTAI_3_UV_SATURATION = 6.000;
+const float BOKTAI_3_UV_MIN = 0.030;
+const float BOKTAI_3_UV_SATURATION = 1.200;
 
 // =============================================================================
 // POWER MANAGEMENT
