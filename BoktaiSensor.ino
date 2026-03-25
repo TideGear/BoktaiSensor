@@ -850,7 +850,7 @@ void drawMainDisplay() {
   // 4. UV Index (Small, Secondary)
   display.setTextSize(1);
   display.setCursor(64, 18);
-  display.print("UV:");
+  display.print(UV_ENCLOSURE_COMP_ENABLED ? "cUVI:" : "UVI:");
   display.print(cachedUvi, 3);
 
   // 5. Draw Sun Gauge (8 or 10 segments depending on game)
