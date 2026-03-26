@@ -454,3 +454,13 @@ This was a known compatibility issue between esp32 core `3.3.7` and older versio
 - [GBATEK Solar Sensor Documentation](https://problemkaputt.de/gbatek.htm)
 - [Seeed XIAO ESP32S3 Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
 - [Adafruit LTR390](https://www.adafruit.com/product/4831)
+
+----------------------------------------------------------------------
+
+## Legal Disclaimer
+
+This project is for hobbyist and entertainment use only and does not provide medical advice. Consult a physician or other qualified healthcare professional for guidance on safe and appropriate sunlight exposure for your situation.
+
+Do not rely on video games or the Ojo del Sol as an indicator of how much sunlight or UV exposure you should get. They are gameplay devices, not health or safety instruments.
+
+This project is an independent fan-made hardware/firmware project and is not affiliated with, endorsed by, or sponsored by Konami or Hideo Kojima.
