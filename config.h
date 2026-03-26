@@ -86,8 +86,8 @@ const int GAME_BARS[NUM_GAMES] = { 8, 10, 10 };
 // -----------------------------------------------------------------------------
 // Per-game UV range overrides. Bar thresholds follow the same non-linear cartridge
 // curve as AUTO mode, but each game can use a different UV_MIN/UV_SATURATION.
-const float BOKTAI_1_UV_MIN = 0.030;
-const float BOKTAI_1_UV_SATURATION = 1.200;
+const float BOKTAI_1_UV_MIN = 0.020;
+const float BOKTAI_1_UV_SATURATION = 1.100;
 
 const float BOKTAI_2_UV_MIN = 0.030;
 const float BOKTAI_2_UV_SATURATION = 1.200;
