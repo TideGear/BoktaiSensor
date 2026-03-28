@@ -13,7 +13,7 @@ https://www.paypal.com/donate/?hosted_button_id=THMF458QTBCAL
 **Important!: This project is all very new, experimental, lightly-tested, and subject to change.\
 I'm looking for serious contributors to...**
 
-**1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight. Until I can do some testing, they are just guesses.**\
+**1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight. The defaults are roughly calibrated against real sunlight and a real Boktai 3 cartridge, but more testing across conditions and games is welcome.**\
 **2. Add support via Single Analog Control Mode to their emulators.**\
 **3. Test and fix the code if needed.**\
 **4. Create a cool 3D-printable case.**\
@@ -305,8 +305,8 @@ Bar thresholds are calculated from two values in config.h:
 
 ```c
 const bool AUTO_MODE = true;
-const float AUTO_UV_MIN = 0.030;   // UV Index for 1 bar
-const float AUTO_UV_SATURATION = 1.200;   // UV Index ceiling (output clamp)
+const float AUTO_UV_MIN = 1.000;   // UV Index for 1 bar
+const float AUTO_UV_SATURATION = 13.000;   // UV Index ceiling (output clamp)
 ```
 
 Bars are distributed non-linearly following the original Boktai cartridge's thresholds (per [Raphi's sensor graph](https://raphi.xyz/~raphi/boktai/sensor_graph/)), scaled across the configured UV range. `AUTO_UV_MIN` is where bar 1 starts; `AUTO_UV_SATURATION` is where the highest bar starts (and all values above are clamped to max).
