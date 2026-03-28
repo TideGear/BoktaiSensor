@@ -376,8 +376,9 @@ If the bar display feels jumpy:
 
 ## Technical Notes
 
-### Original Boktai Cartridge Sensor (from GBATEK)
-- Photodiode with 8-bit ADC
+### Original Boktai Cartridge Sensor (from GBATEK and Drakodan)
+- **Chip**: Hamamatsu Photonics G5842 (UV photodiode with 8-bit ADC)
+- **Spectral range**: 260–400nm, centered at ~370nm (UV-A dominant)
 - Values **inverted**: 0xE8 = darkness, 0x50 = max gauge, 0x00 = extreme
 - Accessed via GPIO at 0x80000C4-0x80000C8
 
@@ -450,7 +451,8 @@ This was a known compatibility issue between esp32 core `3.3.7` and older versio
 - **[Raphi](https://raphi.xyz/~raphi/boktai/sensor_graph/)** — Original Boktai cartridge bar threshold tables, reverse-engineered from the original hardware. This saved me a lot of work!
 - **[Mystfit](https://github.com/Mystfit/ESP32-BLE-CompositeHID)** — ESP32-BLE-CompositeHID library (included as `ESP32-BLE-CompositeHID-master.zip`)
 - **[Kalasoiro](https://github.com/Kalasoiro/esp32s3-tinyusb-xinput)** - XInput TinyUSB reference implementation (included as `esp32s3-tinyusb-xinput-main.zip`)
-- **LanHikariDS** — Additional support
+- **LanHikariDS** — Additional support via Discord
+- **[Drakodan](https://tasvideos.org/9369S)** — Original cartridge sensor chip identification (Hamamatsu Photonics G5842) and spectral range documentation
 - [GBATEK Solar Sensor Documentation](https://problemkaputt.de/gbatek.htm)
 - [Seeed XIAO ESP32S3 Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
 - [Adafruit LTR390](https://www.adafruit.com/product/4831)
