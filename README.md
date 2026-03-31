@@ -305,8 +305,8 @@ Bar thresholds are calculated from two values in config.h:
 
 ```c
 const bool AUTO_MODE = true;
-const float AUTO_UV_MIN = 1.000;   // UV Index for 1 bar
-const float AUTO_UV_SATURATION = 13.000;   // UV Index ceiling (output clamp)
+const float AUTO_UV_MIN = 0.750;   // UV Index for 1 bar
+const float AUTO_UV_SATURATION = 13.100;   // UV Index ceiling (output clamp)
 ```
 
 Bars are distributed non-linearly following the original Boktai cartridge's thresholds (per [Raphi's sensor graph](https://raphi.xyz/~raphi/boktai/sensor_graph/)), scaled across the configured UV range. `AUTO_UV_MIN` is where bar 1 starts; `AUTO_UV_SATURATION` is where the highest bar starts (and all values above are clamped to max).
