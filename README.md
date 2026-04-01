@@ -305,7 +305,7 @@ Bar thresholds are calculated from two values in config.h:
 
 ```c
 const bool AUTO_MODE = true;
-const float AUTO_UV_MIN = 0.750;   // UV Index for 1 bar
+const float AUTO_UV_MIN = 1.000;   // UV Index for 1 bar
 const float AUTO_UV_SATURATION = 13.100;   // UV Index ceiling (output clamp)
 ```
 

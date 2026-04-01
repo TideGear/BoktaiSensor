@@ -23,7 +23,7 @@
 // Set to false to use per-game UV_MIN/UV_SATURATION values in the manual section below.
 const bool AUTO_MODE = true;
 
-const float AUTO_UV_MIN = 0.750;   // UV Index for 1 bar (shade/overcast)
+const float AUTO_UV_MIN = 1.000;   // UV Index for 1 bar (shade/overcast)
 const float AUTO_UV_SATURATION = 13.100;   // UV Index where output is fully saturated/clamped
 
 // -----------------------------------------------------------------------------
@@ -86,14 +86,14 @@ const int GAME_BARS[NUM_GAMES] = { 8, 10, 10 };
 // -----------------------------------------------------------------------------
 // Per-game UV range overrides. Bar thresholds follow the same non-linear cartridge
 // curve as AUTO mode, but each game can use a different UV_MIN/UV_SATURATION.
-const float BOKTAI_1_UV_MIN = 0.750;
+const float BOKTAI_1_UV_MIN = 1.000;
 const float BOKTAI_1_UV_SATURATION = 13.100;
 
-const float BOKTAI_2_UV_MIN = 0.750;
+const float BOKTAI_2_UV_MIN = 1.000;
 const float BOKTAI_2_UV_SATURATION = 13.100;
 
 // Intentionally separate from BOKTAI_2 for possible future divergence.
-const float BOKTAI_3_UV_MIN = 0.750;
+const float BOKTAI_3_UV_MIN = 1.000;
 const float BOKTAI_3_UV_SATURATION = 13.100;
 
 // =============================================================================
