@@ -13,7 +13,7 @@ https://www.paypal.com/donate/?hosted_button_id=THMF458QTBCAL
 **Important!: This project is all very new, experimental, lightly-tested, and subject to change.\
 I'm looking for serious contributors to...**
 
-**1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight.** The defaults are roughly calibrated against real sunlight and a real Boktai 3 cartridge, but more testing across conditions and games is welcome. Where testing is ambiguous (e.g. flickering meter bar in the game), I tend to skew toward whatever is more "challenging" to achieve (seeking out more sunlight). However, it's usually a matter of fractions of a UVI.\
+**1. Help tune the default device settings to *exactly* match how all three games handle a range of sunlight.** The defaults are roughly calibrated against real sunlight and a real Boktai 3 cartridge, but more testing across conditions and games is welcome. Where testing is ambiguous (e.g. flickering meter bar in the game), I tend to skew toward whatever is more "challenging" to achieve (seeking out more sunlight). The Ojo del Sol is meant to be the "no cheating" solution. However, keep in mind, I am talking about nit-picky, fractions of UVI.\
 **2. Add support via Single Analog Control Mode to their emulators.**\
 **3. Test and fix the code if needed.**\
 **4. Create a cool 3D-printable case.**\
