@@ -3,6 +3,31 @@
 #define CONFIG_H
 
 // =============================================================================
+// BOARD SELECTION
+// =============================================================================
+// Uncomment exactly ONE board.
+//
+// BOARD_SEEED_XIAO_ESP32S3: Seeed XIAO ESP32S3 with external SSD1306 OLED,
+//   external button, and optional GBA link port / battery divider (original build).
+//
+// BOARD_LILYGO_T_QT_PRO: LilyGO T-QT Pro (ESP32-S3) with built-in 0.85"
+//   GC9107 128x128 TFT, two built-in buttons, and built-in battery sensing.
+//   The LTR390 connects to the Qwiic connector. Requires the TFT_eSPI library
+//   with Setup211_LilyGo_T_QT_Pro_S3 selected (see README).
+//   The GBA link uses the IO16/IO17/IO18 solder pads (GND pad adjacent).
+//   *** EXPERIMENTAL: the T-QT Pro build is currently UNTESTED on real
+//   hardware. Pin assignments follow LilyGO's official pinmap/schematic,
+//   but expect to troubleshoot. Reports welcome. ***
+#define BOARD_SEEED_XIAO_ESP32S3
+//#define BOARD_LILYGO_T_QT_PRO
+
+#if defined(BOARD_SEEED_XIAO_ESP32S3) && defined(BOARD_LILYGO_T_QT_PRO)
+#error "Select only one board in config.h"
+#elif !defined(BOARD_SEEED_XIAO_ESP32S3) && !defined(BOARD_LILYGO_T_QT_PRO)
+#error "Select a board in config.h"
+#endif
+
+// =============================================================================
 // BOKTAI CALIBRATION
 // =============================================================================
 // Original cart sensor: 0xE8 = darkness, 0x50 = max gauge, 0x00 = extreme
@@ -103,23 +128,34 @@ const float BOKTAI_3_UV_SATURATION = 13.100;
 // -----------------------------------------------------------------------------
 // BATTERY MONITORING
 // -----------------------------------------------------------------------------
+#if defined(BOARD_LILYGO_T_QT_PRO)
+// The T-QT Pro has a built-in battery voltage divider (2:1) on GPIO4.
+// No external wiring is needed.
+const bool BATTERY_SENSE_ENABLED = true;
+const int BAT_PIN = 4;       // GPIO4 - built-in battery voltage divider
+#else
 // NOTE: The XIAO ESP32S3 does NOT have built-in battery voltage monitoring!
 // You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
 // the midpoint connected to BAT_PIN. Without this, battery % is unavailable.
 // Safe default is disabled until the divider is wired.
 const bool BATTERY_SENSE_ENABLED = false;
 const int BAT_PIN = 2;       // D1/A1 (GPIO2) - connect to voltage divider midpoint
+#endif
 const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery (must be > VOLT_MIN)
 const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 
 // Voltage divider calibration multiplier
-// Theoretical: 2.0 for equal resistors (100K + 100K = 2:1 ratio)
-// Actual default: 2.20 compensates for typical ADC/resistor variance
+// Theoretical: 2.0 for equal resistors (2:1 ratio)
 // Adjust if battery % is wrong at full charge:
 //   - If % too LOW:  increase this value
 //   - If % too HIGH: decrease this value
+#if defined(BOARD_LILYGO_T_QT_PRO)
+const float VOLT_DIVIDER_MULT = 2.00;  // Built-in divider is 2:1
+#else
+// Default 2.20 compensates for typical ADC/resistor variance on the XIAO build
 const float VOLT_DIVIDER_MULT = 2.20;
+#endif
 
 // -----------------------------------------------------------------------------
 // LOW-VOLTAGE CUTOFF (requires battery sense divider)
@@ -136,17 +172,47 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 // -----------------------------------------------------------------------------
 // POWER BUTTON
 // -----------------------------------------------------------------------------
+#if defined(BOARD_LILYGO_T_QT_PRO)
+// T-QT Pro built-in buttons. Only GPIO0 (left button, next to USB) can wake
+// the ESP32-S3 from deep sleep, so it must be the power button.
+const int BUTTON_PIN = 0;     // BTN_L (GPIO0) - power / next screen
+// Second built-in button: tap cycles screens backward. Set BUTTON2_ENABLED
+// to false to ignore it. It cannot wake the device from deep sleep.
+const bool BUTTON2_ENABLED = true;
+const int BUTTON2_PIN = 47;   // BTN_R (GPIO47)
+#else
 // D0 (GPIO1) supports RTC wake-up from deep sleep on XIAO ESP32S3.
 const int BUTTON_PIN = 1;    // D0 (GPIO1)
+// No second button on the XIAO build.
+const bool BUTTON2_ENABLED = false;
+const int BUTTON2_PIN = -1;
+#endif
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
 
 // -----------------------------------------------------------------------------
 // DISPLAY / I2C
 // -----------------------------------------------------------------------------
+#if defined(BOARD_LILYGO_T_QT_PRO)
+// LTR390 I2C on the two adjacent solder pads at the top of the left-side
+// column (leaves the right-side pads free for the GBA link). Requires
+// pull-ups on both lines; the Adafruit LTR390 breakout has them on board.
+//
+// Solderless alternative: set SDA = 43 and SCL = 44 to use the Qwiic
+// connector instead (the board silkscreen swaps these labels; the schematic
+// -- and working I2C -- is SDA = GPIO43, SCL = GPIO44).
+const int I2C_SDA_PIN = 33;               // IO33 pad
+const int I2C_SCL_PIN = 34;               // IO34 pad
+// Built-in GC9107 TFT. SPI pins live in the TFT_eSPI setup file
+// (Setup211_LilyGo_T_QT_Pro_S3.h); only the backlight is managed here.
+const int TFT_BACKLIGHT_PIN = 10;         // Active LOW
+// 0-3. Rotates the UI on the square screen if your case orientation differs.
+const uint8_t TQT_DISPLAY_ROTATION = 0;
+#else
 const int I2C_SDA_PIN = 5;                // D4 (GPIO5)
 const int I2C_SCL_PIN = 6;                // D5 (GPIO6)
 const uint8_t DISPLAY_I2C_ADDR = 0x3C;   // Some SSD1306 modules use 0x3D
+#endif
 
 // -----------------------------------------------------------------------------
 // DISPLAY SCREENSAVER
@@ -167,9 +233,17 @@ const bool GBA_LINK_ENABLED = true;
 // Framed 3-wire protocol:
 // - SC = frame phase line
 // - SD/SO = 2-bit payload pair
+#if defined(BOARD_LILYGO_T_QT_PRO)
+// Uses the solder pads next to the GND pad on the board edge. Other exposed
+// pads (IO33-IO39, IO48) also work if these are inconvenient for your build.
+const int GBA_PIN_SC = 16;  // IO16 pad - frame phase (SC)
+const int GBA_PIN_SD = 17;  // IO17 pad - payload bit 1 (SD)
+const int GBA_PIN_SO = 18;  // IO18 pad - payload bit 0 (SO)
+#else
 const int GBA_PIN_SC = 44;  // D7 (GPIO44) - frame phase (SC)
 const int GBA_PIN_SD = 7;   // D8 (GPIO7)  - payload bit 1 (SD)
 const int GBA_PIN_SO = 8;   // D9 (GPIO8)  - payload bit 0 (SO)
+#endif
 // Per-phase hold time. A full 4-bit value takes two phases.
 // Example: 5ms => one phase every 5ms, full value refresh about every 10ms.
 const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
@@ -245,7 +319,7 @@ const bool USB_HID_ENABLED = true;
 // device-button press events, and any enabled periodic debug streams below.
 const bool DEBUG_SERIAL = false;
 // Periodic Serial debug stream controls. These only apply when DEBUG_SERIAL = true.
-const bool DEBUG_SERIAL_BATTERY = true;
+const bool DEBUG_SERIAL_BATTERY = false;
 const bool DEBUG_SERIAL_UV = true;
 
 #endif

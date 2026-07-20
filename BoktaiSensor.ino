@@ -1,8 +1,13 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-#include "Adafruit_LTR390.h"
 #include "config.h"
+#if defined(BOARD_LILYGO_T_QT_PRO)
+#include "TQTDisplay.h"
+#include "driver/gpio.h"
+#else
+#include <Adafruit_SSD1306.h>
+#endif
+#include "Adafruit_LTR390.h"
 #include "esp_sleep.h"
 #include <BleCompositeHID.h>
 #include <XboxGamepadDevice.h>
@@ -20,9 +25,18 @@
 #endif
 
 // Display settings
+// The UI is authored at 128x64. On the XIAO build that is the physical
+// SSD1306 OLED; on the T-QT Pro it is a canvas pushed centered onto the
+// 128x128 TFT.
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
+#if defined(BOARD_LILYGO_T_QT_PRO)
+TQTDisplay display(SCREEN_WIDTH, SCREEN_HEIGHT);
+#define DISPLAY_WHITE 1
+#else
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+#define DISPLAY_WHITE SSD1306_WHITE
+#endif
 bool displayInitialized = false;
 // Icon dimensions (shared by status bar and screensaver)
 const int16_t STATUS_BATT_ICON_W = 20;
@@ -32,6 +46,7 @@ const int16_t STATUS_BT_ICON_H = 10;
 const int16_t STATUS_BT_GAP = 2;
 const int16_t STATUS_TEXT_GAP = 2;
 const int16_t STATUS_RIGHT_MARGIN = 3;
+#if !defined(BOARD_LILYGO_T_QT_PRO)
 const uint8_t SSD1306_CHARGEPUMP_DISABLE = 0x10;
 const uint8_t SSD1306_CHARGEPUMP_ENABLE = 0x14;
 const uint8_t SSD1306_DEACTIVATE_SCROLL_CMD = 0x2E;
@@ -41,6 +56,7 @@ const uint8_t SSD1306_SEGREMAP_DEFAULT = 0xA1;
 const uint8_t SSD1306_COMSCANDEC_CMD = 0xC8;
 const uint8_t SSD1306_SETDISPLAYOFFSET_CMD = 0xD3;
 const uint8_t SSD1306_SETSTARTLINE0_CMD = 0x40;
+#endif
 
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
@@ -60,6 +76,11 @@ const uint8_t MEAS_RATE_500MS = 0x04;
 // Power button state tracking
 unsigned long buttonPressStart = 0;
 bool buttonWasPressed = false;
+
+// Secondary button state (unused when BUTTON2_ENABLED is false)
+unsigned long button2PressStart = 0;
+bool button2WasPressed = false;
+bool button2SuppressShortPress = false;
 
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
@@ -207,6 +228,25 @@ void updateUsbMeter(int bars, int numBars);
 void logDeviceButtonPress(const char* context);
 void syncRuntimeButtonStateAfterStartup();
 
+#if defined(BOARD_LILYGO_T_QT_PRO)
+void wakeDisplayHardware() {
+  // Re-enable the backlight (active LOW) and wake the panel if it slept.
+  gpio_hold_dis((gpio_num_t)TFT_BACKLIGHT_PIN);
+  pinMode(TFT_BACKLIGHT_PIN, OUTPUT);
+  digitalWrite(TFT_BACKLIGHT_PIN, LOW);
+  if (display.panelWake()) {
+    display.tft.fillScreen(TFT_BLACK);
+  }
+}
+
+// Blank the panel and cut the backlight. The backlight pin is held so it
+// stays off through deep sleep (released again by wakeDisplayHardware).
+void displayPanelOff() {
+  display.panelSleep();
+  digitalWrite(TFT_BACKLIGHT_PIN, HIGH);  // Active LOW: HIGH = off
+  gpio_hold_en((gpio_num_t)TFT_BACKLIGHT_PIN);
+}
+#else
 void wakeDisplayHardware() {
   // Sleep path disables the charge pump; explicitly restore it before drawing.
   display.ssd1306_command(SSD1306_DEACTIVATE_SCROLL_CMD);
@@ -223,6 +263,14 @@ void wakeDisplayHardware() {
   display.ssd1306_command(SSD1306_SETSTARTLINE0_CMD);
   delay(2);  // SSD1306 charge pump stabilization
 }
+
+// Turn the panel off and disable the charge pump ahead of deep sleep.
+void displayPanelOff() {
+  display.ssd1306_command(SSD1306_DISPLAYOFF);
+  display.ssd1306_command(SSD1306_CHARGEPUMP);
+  display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE);
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // USB XInput gamepad helpers
@@ -301,9 +349,7 @@ void exitCdcModeAndSleep() {
 
   display.clearDisplay();
   display.display();
-  display.ssd1306_command(SSD1306_DISPLAYOFF);
-  display.ssd1306_command(SSD1306_CHARGEPUMP);
-  display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE);
+  displayPanelOff();
 
   Wire.end();
   pinMode(I2C_SDA_PIN, INPUT);
@@ -397,6 +443,9 @@ void setup() {
 
   // Configure power button with internal pull-up (active LOW)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  if (BUTTON2_ENABLED && BUTTON2_PIN >= 0) {
+    pinMode(BUTTON2_PIN, INPUT_PULLUP);
+  }
 
   if (GBA_LINK_ENABLED) {
     pinMode(GBA_PIN_SC, OUTPUT);
@@ -410,13 +459,20 @@ void setup() {
   if (BATTERY_SENSE_ENABLED) {
     analogSetPinAttenuation(BAT_PIN, ADC_11db);
   }
-  // Initialize I2C for XIAO ESP32S3 pins (D4/GPIO5 = SDA, D5/GPIO6 = SCL)
+  // Initialize I2C for the LTR390 (and, on the XIAO build, the OLED)
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
+  #if defined(BOARD_LILYGO_T_QT_PRO)
+  // Release the backlight hold from a previous deep sleep before init.
+  gpio_hold_dis((gpio_num_t)TFT_BACKLIGHT_PIN);
+  bool displayOk = display.begin(TQT_DISPLAY_ROTATION);
+  #else
   // Keep control of Wire pin config by skipping the library's internal
   // Wire.begin(); this improves consistency across software restarts.
-  if (!display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR, true, false)) {
-    if (serialEnabled) Serial.println("SSD1306 failed");
+  bool displayOk = display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR, true, false);
+  #endif
+  if (!displayOk) {
+    if (serialEnabled) Serial.println("Display init failed");
     delay(2000);
     #if HAS_USB_HID
     if (inCdcMode) clearCdcModeFlag();
@@ -426,7 +482,7 @@ void setup() {
   displayInitialized = true;
 
   display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
+  display.setTextColor(DISPLAY_WHITE);
 
   #if HAS_USB_HID
   // If the button is still held from the "enter CDC mode" long press,
@@ -520,7 +576,7 @@ void setup() {
     int16_t iconY = blockY + ((blockH - SCREENSAVER_IMAGE_H) / 2);
     int16_t textX = blockX + SCREENSAVER_IMAGE_W + wakeGap;
     int16_t textY = blockY + ((blockH - (int16_t)wakeH) / 2);
-    display.drawBitmap(iconX, iconY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, SSD1306_WHITE);
+    display.drawBitmap(iconX, iconY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, DISPLAY_WHITE);
     display.setCursor(textX - wakeX1, textY - wakeY1);
     display.print(wakeText);
     display.display();
@@ -547,6 +603,7 @@ void setup() {
 void loop() {
   // Check power button for tap (change game) or long-press (sleep)
   handlePowerButton();
+  handleSecondButton();
   updateScreensaverState();
   updateBluetoothState();
   updateBatteryStatus();
@@ -760,7 +817,7 @@ void drawScreensaver() {
 
   int16_t imageX = screensaverX + ((screensaverBlockW - SCREENSAVER_IMAGE_W) / 2);
   int16_t imageY = screensaverY;
-  display.drawBitmap(imageX, imageY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, SSD1306_WHITE);
+  display.drawBitmap(imageX, imageY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, DISPLAY_WHITE);
 
   int16_t textX = screensaverX + ((screensaverBlockW - screensaverTextW) / 2);
   int16_t textY = imageY + SCREENSAVER_IMAGE_H + SCREENSAVER_IMAGE_TEXT_GAP;
@@ -1107,6 +1164,20 @@ void refreshGameState(bool refreshOutputs) {
   }
 }
 
+// Advance the UI screen by step (+1 forward, -1 backward), updating game
+// state when a game screen is selected.
+void cycleUiScreen(int step) {
+  currentScreen = (currentScreen + NUM_UI_SCREENS + step) % NUM_UI_SCREENS;
+  uiScreenChanged = true;
+
+  if (currentScreen < NUM_GAMES) {
+    currentGame = clampGameIndex(currentScreen);
+    gameChanged = true;
+    hidGameChanged = true;
+    refreshGameState(true);
+  }
+}
+
 // Handle power button: tap to cycle screens, long-press (2s) to sleep
 void handlePowerButton() {
   #if HAS_USB_HID
@@ -1154,19 +1225,42 @@ void handlePowerButton() {
     unsigned long pressDuration = millis() - buttonPressStart;
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
       if (!suppressShortPress) {
-        currentScreen = (currentScreen + 1) % NUM_UI_SCREENS;
-        uiScreenChanged = true;
-
-        if (currentScreen < NUM_GAMES) {
-          currentGame = clampGameIndex(currentScreen);
-          gameChanged = true;
-          hidGameChanged = true;
-          refreshGameState(true);
-        }
+        cycleUiScreen(1);
       }
     }
     suppressShortPress = false;
     buttonWasPressed = false;
+  }
+}
+
+// Handle the secondary button (T-QT BTN_R): tap cycles screens backward.
+// No long-press action; it cannot wake the device from deep sleep.
+void handleSecondButton() {
+  if (!BUTTON2_ENABLED || BUTTON2_PIN < 0) {
+    return;
+  }
+
+  bool buttonPressed = (digitalRead(BUTTON2_PIN) == LOW);
+
+  if (buttonPressed && !button2WasPressed) {
+    logDeviceButtonPress("runtime, button 2");
+    button2PressStart = millis();
+    button2WasPressed = true;
+    if (screensaverActive) {
+      button2SuppressShortPress = true;
+    }
+    noteScreenActivity();
+  }
+  else if (buttonPressed && button2WasPressed) {
+    noteScreenActivity();
+  }
+  else if (!buttonPressed && button2WasPressed) {
+    unsigned long pressDuration = millis() - button2PressStart;
+    if (pressDuration >= DEBOUNCE_MS && !button2SuppressShortPress) {
+      cycleUiScreen(-1);
+    }
+    button2SuppressShortPress = false;
+    button2WasPressed = false;
   }
 }
 
@@ -1195,7 +1289,7 @@ bool waitForPowerOn() {
     
     // Check for timeout (10 seconds of no button activity)
     if ((now - lastActivity) >= DISPLAY_TIMEOUT_MS) {
-      display.ssd1306_command(SSD1306_DISPLAYOFF);
+      displayPanelOff();
       return false;  // Timed out - caller should go to sleep
     }
     
@@ -1276,9 +1370,7 @@ void enterDeepSleep() {
   if (displayInitialized) {
     display.clearDisplay();
     display.display();
-    display.ssd1306_command(SSD1306_DISPLAYOFF);
-    display.ssd1306_command(SSD1306_CHARGEPUMP); // Charge pump
-    display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE); // Disable charge pump
+    displayPanelOff();
   }
 
   // Release I2C lines to reduce back-powering during sleep
@@ -1334,9 +1426,9 @@ void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
   for (int i = 0; i < totalBars; i++) {
     int x = xStart + (i * (segW + gap));
     if (i < filledBars) {
-      display.fillRect(x, y, segW, h, SSD1306_WHITE); // Filled segment
+      display.fillRect(x, y, segW, h, DISPLAY_WHITE); // Filled segment
     } else {
-      display.drawRect(x, y, segW, h, SSD1306_WHITE); // Outline segment
+      display.drawRect(x, y, segW, h, DISPLAY_WHITE); // Outline segment
     }
   }
 }
@@ -1359,22 +1451,22 @@ void drawBluetoothIcon(int x, int y, bool on) {
     return;
   }
 
-  display.drawLine(x + 3, y, x + 3, y + (STATUS_BT_ICON_H - 1), SSD1306_WHITE);
-  display.drawLine(x + 3, y, x + 7, y + 2, SSD1306_WHITE);
-  display.drawLine(x + 3, y + 4, x + 7, y + 2, SSD1306_WHITE);
-  display.drawLine(x + 3, y + 4, x + 7, y + 6, SSD1306_WHITE);
-  display.drawLine(x + 3, y + (STATUS_BT_ICON_H - 1), x + 7, y + 6, SSD1306_WHITE);
-  display.drawLine(x + 3, y + 4, x, y + 2, SSD1306_WHITE);
-  display.drawLine(x + 3, y + 4, x, y + 6, SSD1306_WHITE);
+  display.drawLine(x + 3, y, x + 3, y + (STATUS_BT_ICON_H - 1), DISPLAY_WHITE);
+  display.drawLine(x + 3, y, x + 7, y + 2, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + 4, x + 7, y + 2, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + 4, x + 7, y + 6, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + (STATUS_BT_ICON_H - 1), x + 7, y + 6, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + 4, x, y + 2, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + 4, x, y + 6, DISPLAY_WHITE);
 }
 
 void drawBatteryGauge(int x, int y, int pct) {
   int16_t bodyW = STATUS_BATT_ICON_W - 2;
-  display.drawRect(x, y, bodyW, STATUS_BATT_ICON_H, SSD1306_WHITE); // Main body
-  display.fillRect(x + bodyW, y + 2, 2, STATUS_BATT_ICON_H - 4, SSD1306_WHITE); // Tip
+  display.drawRect(x, y, bodyW, STATUS_BATT_ICON_H, DISPLAY_WHITE); // Main body
+  display.fillRect(x + bodyW, y + 2, 2, STATUS_BATT_ICON_H - 4, DISPLAY_WHITE); // Tip
 
   int fillW = (pct * (bodyW - 4)) / 100;
-  display.fillRect(x + 2, y + 2, fillW, STATUS_BATT_ICON_H - 4, SSD1306_WHITE);
+  display.fillRect(x + 2, y + 2, fillW, STATUS_BATT_ICON_H - 4, DISPLAY_WHITE);
 }
 
 void drawStatusIcons() {

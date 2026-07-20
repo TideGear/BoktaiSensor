@@ -107,7 +107,7 @@ As an alternative, set `USB_HID_ENABLED = false` to have the firmware boot direc
 
 ### 3. GBA Link Cable (Best Option for Flash Carts)
 
-This outputs a framed 3-wire value (SC + SD + SO) for use with a physical GBA via link cable.
+This outputs a framed 3-wire value (SC + SD + SO) for use with a physical GBA via link cable. Supported on both boards (on the T-QT Pro it uses the board-edge solder pads IO16/IO17/IO18).
 
 **Requirements:**
 - Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources). Many thanks to Prof9 for the original proof-of-concept code!
@@ -128,6 +128,10 @@ Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (
 
 ## Hardware
 
+Two boards are supported. Select yours at the top of `config.h` (`BOARD_SEEED_XIAO_ESP32S3` is the default; uncomment `BOARD_LILYGO_T_QT_PRO` instead for the T-QT Pro, which is currently experimental/untested — see Option B below).
+
+### Option A: Seeed XIAO ESP32S3 (original build)
+
 **Components:**
 - Seeed XIAO ESP32S3 (built-in LiPo charging)
 - Adafruit LTR390 UV Sensor (I2C)
@@ -136,7 +140,28 @@ Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (
 - 3.7V LiPo battery (300mAh works well; larger capacity is optional but be mindful of your case size)
 - 2x 100K ohm resistors (for battery monitoring — optional but recommended)
 
+### Option B: LilyGO T-QT Pro (minimal-wiring build) — EXPERIMENTAL / UNTESTED
+
+> **Warning:** The T-QT Pro build is currently **untested on real hardware** and should be considered experimental. Pin assignments follow LilyGO's official pinmap and schematic, but nothing below has been verified on an actual unit yet. If you try it, expect to troubleshoot — and please report results (working or not) via a GitHub issue.
+
+The [LilyGO T-QT Pro](https://github.com/Xinyuan-LilyGO/T-QT) has a built-in 0.85" 128x128 GC9107 color TFT, two buttons, battery charging, and battery voltage sensing — so the only wiring needed is the LTR390 and a battery.
+
+**Components:**
+- LilyGO T-QT Pro (ESP32-S3)
+- Adafruit LTR390 UV Sensor (I2C) — default wiring is the IO33 (SDA) and IO34 (SCL) solder pads; the sensor's 3V3/GND come from the 3V and GND pads
+- 3.7V LiPo battery (solder to the battery pads or use the connector, depending on your unit)
+
+**T-QT Pro notes:**
+- **Solderless sensor option:** set `I2C_SDA_PIN = 43` and `I2C_SCL_PIN = 44` in `config.h` and Adafruit's STEMMA QT LTR390 plugs straight into the Qwiic connector with a Qwiic/STEMMA QT cable. (Beware: the pinout image and board silkscreen swap the Qwiic SDA/SCL labels; SDA = GPIO43, SCL = GPIO44 matches the schematic and actually works — [details](https://github.com/Xinyuan-LilyGO/T-QT/issues/17).)
+- I2C needs pull-ups on SDA/SCL when using the solder pads; the Adafruit LTR390 breakout includes 10K pull-ups on board, so no extra parts are needed with it.
+- GBA link output is supported via the board-edge solder pads: IO16 (SC), IO17 (SD), IO18 (SO), plus the adjacent GND pad. See [GBA Link Cable Wiring](#gba-link-cable-wiring-optional).
+- Battery sensing is built in (2:1 divider on GPIO4) and enabled by default; no resistors needed.
+- **Left button (GPIO0, next to USB)** is the power button — it is the only button that can wake the board from deep sleep. **Right button (GPIO47)** cycles screens backward.
+- The UI renders as a 128x64 region centered on the square screen (top/bottom letterboxed). Set `TQT_DISPLAY_ROTATION` in `config.h` if your case orientation needs the screen flipped.
+
 ### Wiring
+
+*(XIAO ESP32S3 build only — the T-QT Pro just needs the LTR390 on the IO33/IO34 pads (or the Qwiic connector, see above), a battery, and the GBA link pads below if you use that output.)*
 
 | Component | Pin | XIAO ESP32S3 | Notes |
 |-----------|-----|--------------|-------|
@@ -173,7 +198,7 @@ Only needed if using GBA Link output mode. Recommended: install a real GBA link 
 
 A breakout board such as the [Palmr breakout board](https://github.com/Palmr/gb-link-cable) still works, but the link cable can come loose easily if you intend to move around much. An actual link port is a much more robust solution.
 
-**Recommended Ojo-side link port wiring:**
+**Recommended Ojo-side link port wiring (XIAO ESP32S3):**
 
 | Ojo Connection | Ojo-side GBA Port Pin Type | Equivalent P1 Breakout Pad | Notes |
 |----------------|----------------------------|----------------------------|-------|
@@ -181,6 +206,15 @@ A breakout board such as the [Palmr breakout board](https://github.com/Palmr/gb-
 | GND | GND | SI | Shared ground |
 | D8 (GPIO7) | SD | SD | Payload bit 1 |
 | D7 (GPIO44) | SC | SC | Frame phase; toggles every `GBA_LINK_FRAME_TOGGLE_MS` |
+
+**Recommended Ojo-side link port wiring (T-QT Pro):** same as above, using the board-edge solder pads next to the GND pad:
+
+| Ojo Connection | Ojo-side GBA Port Pin Type | Equivalent P1 Breakout Pad | Notes |
+|----------------|----------------------------|----------------------------|-------|
+| IO18 pad | SI | SO | Payload bit 0 |
+| GND pad | GND | SI | Shared ground |
+| IO17 pad | SD | SD | Payload bit 1 |
+| IO16 pad | SC | SC | Frame phase; toggles every `GBA_LINK_FRAME_TOGGLE_MS` |
 
 Leave the Ojo-side port `SO` and `VDD35` contacts unconnected. If you use a breakout board instead of a port, wire the equivalent P1 breakout pads listed above.
 
@@ -212,7 +246,7 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 - Lower values respond faster but reduce electrical timing margin; higher values are slower but more tolerant.
 
 **Notes:**
-- Keep all signals at 3.3V logic (the XIAO ESP32S3 is 3.3V native, so no level shifting is needed)
+- Keep all signals at 3.3V logic (both supported boards are 3.3V native, so no level shifting is needed)
 - The ESP32 writes data pins (SD, SO) before the phase pin (SC) so the GBA always samples stable data when it detects a phase edge. The GBA-side ASM patches include a consecutive-match check that discards any single-frame misread, adding one frame (~17ms) of latency on real bar changes but eliminating visible glitches.
 
 
@@ -224,25 +258,31 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 
 **Install via Arduino Library Manager:**
 - Adafruit LTR390 Library
-- Adafruit SSD1306
+- Adafruit SSD1306 (XIAO build only)
 - Adafruit GFX Library
 - Adafruit BusIO
 - NimBLE-Arduino (by h2zero)
 - Callback (by Tom Stewart)
+- TFT_eSPI (by Bodmer) — **T-QT Pro build only**, see setup step below
 
 **Install manually (included in repo as ESP32-BLE-CompositeHID-master.zip, or download from GitHub):**
 - ESP32-BLE-CompositeHID: https://github.com/Mystfit/ESP32-BLE-CompositeHID
+
+**TFT_eSPI setup (T-QT Pro build only):** TFT_eSPI is configured by editing a file inside the library. Open `<Arduino libraries folder>/TFT_eSPI/User_Setup_Select.h`, comment out `#include <User_Setup.h>`, and uncomment the line for `User_Setups/Setup211_LilyGo_T_QT_Pro_S3.h` (it ships with the library). If your unit has the newer panel revision and the screen shows wrong colors or offsets, apply LilyGO's replacement init files from the [T-QT repo's `extras/new_panel` folder](https://github.com/Xinyuan-LilyGO/T-QT/tree/main/extras).
 
 ### Board Settings (Arduino IDE)
 
 - **Boards Manager URL:** `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
 - **Board package:** esp32 by Espressif Systems
 - **Recommended version:** `3.3.7`
-- **Board:** XIAO_ESP32S3
+- **Board:**
+  - XIAO build: **XIAO_ESP32S3**
+  - T-QT Pro build: **ESP32S3 Dev Module** with **Flash Size: 4MB** and **PSRAM: QSPI PSRAM** (for the common N4R2 variant; the N8 variant is 8MB flash, no PSRAM), and **Partition Scheme: Huge APP (3MB No OTA/1MB SPIFFS)** — the sketch is too large for the default 1.2MB app partition
 - **USB Mode:** USB-OTG (TinyUSB)
 - **USB CDC On Boot:** Enabled (required for CDC mode; normal runtime remains XInput unless you enter CDC mode from the XInput screen or set `USB_HID_ENABLED = false`)
 - **Upload Mode:** USB-OTG CDC (TinyUSB) (required for CDC-mode uploads; UART0/Hardware CDC will fail to auto-connect in this setup)
 - If CDC UI appears inconsistent/garbled after failed uploads, do one upload with **Erase All Flash Before Sketch Upload = Enabled**, then set it back to Disabled.
+- Remember to select your board at the top of `config.h` as well (`BOARD_SEEED_XIAO_ESP32S3` or `BOARD_LILYGO_T_QT_PRO`).
 
 ----------------------------------------------------------------------
 
@@ -261,6 +301,8 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 - **Hold 2s:** Power ON
 - **Short press/tap:** Immediately shows "Hold 2s to power on"
 - If there is no button activity for 10 seconds, it returns to sleep
+
+**T-QT Pro:** The **left button (next to USB)** is the power button described above. The **right button** cycles screens backward when the device is on; it has no long-press action and cannot wake the device from sleep (hardware limitation — only GPIO0 is wake-capable).
 
 ### HID Control Mode Details (Bluetooth + USB)
 
