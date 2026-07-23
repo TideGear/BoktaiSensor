@@ -235,7 +235,7 @@ void wakeDisplayHardware() {
   pinMode(TFT_BACKLIGHT_PIN, OUTPUT);
   digitalWrite(TFT_BACKLIGHT_PIN, LOW);
   if (display.panelWake()) {
-    display.tft.fillScreen(TFT_BLACK);
+    display.fillPanelBlack();
   }
 }
 
@@ -438,7 +438,21 @@ void setup() {
     initUsbHid();
   }
   serialEnabled = DEBUG_SERIAL && !usbHidActive;
-  if (serialEnabled) Serial.begin(115200);
+  if (serialEnabled) {
+    Serial.begin(115200);
+    // Wait (up to 5s) for the host to open the CDC port; otherwise all
+    // early boot prints are silently discarded by TinyUSB.
+    unsigned long serialWaitStart = millis();
+    while (!Serial && (millis() - serialWaitStart) < 5000UL) {
+      delay(10);
+    }
+    Serial.println();
+    #if defined(BOARD_LILYGO_T_QT_PRO)
+    Serial.println("Ojo del Sol boot - board: LilyGO T-QT Pro");
+    #else
+    Serial.println("Ojo del Sol boot - board: Seeed XIAO ESP32S3");
+    #endif
+  }
   initHidPressTiming();
 
   // Configure power button with internal pull-up (active LOW)
@@ -463,6 +477,7 @@ void setup() {
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
   #if defined(BOARD_LILYGO_T_QT_PRO)
+  if (serialEnabled) Serial.println("Initializing display (Arduino_GFX / GC9107)...");
   // Release the backlight hold from a previous deep sleep before init.
   gpio_hold_dis((gpio_num_t)TFT_BACKLIGHT_PIN);
   bool displayOk = display.begin(TQT_DISPLAY_ROTATION);
@@ -480,6 +495,7 @@ void setup() {
     enterDeepSleep();
   }
   displayInitialized = true;
+  if (serialEnabled) Serial.println("Display initialized");
 
   display.clearDisplay();
   display.setTextColor(DISPLAY_WHITE);
@@ -526,6 +542,7 @@ void setup() {
   #endif
 
   if (!initLTR390()) {
+    if (serialEnabled) Serial.println("LTR390 not found - check wiring; sleeping");
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(10, 28);

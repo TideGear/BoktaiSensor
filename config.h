@@ -12,14 +12,14 @@
 //
 // BOARD_LILYGO_T_QT_PRO: LilyGO T-QT Pro (ESP32-S3) with built-in 0.85"
 //   GC9107 128x128 TFT, two built-in buttons, and built-in battery sensing.
-//   The LTR390 connects to the Qwiic connector. Requires the TFT_eSPI library
-//   with Setup211_LilyGo_T_QT_Pro_S3 selected (see README).
+//   The LTR390 connects to the Qwiic connector. Requires the "GFX Library
+//   for Arduino" (Arduino_GFX by moononournation); no library config needed.
 //   The GBA link uses the IO16/IO17/IO18 solder pads (GND pad adjacent).
 //   *** EXPERIMENTAL: the T-QT Pro build is currently UNTESTED on real
 //   hardware. Pin assignments follow LilyGO's official pinmap/schematic,
 //   but expect to troubleshoot. Reports welcome. ***
-#define BOARD_SEEED_XIAO_ESP32S3
-//#define BOARD_LILYGO_T_QT_PRO
+//#define BOARD_SEEED_XIAO_ESP32S3
+#define BOARD_LILYGO_T_QT_PRO
 
 #if defined(BOARD_SEEED_XIAO_ESP32S3) && defined(BOARD_LILYGO_T_QT_PRO)
 #error "Select only one board in config.h"
@@ -203,8 +203,8 @@ const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
 // -- and working I2C -- is SDA = GPIO43, SCL = GPIO44).
 const int I2C_SDA_PIN = 33;               // IO33 pad
 const int I2C_SCL_PIN = 34;               // IO34 pad
-// Built-in GC9107 TFT. SPI pins live in the TFT_eSPI setup file
-// (Setup211_LilyGo_T_QT_Pro_S3.h); only the backlight is managed here.
+// Built-in GC9107 TFT. SPI pins are set in TQTDisplay.h (they are fixed
+// board wiring); only the backlight is managed here.
 const int TFT_BACKLIGHT_PIN = 10;         // Active LOW
 // 0-3. Rotates the UI on the square screen if your case orientation differs.
 const uint8_t TQT_DISPLAY_ROTATION = 0;

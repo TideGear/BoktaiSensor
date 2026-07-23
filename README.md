@@ -263,12 +263,12 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 - Adafruit BusIO
 - NimBLE-Arduino (by h2zero)
 - Callback (by Tom Stewart)
-- TFT_eSPI (by Bodmer) — **T-QT Pro build only**, see setup step below
+- GFX Library for Arduino (by moononournation, a.k.a. Arduino_GFX) — **T-QT Pro build only**; no configuration needed, the display pins are fixed board wiring set in `TQTDisplay.h`
 
 **Install manually (included in repo as ESP32-BLE-CompositeHID-master.zip, or download from GitHub):**
 - ESP32-BLE-CompositeHID: https://github.com/Mystfit/ESP32-BLE-CompositeHID
 
-**TFT_eSPI setup (T-QT Pro build only):** TFT_eSPI is configured by editing a file inside the library. Open `<Arduino libraries folder>/TFT_eSPI/User_Setup_Select.h`, comment out `#include <User_Setup.h>`, and uncomment the line for `User_Setups/Setup211_LilyGo_T_QT_Pro_S3.h` (it ships with the library). If your unit has the newer panel revision and the screen shows wrong colors or offsets, apply LilyGO's replacement init files from the [T-QT repo's `extras/new_panel` folder](https://github.com/Xinyuan-LilyGO/T-QT/tree/main/extras).
+**Why not TFT_eSPI (which LilyGO's own T-QT samples use)?** TFT_eSPI's last release (2.5.43) crashes in `tft.init()` on the ESP32-S3 under esp32 core 3.x (StoreProhibited panic → boot loop; [known issue](https://github.com/Bodmer/TFT_eSPI/issues/3329)). LilyGO's samples work because they bundle a modified TFT_eSPI and target the older 2.0.x core, but this project requires core 3.x. Arduino_GFX supports the GC9107 natively on current cores.
 
 ### Board Settings (Arduino IDE)
 
@@ -277,7 +277,12 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 - **Recommended version:** `3.3.7`
 - **Board:**
   - XIAO build: **XIAO_ESP32S3**
-  - T-QT Pro build: **ESP32S3 Dev Module** with **Flash Size: 4MB** and **PSRAM: QSPI PSRAM** (for the common N4R2 variant; the N8 variant is 8MB flash, no PSRAM), and **Partition Scheme: Huge APP (3MB No OTA/1MB SPIFFS)** — the sketch is too large for the default 1.2MB app partition
+  - T-QT Pro build: **ESP32S3 Dev Module** (no T-QT entry exists in the ESP32 core) with these settings — everything not listed stays at its default:
+    - **Flash Size:** 4MB (32Mb) for the common N4R2 variant; 8MB (64Mb) for the N8 variant (chip marking `ESP32-S3FN4R2` = N4R2)
+    - **PSRAM:** QSPI PSRAM (N4R2) or Disabled (N8)
+    - **Partition Scheme:** Huge APP (3MB No OTA/1MB SPIFFS) — the sketch is too large for the default 1.2MB app partition
+    - **Flash Mode:** QIO 80MHz, **CPU Frequency:** 240MHz, **Events/Arduino Run On:** Core 1
+    - USB settings identical to the XIAO build (below)
 - **USB Mode:** USB-OTG (TinyUSB)
 - **USB CDC On Boot:** Enabled (required for CDC mode; normal runtime remains XInput unless you enter CDC mode from the XInput screen or set `USB_HID_ENABLED = false`)
 - **Upload Mode:** USB-OTG CDC (TinyUSB) (required for CDC-mode uploads; UART0/Hardware CDC will fail to auto-connect in this setup)
@@ -457,7 +462,7 @@ If button presses are being seen, Serial should print `Device button pressed` wh
 4. Indoor UV is near zero — test outside
 
 ### Battery shows 0%
-You need the voltage divider circuit and `BATTERY_SENSE_ENABLED = true`. Keep battery sensing disabled until the divider is wired.
+XIAO build: you need the voltage divider circuit and `BATTERY_SENSE_ENABLED = true`. Keep battery sensing disabled until the divider is wired. (The T-QT Pro's divider is built in, so this doesn't apply there.)
 
 ### Battery % is wrong
 Adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if high).
@@ -469,7 +474,8 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default;
 1. Hold button for full 2 seconds
 2. A short press should immediately show the "Hold 2s to power on" prompt
 3. After 10s of no activity, it returns to sleep
-4. If the OLED fails to initialize, the device enters deep sleep after about 2 seconds using the normal sleep path (same cleanup and button-release debounce as manual sleep). Check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
+4. If the display fails to initialize, the device enters deep sleep after about 2 seconds using the normal sleep path (same cleanup and button-release debounce as manual sleep). On the XIAO build, check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
+5. T-QT Pro: only the **left button (GPIO0, next to USB)** can wake the device — the right button does nothing while asleep
 
 ### Display is blank, mirrored, or inverted after entering CDC mode
 1. Update to the latest firmware (the boot sequence now re-asserts OLED power and canonical panel state after the software restart)
@@ -478,6 +484,15 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default;
 
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
 This was a known compatibility issue between esp32 core `3.3.7` and older versions of NimBLE-Arduino. It is resolved as of NimBLE-Arduino v2.3.9 — update the library via Arduino Library Manager and rebuild.
+
+### T-QT Pro: build fails with `Arduino_GFX_Library.h: No such file or directory`
+Install "GFX Library for Arduino" (by moononournation) via the Library Manager.
+
+### T-QT Pro: boot loop / COM port keeps disconnecting and reconnecting
+If you modified the code to use TFT_eSPI: its last release (2.5.43) crashes at `tft.init()` on ESP32-S3 with esp32 core 3.x — this firmware uses Arduino_GFX instead for exactly that reason. Otherwise, set `USB_HID_ENABLED = false` temporarily and watch the serial monitor: the firmware prints a boot banner and a marker after each init stage, so the last line tells you which step crashes.
+
+### T-QT Pro: screen shows garbage, wrong colors, or an offset image
+T-QT units exist with two panel revisions (LilyGO ships separate factory firmware for the newer panel). Arduino_GFX's GC9107 driver is expected to handle the common revision; if your unit misbehaves, try `TQT_DISPLAY_ROTATION` values 0-3 in config.h first, then report it via a GitHub issue — the panel-specific init from LilyGO's [`extras` folder](https://github.com/Xinyuan-LilyGO/T-QT/tree/main/extras) may need porting.
 
 ----------------------------------------------------------------------
 
