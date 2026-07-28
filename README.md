@@ -148,20 +148,20 @@ The [LilyGO T-QT Pro](https://github.com/Xinyuan-LilyGO/T-QT) has a built-in 0.8
 
 **Components:**
 - LilyGO T-QT Pro (ESP32-S3)
-- Adafruit LTR390 UV Sensor (I2C) — default wiring is the IO33 (SDA) and IO34 (SCL) solder pads; the sensor's 3V3/GND come from the 3V and GND pads
+- Adafruit LTR390 UV Sensor (I2C) — connects to the T-QT's Qwiic connector; Adafruit's STEMMA QT version plugs straight in with a Qwiic/STEMMA QT cable, no soldering
 - 3.7V LiPo battery (solder to the battery pads or use the connector, depending on your unit)
 
 **T-QT Pro notes:**
-- **Solderless sensor option:** set `I2C_SDA_PIN = 43` and `I2C_SCL_PIN = 44` in `config.h` and Adafruit's STEMMA QT LTR390 plugs straight into the Qwiic connector with a Qwiic/STEMMA QT cable. (Beware: the pinout image and board silkscreen swap the Qwiic SDA/SCL labels; SDA = GPIO43, SCL = GPIO44 matches the schematic and actually works — [details](https://github.com/Xinyuan-LilyGO/T-QT/issues/17).)
-- I2C needs pull-ups on SDA/SCL when using the solder pads; the Adafruit LTR390 breakout includes 10K pull-ups on board, so no extra parts are needed with it.
+- If you wire to the Qwiic connector manually instead of using a cable: SDA = GPIO43, SCL = GPIO44. (Beware: the pinout image and board silkscreen swap the Qwiic SDA/SCL labels; SDA = GPIO43, SCL = GPIO44 matches the schematic and actually works — [details](https://github.com/Xinyuan-LilyGO/T-QT/issues/17).)
+- **Solder-pad sensor option:** set `I2C_SDA_PIN = 33` and `I2C_SCL_PIN = 34` in `config.h` to wire the sensor to the IO33/IO34 pads instead, freeing the Qwiic connector. I2C then needs pull-ups on SDA/SCL; the Adafruit LTR390 breakout includes 10K pull-ups on board, so no extra parts are needed with it.
 - GBA link output is supported via the board-edge solder pads: IO16 (SC), IO17 (SD), IO18 (SO), plus the adjacent GND pad. See [GBA Link Cable Wiring](#gba-link-cable-wiring-optional).
 - Battery sensing is built in (2:1 divider on GPIO4) and enabled by default; no resistors needed.
-- **Left button (GPIO0, next to USB)** is the power button — it is the only button that can wake the board from deep sleep. **Right button (GPIO47)** cycles screens backward.
+- **Right button (GPIO47)** advances to the next screen (BOKTAI 1 → 2 → 3 → XInput). **Left button (GPIO0)** is the power button (hold 2s) — it is the only button that can wake the board from deep sleep — and a tap on it cycles screens backward.
 - The UI renders as a 128x64 region centered on the square screen (top/bottom letterboxed). Set `TQT_DISPLAY_ROTATION` in `config.h` if your case orientation needs the screen flipped.
 
 ### Wiring
 
-*(XIAO ESP32S3 build only — the T-QT Pro just needs the LTR390 on the IO33/IO34 pads (or the Qwiic connector, see above), a battery, and the GBA link pads below if you use that output.)*
+*(XIAO ESP32S3 build only — the T-QT Pro just needs the LTR390 on the Qwiic connector (or the IO33/IO34 pads, see above), a battery, and the GBA link pads below if you use that output.)*
 
 | Component | Pin | XIAO ESP32S3 | Notes |
 |-----------|-----|--------------|-------|
@@ -307,7 +307,7 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 - **Short press/tap:** Immediately shows "Hold 2s to power on"
 - If there is no button activity for 10 seconds, it returns to sleep
 
-**T-QT Pro:** The **left button (next to USB)** is the power button described above. The **right button** cycles screens backward when the device is on; it has no long-press action and cannot wake the device from sleep (hardware limitation — only GPIO0 is wake-capable).
+**T-QT Pro:** The **right button** advances to the next screen when the device is on; it has no long-press action and cannot wake the device from sleep (hardware limitation — only GPIO0 is wake-capable). The **left button (GPIO0)** handles everything else described above (hold 2s for power/CDC), except its tap cycles screens *backward* instead of forward. Directions are configurable via `BUTTON_TAP_STEP`/`BUTTON2_TAP_STEP` in config.h.
 
 ### HID Control Mode Details (Bluetooth + USB)
 

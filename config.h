@@ -138,7 +138,7 @@ const int BAT_PIN = 4;       // GPIO4 - built-in battery voltage divider
 // You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
 // the midpoint connected to BAT_PIN. Without this, battery % is unavailable.
 // Safe default is disabled until the divider is wired.
-const bool BATTERY_SENSE_ENABLED = false;
+const bool BATTERY_SENSE_ENABLED = true;
 const int BAT_PIN = 2;       // D1/A1 (GPIO2) - connect to voltage divider midpoint
 #endif
 const float VOLT_MIN = 3.3;  // 0% Battery
@@ -161,7 +161,7 @@ const float VOLT_DIVIDER_MULT = 2.20;
 // LOW-VOLTAGE CUTOFF (requires battery sense divider)
 // -----------------------------------------------------------------------------
 // Keep disabled by default; only enable after battery sensing is verified.
-const bool BATTERY_CUTOFF_ENABLED = false;
+const bool BATTERY_CUTOFF_ENABLED = true;
 const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
 const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 
@@ -173,19 +173,24 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 // POWER BUTTON
 // -----------------------------------------------------------------------------
 #if defined(BOARD_LILYGO_T_QT_PRO)
-// T-QT Pro built-in buttons. Only GPIO0 (left button, next to USB) can wake
-// the ESP32-S3 from deep sleep, so it must be the power button.
-const int BUTTON_PIN = 0;     // BTN_L (GPIO0) - power / next screen
-// Second built-in button: tap cycles screens backward. Set BUTTON2_ENABLED
-// to false to ignore it. It cannot wake the device from deep sleep.
+// T-QT Pro built-in buttons. Only GPIO0 (left button) can wake the ESP32-S3
+// from deep sleep, so it must be the power button (hold 2s to sleep/wake).
+// Tap directions: right button advances to the next screen, left button
+// goes back. Adjust the *_TAP_STEP values to change this.
+const int BUTTON_PIN = 0;     // BTN_L (GPIO0) - power; tap = previous screen
 const bool BUTTON2_ENABLED = true;
-const int BUTTON2_PIN = 47;   // BTN_R (GPIO47)
+const int BUTTON2_PIN = 47;   // BTN_R (GPIO47) - tap = next screen
+// Screens cycled per tap (+1 = forward, -1 = backward)
+const int BUTTON_TAP_STEP = -1;
+const int BUTTON2_TAP_STEP = 1;
 #else
 // D0 (GPIO1) supports RTC wake-up from deep sleep on XIAO ESP32S3.
 const int BUTTON_PIN = 1;    // D0 (GPIO1)
+const int BUTTON_TAP_STEP = 1;  // Single button always advances forward
 // No second button on the XIAO build.
 const bool BUTTON2_ENABLED = false;
 const int BUTTON2_PIN = -1;
+const int BUTTON2_TAP_STEP = 1;
 #endif
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
@@ -194,15 +199,16 @@ const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
 // DISPLAY / I2C
 // -----------------------------------------------------------------------------
 #if defined(BOARD_LILYGO_T_QT_PRO)
-// LTR390 I2C on the two adjacent solder pads at the top of the left-side
-// column (leaves the right-side pads free for the GBA link). Requires
-// pull-ups on both lines; the Adafruit LTR390 breakout has them on board.
+// LTR390 I2C on the Qwiic connector (Adafruit's STEMMA QT LTR390 plugs
+// straight in, no soldering). NOTE: the board silkscreen/pinout image swaps
+// these labels; the schematic -- and working I2C -- is SDA = GPIO43,
+// SCL = GPIO44.
 //
-// Solderless alternative: set SDA = 43 and SCL = 44 to use the Qwiic
-// connector instead (the board silkscreen swaps these labels; the schematic
-// -- and working I2C -- is SDA = GPIO43, SCL = GPIO44).
-const int I2C_SDA_PIN = 33;               // IO33 pad
-const int I2C_SCL_PIN = 34;               // IO34 pad
+// Solder-pad alternative: set SDA = 33 and SCL = 34 to use the IO33/IO34
+// pads instead. Pull-ups are then required on both lines; the Adafruit
+// LTR390 breakout has them on board.
+const int I2C_SDA_PIN = 43;               // Qwiic pin 3 (U0TXD/GPIO43)
+const int I2C_SCL_PIN = 44;               // Qwiic pin 4 (U0RXD/GPIO44)
 // Built-in GC9107 TFT. SPI pins are set in TQTDisplay.h (they are fixed
 // board wiring); only the backlight is managed here.
 const int TFT_BACKLIGHT_PIN = 10;         // Active LOW
@@ -255,7 +261,7 @@ const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
 // 0 = Incremental: uses HID_BUTTON_DEC/INC to step the emulator meter.
 //     (BLE transport also supports clamp+refill resync behavior.)
 // 1 = Single Analog: maps bar count to a proportional deflection on one analog axis.
-const uint8_t HID_CONTROL_MODE = 0;
+const uint8_t HID_CONTROL_MODE = 1;
 
 // Workaround: mGBA uses 10 steps for Boktai 1 even though it has 8 bars.
 // Set false if mGBA is fixed to use 8 steps.
@@ -310,14 +316,14 @@ const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
 // When true, normal runtime enumerates as USB XInput.
 // USB CDC serial is entered from the DEBUG screen (hold 2s), then exits back
 // to XInput-on-next-wake with another 2s hold.
-const bool USB_HID_ENABLED = true;
+const bool USB_HID_ENABLED = false;
 
 // =============================================================================
 // DEBUG
 // =============================================================================
 // Enables Serial debug logging (115200 baud) for startup diagnostics,
 // device-button press events, and any enabled periodic debug streams below.
-const bool DEBUG_SERIAL = false;
+const bool DEBUG_SERIAL = true;
 // Periodic Serial debug stream controls. These only apply when DEBUG_SERIAL = true.
 const bool DEBUG_SERIAL_BATTERY = false;
 const bool DEBUG_SERIAL_UV = true;

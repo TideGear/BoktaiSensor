@@ -1242,7 +1242,7 @@ void handlePowerButton() {
     unsigned long pressDuration = millis() - buttonPressStart;
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
       if (!suppressShortPress) {
-        cycleUiScreen(1);
+        cycleUiScreen(BUTTON_TAP_STEP);
       }
     }
     suppressShortPress = false;
@@ -1250,8 +1250,9 @@ void handlePowerButton() {
   }
 }
 
-// Handle the secondary button (T-QT BTN_R): tap cycles screens backward.
-// No long-press action; it cannot wake the device from deep sleep.
+// Handle the secondary button (T-QT BTN_R): tap cycles screens (direction
+// set by BUTTON2_TAP_STEP). No long-press action; it cannot wake the device
+// from deep sleep.
 void handleSecondButton() {
   if (!BUTTON2_ENABLED || BUTTON2_PIN < 0) {
     return;
@@ -1274,7 +1275,7 @@ void handleSecondButton() {
   else if (!buttonPressed && button2WasPressed) {
     unsigned long pressDuration = millis() - button2PressStart;
     if (pressDuration >= DEBOUNCE_MS && !button2SuppressShortPress) {
-      cycleUiScreen(-1);
+      cycleUiScreen(BUTTON2_TAP_STEP);
     }
     button2SuppressShortPress = false;
     button2WasPressed = false;
