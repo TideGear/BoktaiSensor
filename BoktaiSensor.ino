@@ -9,6 +9,7 @@
 #endif
 #include "Adafruit_LTR390.h"
 #include "esp_sleep.h"
+#include "esp_attr.h"  // RTC_DATA_ATTR
 #include <BleCompositeHID.h>
 #include <XboxGamepadDevice.h>
 #include <XboxGamepadConfiguration.h>
@@ -89,7 +90,12 @@ const int NUM_UI_SCREENS = NUM_GAMES + 1;
 
 // UI screen selection:
 // 0..NUM_GAMES-1 = game screens, DEBUG_SCREEN_INDEX = XInput/CDC debug screen
-int currentScreen = 0;
+//
+// Held in RTC memory so the selected screen survives the reset that deep-sleep
+// wake performs. Statically initialized to 0, which applies on a cold power-on
+// (RTC memory is only reloaded from flash then, not on a wake). Validated in
+// restoreUiScreenAfterReset() before use.
+RTC_DATA_ATTR int currentScreen = 0;
 bool uiScreenChanged = false;
 
 // Battery state
@@ -412,6 +418,26 @@ void logDeviceButtonPress(const char* context) {
   Serial.println();
 }
 
+// currentScreen persists in RTC memory across the deep-sleep wake reset, but
+// currentGame does not - it is derived from the screen. Re-derive it here and
+// reject any out-of-range stored value.
+void restoreUiScreenAfterReset() {
+  if (currentScreen < 0 || currentScreen >= NUM_UI_SCREENS) {
+    currentScreen = 0;
+  }
+  if (currentScreen < NUM_GAMES) {
+    currentGame = clampGameIndex(currentScreen);
+  }
+  uiScreenChanged = true;  // Force a draw of the restored screen
+  if (serialEnabled) {
+    Serial.print("Restored screen: ");
+    Serial.print(currentScreen);
+    Serial.print(" (game ");
+    Serial.print(currentGame);
+    Serial.println(")");
+  }
+}
+
 void syncRuntimeButtonStateAfterStartup() {
   bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
   buttonWasPressed = buttonPressed;
@@ -452,6 +478,10 @@ void setup() {
     #else
     Serial.println("Ojo del Sol boot - board: Seeed XIAO ESP32S3");
     #endif
+    // Why did we just boot? A wake cause of 2 (EXT0) immediately after a
+    // long-press means deep sleep was entered and the button re-woke it.
+    Serial.print("Wake cause: ");
+    Serial.println((int)esp_sleep_get_wakeup_cause());
   }
   initHidPressTiming();
 
@@ -460,6 +490,18 @@ void setup() {
   if (BUTTON2_ENABLED && BUTTON2_PIN >= 0) {
     pinMode(BUTTON2_PIN, INPUT_PULLUP);
   }
+  if (serialEnabled) {
+    // LOW here on an EXT0 wake means the button was still held at wake time.
+    Serial.print("Button level at boot - BTN_L: ");
+    Serial.print(digitalRead(BUTTON_PIN));
+    if (BUTTON2_ENABLED && BUTTON2_PIN >= 0) {
+      Serial.print("  BTN_R: ");
+      Serial.print(digitalRead(BUTTON2_PIN));
+    }
+    Serial.println();
+  }
+
+  restoreUiScreenAfterReset();
 
   if (GBA_LINK_ENABLED) {
     pinMode(GBA_PIN_SC, OUTPUT);
@@ -1221,6 +1263,21 @@ void handlePowerButton() {
   else if (buttonPressed && buttonWasPressed) {
     noteScreenActivity();
     if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
+      if (serialEnabled) {
+        Serial.print("BTN_L long-press fired after ");
+        Serial.print(millis() - buttonPressStart);
+        Serial.print("ms - inCdcMode=");
+        #if HAS_USB_HID
+        Serial.print(inCdcMode ? 1 : 0);
+        #else
+        Serial.print("n/a");
+        #endif
+        Serial.print(" screen=");
+        Serial.print(currentScreen);
+        Serial.print("/debug=");
+        Serial.println(DEBUG_SCREEN_INDEX);
+        Serial.flush();
+      }
       #if HAS_USB_HID
       if (inCdcMode) {
         if (USB_HID_ENABLED) {
@@ -1274,7 +1331,10 @@ void handleSecondButton() {
   }
   else if (!buttonPressed && button2WasPressed) {
     unsigned long pressDuration = millis() - button2PressStart;
-    if (pressDuration >= DEBOUNCE_MS && !button2SuppressShortPress) {
+    // Bounded like the power button: a deliberate long hold is not a tap, so
+    // it must not silently change the screen on release.
+    if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS &&
+        !button2SuppressShortPress) {
       cycleUiScreen(BUTTON2_TAP_STEP);
     }
     button2SuppressShortPress = false;
@@ -1346,13 +1406,26 @@ bool waitForPowerOn() {
 
 // Enter deep sleep mode with button wake-up
 void enterDeepSleep() {
+  if (serialEnabled) {
+    Serial.println("enterDeepSleep() - entered");
+    Serial.flush();
+  }
+
   // Release USB HID state before sleep
   usbReleaseAll();
 
-  // Shut down Bluetooth first - this is critical for low-power sleep
-  if (BLUETOOTH_ENABLED) {
-    // Release any held buttons/sticks
-    if (xboxGamepad != nullptr) {
+  // Quiesce Bluetooth before sleep.
+  //
+  // Do NOT free the BLE objects here. compositeHID (a global) retains the
+  // xboxGamepad pointer from addDevice(), and XboxGamepadDevice holds
+  // NimBLECharacteristic pointers owned by the NimBLE stack. Calling
+  // NimBLEDevice::deinit(true) and then deleting the device ran its destructor
+  // over memory the stack had already released, which reset the chip before it
+  // ever reached esp_deep_sleep_start(). Deep sleep powers the radio down and
+  // resets the whole chip on wake, so there is no heap worth reclaiming.
+  if (BLUETOOTH_ENABLED && xboxGamepad != nullptr) {
+    // Release any held buttons/sticks so the host does not see them stuck.
+    if (compositeHID.isConnected()) {
       if (bleActiveButton != 0) {
         xboxGamepad->release(bleActiveButton);
       }
@@ -1365,23 +1438,12 @@ void enterDeepSleep() {
       xboxGamepad->setRightThumb(0, 0);
       xboxGamepad->sendGamepadReport();
     }
-    // Only touch NimBLE if BLE stack was initialized.
-    if (xboxGamepad != nullptr) {
-      // Stop advertising if active
-      stopBleAdvertising();
-      // Give BLE stack time to clean up
-      delay(100);
-      // Fully deinitialize NimBLE (true = release memory)
-      NimBLEDevice::deinit(true);
-    }
-    if (xboxGamepad != nullptr) {
-      delete xboxGamepad;
-      xboxGamepad = nullptr;
-    }
-    if (xboxConfig != nullptr) {
-      delete xboxConfig;
-      xboxConfig = nullptr;
-    }
+    stopBleAdvertising();
+    delay(100);  // Let the stack flush before the radio goes down
+  }
+  if (serialEnabled) {
+    Serial.println("enterDeepSleep() - BLE quiesced");
+    Serial.flush();
   }
 
   // Turn off display
@@ -1389,6 +1451,10 @@ void enterDeepSleep() {
     display.clearDisplay();
     display.display();
     displayPanelOff();
+  }
+  if (serialEnabled) {
+    Serial.println("enterDeepSleep() - display off");
+    Serial.flush();
   }
 
   // Release I2C lines to reduce back-powering during sleep
@@ -1408,17 +1474,23 @@ void enterDeepSleep() {
     pinMode(BAT_PIN, INPUT);
   }
   
+  if (serialEnabled) {
+    Serial.println("enterDeepSleep() - waiting for button release...");
+    Serial.flush();
+  }
+
   // Wait for button release before sleeping
   while (digitalRead(BUTTON_PIN) == LOW) {
     delay(10);
   }
   delay(50);  // Debounce
-  
+
   // Configure wake-up source: BUTTON_PIN going LOW (pressed)
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
-  
+
   if (serialEnabled) {
-    Serial.println("Entering deep sleep...");
+    Serial.print("Entering deep sleep... BTN_L level=");
+    Serial.println(digitalRead(BUTTON_PIN));
     Serial.flush();
   }
   
