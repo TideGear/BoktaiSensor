@@ -9,7 +9,8 @@
 #endif
 #include "Adafruit_LTR390.h"
 #include "esp_sleep.h"
-#include "esp_attr.h"  // RTC_DATA_ATTR
+#include "esp_attr.h"       // RTC_DATA_ATTR
+#include "driver/rtc_io.h"  // rtc_gpio_pullup_en for the deep-sleep wake pin
 #include <BleCompositeHID.h>
 #include <XboxGamepadDevice.h>
 #include <XboxGamepadConfiguration.h>
@@ -362,7 +363,12 @@ void exitCdcModeAndSleep() {
   pinMode(I2C_SCL_PIN, INPUT);
 
   while (digitalRead(BUTTON_PIN) == LOW) delay(10);
-  delay(50);
+  delay(250);  // Settle release bounce before arming a level-triggered wake
+
+  // See enterDeepSleep(): the INPUT_PULLUP does not survive deep sleep, so the
+  // wake pin must be pulled up under RTC control or ext0 fires immediately.
+  rtc_gpio_pullup_en((gpio_num_t)BUTTON_PIN);
+  rtc_gpio_pulldown_dis((gpio_num_t)BUTTON_PIN);
 
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
   if (serialEnabled) {
@@ -395,12 +401,23 @@ void enterCdcMode() {
 }
 #endif
 
+// Why the chip booted, captured before anything can overwrite it. In XInput
+// mode Serial is unavailable (usbHidActive), so this is surfaced on the
+// power-on prompt instead: 2 = EXT0, a real button wake; 0 = UNDEFINED, i.e.
+// a plain reset or crash rather than a wake.
+esp_sleep_wakeup_cause_t bootWakeCause = ESP_SLEEP_WAKEUP_UNDEFINED;
+
 void showHoldPowerOnPrompt() {
   wakeDisplayHardware();
   display.clearDisplay();
   display.setTextSize(1);
   display.setCursor(4, 28);
   display.print("Hold 2s to power on");
+  if (DEBUG_SERIAL) {
+    display.setCursor(4, 44);
+    display.print("wake:");
+    display.print((int)bootWakeCause);
+  }
   display.display();
 }
 
@@ -451,6 +468,8 @@ void syncRuntimeButtonStateAfterStartup() {
 }
 
 void setup() {
+  bootWakeCause = esp_sleep_get_wakeup_cause();
+
   #if HAS_USB_HID
   inCdcMode = isXInputCdcMode();
   if (!inCdcMode && !USB_HID_ENABLED) {
@@ -481,7 +500,7 @@ void setup() {
     // Why did we just boot? A wake cause of 2 (EXT0) immediately after a
     // long-press means deep sleep was entered and the button re-woke it.
     Serial.print("Wake cause: ");
-    Serial.println((int)esp_sleep_get_wakeup_cause());
+    Serial.println((int)bootWakeCause);
   }
   initHidPressTiming();
 
@@ -1479,11 +1498,34 @@ void enterDeepSleep() {
     Serial.flush();
   }
 
-  // Wait for button release before sleeping
-  while (digitalRead(BUTTON_PIN) == LOW) {
+  // Wait for a settled release before arming the wake source. A brief
+  // release-bounce back to LOW after ext0 is armed wakes the chip instantly,
+  // which reads as "it never slept". Require the pin to stay HIGH for
+  // RELEASE_SETTLE_MS continuously, but give up after RELEASE_WAIT_MAX_MS so a
+  // stuck or held button can never hang here forever.
+  const unsigned long RELEASE_SETTLE_MS = 250;
+  const unsigned long RELEASE_WAIT_MAX_MS = 10000;
+  unsigned long releaseWaitStart = millis();
+  unsigned long highSince = 0;
+  while ((millis() - releaseWaitStart) < RELEASE_WAIT_MAX_MS) {
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      highSince = 0;  // Still pressed (or bounced back) - restart the settle
+    } else {
+      if (highSince == 0) {
+        highSince = millis();
+      } else if ((millis() - highSince) >= RELEASE_SETTLE_MS) {
+        break;
+      }
+    }
     delay(10);
   }
-  delay(50);  // Debounce
+
+  // Hold the wake pin high through sleep. pinMode(INPUT_PULLUP) does not
+  // survive deep sleep: the pad is switched to RTC control and the digital
+  // pull-up is dropped, so an unpulled pin floats and ext0's level-0 trigger
+  // fires immediately. This must be set on every sleep entry.
+  rtc_gpio_pullup_en((gpio_num_t)BUTTON_PIN);
+  rtc_gpio_pulldown_dis((gpio_num_t)BUTTON_PIN);
 
   // Configure wake-up source: BUTTON_PIN going LOW (pressed)
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
