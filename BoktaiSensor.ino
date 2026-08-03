@@ -43,6 +43,12 @@ const int16_t STATUS_BATT_ICON_W = 20;
 const int16_t STATUS_BATT_ICON_H = 9;
 const int16_t STATUS_BT_ICON_W = 8;
 const int16_t STATUS_BT_ICON_H = 10;
+// "?" trailing the Bluetooth rune while pairing. The classic 6x8 font cell
+// includes a blank right column, so lay out against the 5px of ink instead —
+// otherwise the gap to the battery reads wider while pairing than when not.
+const int16_t STATUS_BT_QUESTION_W = 5;
+const int16_t STATUS_BT_QUESTION_H = 8;
+const int16_t STATUS_BT_QUESTION_GAP = 1;
 const int16_t STATUS_BT_GAP = 2;
 const int16_t STATUS_TEXT_GAP = 2;
 const int16_t STATUS_RIGHT_MARGIN = 3;
@@ -1473,33 +1479,44 @@ BluetoothIconState getBluetoothIconState() {
   return BT_ICON_OFF;
 }
 
-// Two static glyphs, no animation. The OLED builds flash this icon while
+// Total width the Bluetooth block occupies, so the status row can close up the
+// space the "?" was taking once pairing ends. The block is right-aligned against
+// the battery readout, so a narrower block moves the rune right rather than
+// leaving a hole.
+int16_t bluetoothBlockWidth(BluetoothIconState state) {
+  if (state == BT_ICON_PAIRING) {
+    return STATUS_BT_ICON_W + STATUS_BT_QUESTION_GAP + STATUS_BT_QUESTION_W;
+  }
+  return STATUS_BT_ICON_W;
+}
+
+// Static in every state, no animation. The OLED builds flash this icon while
 // pairing, which is the wrong idiom for e-paper: every toggle changes the frame,
 // and a changed frame is a legitimate reason to refresh the panel, so a 500ms
 // blink would burn refreshes for the whole 60s pairing window.
 //
-//   pairing   = solid badge with the rune knocked out. Loud on purpose; it is
-//               transient and you have BLE_PAIRING_TIMEOUT_MS to act on it.
-//   connected = plain rune. Quiet steady state, and less ink for the state the
-//               device spends nearly all its time in.
+//   pairing   = rune followed by "?"
+//   connected = rune alone, shifted right into the space the "?" had
+//   off       = nothing (includes pairing having timed out)
 void drawBluetoothIcon(int x, int y, BluetoothIconState state) {
   if (state == BT_ICON_OFF) {
     return;
   }
 
-  uint16_t ink = DISPLAY_WHITE;
-  if (state == BT_ICON_PAIRING) {
-    display.fillRect(x, y, STATUS_BT_ICON_W, STATUS_BT_ICON_H, DISPLAY_WHITE);
-    ink = 0;  // Knock the rune out of the badge
-  }
+  display.drawLine(x + 3, y, x + 3, y + (STATUS_BT_ICON_H - 1), DISPLAY_WHITE);
+  display.drawLine(x + 3, y, x + 7, y + 2, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + 4, x + 7, y + 2, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + 4, x + 7, y + 6, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + (STATUS_BT_ICON_H - 1), x + 7, y + 6, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + 4, x, y + 2, DISPLAY_WHITE);
+  display.drawLine(x + 3, y + 4, x, y + 6, DISPLAY_WHITE);
 
-  display.drawLine(x + 3, y, x + 3, y + (STATUS_BT_ICON_H - 1), ink);
-  display.drawLine(x + 3, y, x + 7, y + 2, ink);
-  display.drawLine(x + 3, y + 4, x + 7, y + 2, ink);
-  display.drawLine(x + 3, y + 4, x + 7, y + 6, ink);
-  display.drawLine(x + 3, y + (STATUS_BT_ICON_H - 1), x + 7, y + 6, ink);
-  display.drawLine(x + 3, y + 4, x, y + 2, ink);
-  display.drawLine(x + 3, y + 4, x, y + 6, ink);
+  if (state == BT_ICON_PAIRING) {
+    display.setTextSize(1);
+    display.setCursor(x + STATUS_BT_ICON_W + STATUS_BT_QUESTION_GAP,
+                      y + ((STATUS_BT_ICON_H - STATUS_BT_QUESTION_H) / 2));
+    display.print('?');
+  }
 }
 
 void drawBatteryGauge(int x, int y, int pct) {
@@ -1536,11 +1553,14 @@ void drawStatusIcons() {
   }
 
   if (btReserved) {
+    // Right-aligned, so dropping the "?" pulls the rune toward the battery
+    // instead of leaving a gap where the "?" used to be.
+    int16_t blockW = bluetoothBlockWidth(btState);
     int16_t drawX = 0;
     if (batteryVisible) {
-      drawX = textX - STATUS_BT_GAP - STATUS_BT_ICON_W;
+      drawX = textX - STATUS_BT_GAP - blockW;
     } else {
-      drawX = SCREEN_WIDTH - STATUS_BT_ICON_W - STATUS_RIGHT_MARGIN;
+      drawX = SCREEN_WIDTH - blockW - STATUS_RIGHT_MARGIN;
     }
     drawBluetoothIcon(drawX, btY, btState);
   }

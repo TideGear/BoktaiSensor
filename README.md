@@ -352,9 +352,9 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 - Re-enters pairing if connection drops
 - **Pairing restarts on wake** — after waking from sleep, the device re-advertises for pairing
 - Bluetooth status icon is **static in every state** — unlike the OLED builds on `main`, it does not flash. A blinking icon changes the frame, and a changed frame is a legitimate reason to refresh the panel, so a 500ms blink would have burned refreshes for the entire pairing window. Instead:
-  - **Pairing:** solid badge with the Bluetooth rune knocked out of it. Deliberately loud — it is transient and you have `BLE_PAIRING_TIMEOUT_MS` to act on it.
-  - **Connected:** plain rune. Quiet, and less ink for the state the device spends nearly all its time in.
-  - **Off/timed out:** nothing.
+  - **Pairing:** Bluetooth rune followed by `?`
+  - **Connected:** rune alone. The block is right-aligned against the battery readout, so dropping the `?` pulls the rune toward the battery rather than leaving a hole where the `?` was.
+  - **Off, including pairing having timed out:** nothing.
 
 ### No Screensaver
 
