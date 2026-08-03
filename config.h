@@ -3,28 +3,24 @@
 #define CONFIG_H
 
 // =============================================================================
-// BOARD SELECTION
+// BOARD
 // =============================================================================
-// Uncomment exactly ONE board.
+// This branch targets the LilyGO Mini E-Paper S3 exclusively.
 //
-// BOARD_SEEED_XIAO_ESP32S3: Seeed XIAO ESP32S3 with external SSD1306 OLED,
-//   external button, and optional GBA link port / battery divider (original build).
+// LILYGO Mini E-Paper S3 (ESP32-S3-FN4R2, 4MB flash + 2MB PSRAM) with a
+// built-in 1.02" GDEW0102T4 (UC8175) 80x128 e-paper panel, a 3-way tactile
+// switch (left / press / right), a built-in battery voltage divider, and a
+// microSD slot (unused here).
 //
-// BOARD_LILYGO_T_QT_PRO: LilyGO T-QT Pro (ESP32-S3) with built-in 0.85"
-//   GC9107 128x128 TFT, two built-in buttons, and built-in battery sensing.
-//   The LTR390 connects to the Qwiic connector. Requires the "GFX Library
-//   for Arduino" (Arduino_GFX by moononournation); no library config needed.
-//   The GBA link uses the IO16/IO17/IO18 solder pads (GND pad adjacent).
-//   Pin assignments follow LilyGO's official pinmap/schematic. Tested on
-//   real hardware; the GBA link pads are the least-exercised part.
-//#define BOARD_SEEED_XIAO_ESP32S3
-#define BOARD_LILYGO_T_QT_PRO
-
-#if defined(BOARD_SEEED_XIAO_ESP32S3) && defined(BOARD_LILYGO_T_QT_PRO)
-#error "Select only one board in config.h"
-#elif !defined(BOARD_SEEED_XIAO_ESP32S3) && !defined(BOARD_LILYGO_T_QT_PRO)
-#error "Select a board in config.h"
-#endif
+// The LTR390 connects to the IO7/IO8 header pads (I2C). The GBA link uses the
+// IO16/IO17/IO18 header pads with the adjacent GND pad.
+//
+// Requires the "GxEPD2" library (ZinggJM) from the Arduino Library Manager;
+// no library config files need editing.
+//
+// UNTESTED on real hardware. See the pin notes below for the two vendor
+// documentation conflicts to check first if the panel or battery misbehaves.
+#define BOARD_LILYGO_MINI_EPAPER_S3
 
 // =============================================================================
 // BOKTAI CALIBRATION
@@ -51,30 +47,16 @@ const float AUTO_UV_MIN = 1.000;   // UV Index for 1 bar (shade/overcast)
 const float AUTO_UV_SATURATION = 13.100;   // UV Index where output is fully saturated/clamped
 
 // -----------------------------------------------------------------------------
-// UV ENCLOSURE COMPENSATION
+// UV ENCLOSURE COMPENSATION — NOT PRESENT ON THIS BRANCH
 // -----------------------------------------------------------------------------
-// Model an enclosure window as UV transmission loss and compensate once after
-// raw-to-UVI conversion:
-//   corrected_uvi = max(0, (measured_uvi - UV_ENCLOSURE_UVI_OFFSET) /
-//                           UV_ENCLOSURE_TRANSMITTANCE)
-// Keep UV_ENCLOSURE_TRANSMITTANCE in the 0.0-1.0 range.
-// Example: 0.42 means the window passes 42% of UV.
-const bool UV_ENCLOSURE_COMP_ENABLED = true;
-// The default setting below is based on a VERY quick and dirty test with my box of choice, open vs closed.
-const float UV_ENCLOSURE_TRANSMITTANCE = 0.833f;
-const float UV_ENCLOSURE_UVI_OFFSET = 0.000f;
-
-// When true (default), the threshold values in this file (AUTO_UV_MIN, AUTO_UV_SATURATION,
-// and the manual calibration arrays) are treated as open-air UVI values — measured with
-// the case open or without any enclosure. Bar comparison uses the compensated
-// (open-air equivalent) UVI so results remain accurate when the case is closed.
+// The Mini E-Paper S3 build runs the LTR390 exposed (no case window over the
+// sensor), so there is no UV transmission loss to model and the compensation
+// pass has been removed rather than left as a no-op. Threshold values below are
+// therefore plain open-air UVI readings.
 //
-// Set false if your threshold values were calibrated with the sensor inside the closed
-// enclosure. Bar comparison will then use the raw (pre-compensation) sensor reading.
-//
-// For always-open-air builds (sensor never enclosed): leave true and set
-// UV_ENCLOSURE_COMP_ENABLED = false. Compensation becomes a no-op so raw == compensated.
-const bool UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true;
+// If you later put the sensor behind a window, the compensation code is on the
+// main branch (UV_ENCLOSURE_COMP_ENABLED / UV_ENCLOSURE_TRANSMITTANCE /
+// UV_ENCLOSURE_UVI_OFFSET / UV_THRESHOLDS_CALIBRATED_OPEN_AIR).
 
 // -----------------------------------------------------------------------------
 // UV FILTERING
@@ -98,7 +80,7 @@ const int NUM_GAMES = 3;
 // Game names (shown on display)
 const char* const GAME_NAMES[NUM_GAMES] = {
   "BOKTAI 1",
-  "BOKTAI 2", 
+  "BOKTAI 2",
   "BOKTAI 3"
 };
 
@@ -127,19 +109,17 @@ const float BOKTAI_3_UV_SATURATION = 13.100;
 // -----------------------------------------------------------------------------
 // BATTERY MONITORING
 // -----------------------------------------------------------------------------
-#if defined(BOARD_LILYGO_T_QT_PRO)
-// The T-QT Pro has a built-in battery voltage divider (2:1) on GPIO4.
+// The Mini E-Paper S3 has a built-in battery voltage divider (2:1) on GPIO2.
 // No external wiring is needed.
+//
+// PIN CONFLICT: LilyGO's vendor board header (lib/GxEPD/src/boards.h) defines
+// ADC_PIN as GPIO2, while the product-page pinout image labels the battery ADC
+// as IO43. GPIO43 is U0TXD and has no ADC channel on the ESP32-S3 (ADC1 is
+// GPIO1-10, ADC2 is GPIO11-20), so it cannot be read with analogRead() and the
+// image is taken to be wrong. If battery readings are implausible, this is the
+// first thing to check against your board revision.
 const bool BATTERY_SENSE_ENABLED = true;
-const int BAT_PIN = 4;       // GPIO4 - built-in battery voltage divider
-#else
-// NOTE: The XIAO ESP32S3 does NOT have built-in battery voltage monitoring!
-// You must add a voltage divider (2x 100K resistors) from BAT+ to GND with
-// the midpoint connected to BAT_PIN. Without this, battery % is unavailable.
-// Safe default is disabled until the divider is wired.
-const bool BATTERY_SENSE_ENABLED = false;
-const int BAT_PIN = 2;       // D1/A1 (GPIO2) - connect to voltage divider midpoint
-#endif
+const int BAT_PIN = 2;       // GPIO2 - built-in battery voltage divider
 const float VOLT_MIN = 3.3;  // 0% Battery
 const float VOLT_MAX = 4.2;  // 100% Battery (must be > VOLT_MIN)
 const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
@@ -149,18 +129,13 @@ const unsigned long BATTERY_SAMPLE_MS = 1000;  // Battery update interval
 // Adjust if battery % is wrong at full charge:
 //   - If % too LOW:  increase this value
 //   - If % too HIGH: decrease this value
-#if defined(BOARD_LILYGO_T_QT_PRO)
 const float VOLT_DIVIDER_MULT = 2.00;  // Built-in divider is 2:1
-#else
-// Default 2.20 compensates for typical ADC/resistor variance on the XIAO build
-const float VOLT_DIVIDER_MULT = 2.20;
-#endif
 
 // -----------------------------------------------------------------------------
 // LOW-VOLTAGE CUTOFF (requires battery sense divider)
 // -----------------------------------------------------------------------------
 // Keep disabled by default; only enable after battery sensing is verified.
-const bool BATTERY_CUTOFF_ENABLED = false;
+const bool BATTERY_CUTOFF_ENABLED = true;
 const float VOLT_CUTOFF = VOLT_MIN;  // Cutoff threshold under load
 const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 
@@ -169,61 +144,99 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 // =============================================================================
 
 // -----------------------------------------------------------------------------
-// POWER BUTTON
+// BUTTONS
 // -----------------------------------------------------------------------------
-#if defined(BOARD_LILYGO_T_QT_PRO)
-// T-QT Pro built-in buttons. Only GPIO0 (left button) can wake the ESP32-S3
-// from deep sleep, so it must be the power button (hold 2s to sleep/wake).
-// Tap directions: right button advances to the next screen, left button
-// goes back. Adjust the *_TAP_STEP values to change this.
-const int BUTTON_PIN = 0;     // BTN_L (GPIO0) - power; tap = previous screen
+// The board's 3-way tactile switch on the top edge: press = GPIO0,
+// left = GPIO3, right = GPIO4. All three are RTC-capable pads, but only the
+// power button can wake the ESP32-S3 from deep sleep, so the center press
+// (GPIO0) takes that role: hold 2s to sleep/wake.
+//
+// GPIO0 is also the boot/download button. That is why the vendor's flash
+// instructions are "hold the button while plugging in USB" — it is the same
+// switch, and holding it at reset enters download mode instead of running.
+//
+// Tap directions: center or right advances to the next screen, left goes back.
+// Adjust the *_TAP_STEP values to change this.
+const int BUTTON_PIN = 0;     // Center press (GPIO0) - power; tap = next screen
+const int BUTTON_TAP_STEP = 1;
+
 const bool BUTTON2_ENABLED = true;
-const int BUTTON2_PIN = 47;   // BTN_R (GPIO47) - tap = next screen
-// Screens cycled per tap (+1 = forward, -1 = backward)
-const int BUTTON_TAP_STEP = -1;
+const int BUTTON2_PIN = 4;    // Right (GPIO4) - tap = next screen
 const int BUTTON2_TAP_STEP = 1;
-#else
-// D0 (GPIO1) supports RTC wake-up from deep sleep on XIAO ESP32S3.
-const int BUTTON_PIN = 1;    // D0 (GPIO1)
-const int BUTTON_TAP_STEP = 1;  // Single button always advances forward
-// No second button on the XIAO build.
-const bool BUTTON2_ENABLED = false;
-const int BUTTON2_PIN = -1;
-const int BUTTON2_TAP_STEP = 1;
-#endif
+
+const bool BUTTON3_ENABLED = true;
+const int BUTTON3_PIN = 3;    // Left (GPIO3) - tap = previous screen
+const int BUTTON3_TAP_STEP = -1;
+
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
 
 // -----------------------------------------------------------------------------
-// DISPLAY / I2C
+// E-PAPER DISPLAY
 // -----------------------------------------------------------------------------
-#if defined(BOARD_LILYGO_T_QT_PRO)
-// LTR390 I2C on the Qwiic connector (Adafruit's STEMMA QT LTR390 plugs
-// straight in, no soldering). NOTE: the board silkscreen/pinout image swaps
-// these labels; the schematic -- and working I2C -- is SDA = GPIO43,
-// SCL = GPIO44.
+// Fixed board wiring for the built-in GDEW0102T4 panel.
+const int EPD_MOSI_PIN = 15;
+const int EPD_MISO_PIN = -1;   // Panel is write-only
+const int EPD_SCLK_PIN = 14;
+const int EPD_CS_PIN = 13;
+const int EPD_DC_PIN = 12;
+const int EPD_RST_PIN = 11;
+const int EPD_BUSY_PIN = 10;
+
+// Panel power rail enable.
 //
-// Solder-pad alternative: set SDA = 33 and SCL = 34 to use the IO33/IO34
-// pads instead. Pull-ups are then required on both lines; the Adafruit
-// LTR390 breakout has them on board.
-const int I2C_SDA_PIN = 43;               // Qwiic pin 3 (U0TXD/GPIO43)
-const int I2C_SCL_PIN = 44;               // Qwiic pin 4 (U0RXD/GPIO44)
-// Built-in GC9107 TFT. SPI pins are set in TQTDisplay.h (they are fixed
-// board wiring); only the backlight is managed here.
-const int TFT_BACKLIGHT_PIN = 10;         // Active LOW
-// 0-3. Rotates the UI on the square screen if your case orientation differs.
-const uint8_t TQT_DISPLAY_ROTATION = 0;
-#else
-const int I2C_SDA_PIN = 5;                // D4 (GPIO5)
-const int I2C_SCL_PIN = 6;                // D5 (GPIO6)
-const uint8_t DISPLAY_I2C_ADDR = 0x3C;   // Some SSD1306 modules use 0x3D
-#endif
+// PIN CONFLICT: LilyGO's vendor board header defines EPD_POWER_ENABLE as
+// GPIO42 (and GPIO21 as an unrelated MOTOR pin, broken out on the header),
+// while the product-page pinout image labels the display POWER pin as 21. The
+// vendor header is what LilyGO's own working examples and shipped firmware
+// use, so GPIO42 is the default. If the panel stays blank with no other
+// symptom, try 21 here first.
+//
+// Note: the firmware latches this pin off through deep sleep with
+// gpio_hold_en() + gpio_deep_sleep_hold_en(), which is the correct mechanism
+// for a digital-only pad like GPIO42. If you switch it to an RTC pad (GPIO0-21,
+// including 21) the latch may not survive deep sleep and the rail could stay
+// powered. That is harmless here — the panel is hibernated first, so it draws
+// about 1uA either way.
+const int EPD_POWER_PIN = 42;
+const bool EPD_POWER_ACTIVE_HIGH = true;
+
+// Panel rotation. The 128-pixel-wide UI only fits across the panel's long
+// axis, so only the landscape rotations are usable: 1 or 3 (they are 180
+// degrees apart). Pick whichever matches your case orientation.
+const uint8_t EPAPER_DISPLAY_ROTATION = 1;
+
+// Minimum time between panel refreshes. E-paper refreshes take hundreds of
+// milliseconds and the panel wears with each one, so the UI cannot be redrawn
+// as freely as an OLED. Frames that arrive sooner are held and the newest one
+// is pushed when the interval elapses; frames identical to what is already on
+// screen are skipped entirely. Lower = more responsive but more panel wear.
+const unsigned long EPAPER_MIN_REFRESH_MS = 1500;
+
+// Repeated partial refreshes leave faint ghosting behind. Every Nth refresh is
+// promoted to a full refresh (slower, flashes black/white) to clear it.
+// 0 disables full refreshes entirely.
+const uint16_t EPAPER_FULL_REFRESH_EVERY = 30;
+
+// -----------------------------------------------------------------------------
+// I2C (LTR390 UV SENSOR)
+// -----------------------------------------------------------------------------
+// The board has no Qwiic/STEMMA connector, so the LTR390 breakout is wired to
+// the IO7/IO8 header pads (plus 3v3 and GND). Both lines need pull-ups; the
+// Adafruit LTR390 breakout has them on board.
+const int I2C_SDA_PIN = 7;                // IO7 pad
+const int I2C_SCL_PIN = 8;                // IO8 pad
 
 // -----------------------------------------------------------------------------
 // DISPLAY SCREENSAVER
 // -----------------------------------------------------------------------------
-// After SCREENSAVER_TIME minutes of no button activity, show a bouncing
-// "Ojo del Sol" screensaver.
+// After SCREENSAVER_TIME minutes of no button activity, show the "Ojo del Sol"
+// screensaver.
+//
+// On e-paper the screensaver is drawn once, centered, and then the panel is put
+// into hibernation with the image retained — there is no bouncing animation.
+// Animating would refresh the panel continuously for no benefit: e-paper has no
+// burn-in to avoid, and each refresh costs time, power, and panel life.
 const bool SCREENSAVER_ACTIVE = true;
 const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (equivalent to SCREENSAVER_ACTIVE = false)
 
@@ -238,17 +251,14 @@ const bool GBA_LINK_ENABLED = true;
 // Framed 3-wire protocol:
 // - SC = frame phase line
 // - SD/SO = 2-bit payload pair
-#if defined(BOARD_LILYGO_T_QT_PRO)
-// Uses the solder pads next to the GND pad on the board edge. Other exposed
-// pads (IO33-IO39, IO48) also work if these are inconvenient for your build.
+//
+// Uses the IO16/IO17/IO18 header pads (GND is available on the same headers).
+// Other exposed pads (IO5, IO6, IO9, IO17, IO18, IO21) also work if these are
+// inconvenient for your build; avoid IO7/IO8 (I2C) and the SD card pads
+// (IO38-IO41).
 const int GBA_PIN_SC = 16;  // IO16 pad - frame phase (SC)
 const int GBA_PIN_SD = 17;  // IO17 pad - payload bit 1 (SD)
 const int GBA_PIN_SO = 18;  // IO18 pad - payload bit 0 (SO)
-#else
-const int GBA_PIN_SC = 44;  // D7 (GPIO44) - frame phase (SC)
-const int GBA_PIN_SD = 7;   // D8 (GPIO7)  - payload bit 1 (SD)
-const int GBA_PIN_SO = 8;   // D9 (GPIO8)  - payload bit 0 (SO)
-#endif
 // Per-phase hold time. A full 4-bit value takes two phases.
 // Example: 5ms => one phase every 5ms, full value refresh about every 10ms.
 const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
@@ -260,7 +270,7 @@ const unsigned long GBA_LINK_FRAME_TOGGLE_MS = 5;
 // 0 = Incremental: uses HID_BUTTON_DEC/INC to step the emulator meter.
 //     (BLE transport also supports clamp+refill resync behavior.)
 // 1 = Single Analog: maps bar count to a proportional deflection on one analog axis.
-const uint8_t HID_CONTROL_MODE = 0;
+const uint8_t HID_CONTROL_MODE = 1;
 
 // Workaround: mGBA uses 10 steps for Boktai 1 even though it has 8 bars.
 // Set false if mGBA is fixed to use 8 steps.
@@ -322,9 +332,9 @@ const bool USB_HID_ENABLED = true;
 // =============================================================================
 // Enables Serial debug logging (115200 baud) for startup diagnostics,
 // device-button press events, and any enabled periodic debug streams below.
-const bool DEBUG_SERIAL = false;
+const bool DEBUG_SERIAL = true;
 // Periodic Serial debug stream controls. These only apply when DEBUG_SERIAL = true.
-const bool DEBUG_SERIAL_BATTERY = true;
+const bool DEBUG_SERIAL_BATTERY = false;
 const bool DEBUG_SERIAL_UV = true;
 
 #endif

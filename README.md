@@ -49,6 +49,33 @@ Prof9's original code is released under the MIT License — see
 
 ----------------------------------------------------------------------
 
+## ⚡ Branch: LilyGO Mini E-Paper S3 only
+
+> This branch (`lilygo-mini-epaper-s3`) supports **one board: the
+> [LilyGO Mini E-Paper S3](https://lilygo.cc/en-us/products/mini-e-paper-core)**
+> (ESP32-S3, built-in 1.02" GDEW0102T4 e-paper panel). The Seeed XIAO
+> ESP32S3 and LilyGO T-QT Pro builds — and the board-selection switch in
+> `config.h` — are on `main`.
+>
+> **Also removed on this branch:** UV enclosure compensation. This build runs
+> the LTR390 exposed (no window over the sensor), so there is no transmission
+> loss to model. If you need it, it lives on `main`.
+>
+> **Status: untested on real hardware.** The firmware compiles clean and the
+> pin map follows LilyGO's own board header, but nothing here has been run on
+> an actual unit. Two vendor documentation conflicts to be aware of before you
+> start troubleshooting — both are one-line changes in `config.h`:
+>
+> | Setting | This branch uses | Product-page pinout image says | Why |
+> |---------|------------------|-------------------------------|-----|
+> | `EPD_POWER_PIN` (panel rail enable) | `42` | `21` | LilyGO's `boards.h` (what their shipped examples use) says 42, and labels 21 as an unrelated `MOTOR` pin that the header breaks out |
+> | `BAT_PIN` (battery ADC) | `2` | `43` | GPIO43 is U0TXD and has **no ADC channel** on the ESP32-S3 (ADC1 = GPIO1–10, ADC2 = GPIO11–20), so it cannot be read with `analogRead()` |
+>
+> If the panel stays blank with no other symptom, try `EPD_POWER_PIN = 21`
+> first. Please report results either way via a GitHub issue.
+
+----------------------------------------------------------------------
+
 ## Quick Start
 
 **Recommended setup:** Incremental Mode (`HID_CONTROL_MODE = 0`) with mGBA libretro core (RetroArch), over either Bluetooth or USB XInput
@@ -59,13 +86,13 @@ Prof9's original code is released under the MIT License — see
 4. Pair the device as a Bluetooth controller in your OS
 5. In mGBA (libretro), map **L3** to solar sensor decrease and **R3** to increase
 6. Power on: hold button 2 seconds
-7. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the **XInput** screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
+7. Tap the switch left/right to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the **XInput** screen to view UV raw, UVI, smoothed UVI, ADC avg, and battery voltage.
 8. Point sensor toward the sky — the device syncs the in-game meter automatically
-9. Hold button 2 seconds on a game screen to sleep. On the **XInput** screen, hold 2 seconds to enter CDC mode (USB serial / firmware upload).
+9. Hold the center press 2 seconds on a game screen to sleep. On the **XInput** screen, hold 2 seconds to enter CDC mode (USB serial / firmware upload).
 
 **Important:** Only wake the device once you are in-game. The controller inputs it sends (button presses, stick deflections) may cause unwanted behavior in menus or other apps. When possible, put the device to sleep (hold 2s) when you are not actively playing a Boktai game.
 
-**Important:** Placing the sensor behind standard glass or plastic blocks UV light. Use the `UV_ENCLOSURE_*` settings in `config.h` to compensate for your enclosure window. Strongly UV-blocking materials can still reduce usable range. The default transmittance (0.833) is currently a very quick and dirty calibration for these boxes: https://a.co/d/092sVvLT — adjust if you use a different enclosure.
+**Important:** This branch expects the LTR390 to be **exposed** — mounted through an open aperture, not behind a case window. Standard glass and most plastics block 90%+ of UV, and the compensation pass that models a window as transmission loss is not present here (see the branch banner above). Keep the sensor uncovered.
 
 ----------------------------------------------------------------------
 
@@ -107,7 +134,7 @@ As an alternative, set `USB_HID_ENABLED = false` to have the firmware boot direc
 
 ### 3. GBA Link Cable (Best Option for Flash Carts)
 
-This outputs a framed 3-wire value (SC + SD + SO) for use with a physical GBA via link cable. Supported on both boards (on the T-QT Pro it uses the board-edge solder pads IO16/IO17/IO18).
+This outputs a framed 3-wire value (SC + SD + SO) for use with a physical GBA via link cable. On the Mini E-Paper S3 it uses the IO16/IO17/IO18 header pads.
 
 **Requirements:**
 - Use the updated ROM hack IPS patches in this repo's `GBA Link Patches/` folder (`Source/` contains the ASM sources). Many thanks to Prof9 for the original proof-of-concept code!
@@ -120,77 +147,51 @@ This outputs a framed 3-wire value (SC + SD + SO) for use with a physical GBA vi
 **Limitation:** Boktai's normal link-cable modes (e.g., multiplayer) are **not compatible** with this and may never be. To use multiplayer alongside the Ojo del Sol, you'll need an emulator with link support (I've contacted Pizza Boy A Pro and Linkboy devs — TBD).
 
 ### 4. Display Only / Manual Entry (Not Recommended)
-Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method above.
+Read the bar count from the screen and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method above.
 
-**Note:** The screen is difficult to read in direct sunlight unless you shade it, so the display is really more for calibration and occasional reference.
+**Note:** E-paper is the one display in this project that is genuinely readable in direct sunlight, so manual entry is more viable on this board than on the OLED/TFT builds. It still lags the other outputs by up to `EPAPER_MIN_REFRESH_MS` (default 1500ms).
 
 ----------------------------------------------------------------------
 
 ## Hardware
 
-Two boards are supported. Select yours at the top of `config.h` (`BOARD_SEEED_XIAO_ESP32S3` is the default; uncomment `BOARD_LILYGO_T_QT_PRO` instead for the T-QT Pro, which is currently experimental/untested — see Option B below).
-
-### Option A: Seeed XIAO ESP32S3 (original build)
+The [LilyGO Mini E-Paper S3](https://lilygo.cc/en-us/products/mini-e-paper-core) has a built-in 1.02" 80x128 GDEW0102T4 e-paper panel, a 3-way tactile switch, a plastic shell, battery charging, and battery voltage sensing — so the only wiring needed is the LTR390 and a battery.
 
 **Components:**
-- Seeed XIAO ESP32S3 (built-in LiPo charging)
-- Adafruit LTR390 UV Sensor (I2C)
-- SSD1306 128x64 OLED Display (I2C)
-- Tactile push button (power/game select)
-- 3.7V LiPo battery (300mAh works well; larger capacity is optional but be mindful of your case size)
-- 2x 100K ohm resistors (for battery monitoring — optional but recommended)
+- LilyGO Mini E-Paper S3 (ESP32-S3-FN4R2 — 4MB flash, 2MB PSRAM)
+- Adafruit LTR390 UV Sensor (I2C) — soldered to the IO7/IO8 header pads (the board has no Qwiic/STEMMA connector)
+- 3.7V LiPo battery (the shell has a battery bay; use the board's battery connector)
 
-### Option B: LilyGO T-QT Pro (minimal-wiring build) — EXPERIMENTAL / UNTESTED
+**Why e-paper suits this project:** the screen is *more* readable in direct sunlight, not less — which is exactly where this device gets used. It also holds its image with zero power, so the panel is put to sleep whenever the content is not changing.
 
-> **Warning:** The T-QT Pro build is currently **untested on real hardware** and should be considered experimental. Pin assignments follow LilyGO's official pinmap and schematic, but nothing below has been verified on an actual unit yet. If you try it, expect to troubleshoot — and please report results (working or not) via a GitHub issue.
-
-The [LilyGO T-QT Pro](https://github.com/Xinyuan-LilyGO/T-QT) has a built-in 0.85" 128x128 GC9107 color TFT, two buttons, battery charging, and battery voltage sensing — so the only wiring needed is the LTR390 and a battery.
-
-**Components:**
-- LilyGO T-QT Pro (ESP32-S3)
-- Adafruit LTR390 UV Sensor (I2C) — connects to the T-QT's Qwiic connector; Adafruit's STEMMA QT version plugs straight in with a Qwiic/STEMMA QT cable, no soldering
-- 3.7V LiPo battery (solder to the battery pads or use the connector, depending on your unit)
-
-**T-QT Pro notes:**
-- If you wire to the Qwiic connector manually instead of using a cable: SDA = GPIO43, SCL = GPIO44. (Beware: the pinout image and board silkscreen swap the Qwiic SDA/SCL labels; SDA = GPIO43, SCL = GPIO44 matches the schematic and actually works — [details](https://github.com/Xinyuan-LilyGO/T-QT/issues/17).)
-- **Solder-pad sensor option:** set `I2C_SDA_PIN = 33` and `I2C_SCL_PIN = 34` in `config.h` to wire the sensor to the IO33/IO34 pads instead, freeing the Qwiic connector. I2C then needs pull-ups on SDA/SCL; the Adafruit LTR390 breakout includes 10K pull-ups on board, so no extra parts are needed with it.
-- GBA link output is supported via the board-edge solder pads: IO16 (SC), IO17 (SD), IO18 (SO), plus the adjacent GND pad. See [GBA Link Cable Wiring](#gba-link-cable-wiring-optional).
-- Battery sensing is built in (2:1 divider on GPIO4) and enabled by default; no resistors needed.
-- **Right button (GPIO47)** advances to the next screen (BOKTAI 1 → 2 → 3 → XInput). **Left button (GPIO0)** is the power button (hold 2s) — it is the only button that can wake the board from deep sleep — and a tap on it cycles screens backward.
-- The UI renders as a 128x64 region centered on the square screen (top/bottom letterboxed). Set `TQT_DISPLAY_ROTATION` in `config.h` if your case orientation needs the screen flipped.
+**Board notes:**
+- The UI renders as a 128x64 region centered on the 128x80 landscape panel (8 blank rows top and bottom). Set `EPAPER_DISPLAY_ROTATION` in `config.h` to `1` or `3` (the two landscape orientations, 180° apart) to match your case orientation. Portrait rotations (`0`/`2`) are not usable — the 128-pixel-wide UI does not fit across the panel's short axis.
+- Battery sensing is built in (2:1 divider, `BAT_PIN = 2`) and enabled by default; no resistors needed.
+- GBA link output uses the IO16 (SC), IO17 (SD), IO18 (SO) header pads plus a GND pad. See [GBA Link Cable Wiring](#gba-link-cable-wiring-optional).
+- The microSD slot (IO38–IO41) is unused by this firmware. Avoid those pins if you repurpose headers.
+- **Refresh behavior:** e-paper refreshes take hundreds of milliseconds and the panel wears with each one, so the firmware never redraws as freely as an OLED. Frames identical to what is already on screen are skipped, updates are rate-limited to `EPAPER_MIN_REFRESH_MS` (default 1500ms), and every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) is promoted to a full refresh to clear accumulated ghosting. Expect the bar count to lag real UV changes by up to about 1.5 seconds on screen — the HID/GBA outputs are **not** rate-limited and still update as fast as the sensor produces data.
 
 ### Wiring
 
-*(XIAO ESP32S3 build only — the T-QT Pro just needs the LTR390 on the Qwiic connector (or the IO33/IO34 pads, see above), a battery, and the GBA link pads below if you use that output.)*
+Only the sensor and battery need wiring. Everything else is on-board.
 
-| Component | Pin | XIAO ESP32S3 | Notes |
-|-----------|-----|--------------|-------|
-| OLED VIN | | 3V3 | 3.3V power |
-| OLED GND | | GND | |
-| LTR390 VIN | | 3V3 | 3.3V power |
-| LTR390 GND | | GND | |
-| OLED + LTR390 SDA | | D4 (GPIO5) | I2C data (configurable via `I2C_SDA_PIN`) |
-| OLED + LTR390 SCL | | D5 (GPIO6) | I2C clock (configurable via `I2C_SCL_PIN`) |
-| Button | Leg A | D0 (GPIO1) | Signal (internal pull-up) |
-| Button | Leg B | GND | |
-| Battery + | | BAT+ (back pad) | Farthest from USB-C |
-| Battery - | | BAT- (back pad) | Closest to USB-C |
+| Component | Mini E-Paper S3 pad | Notes |
+|-----------|---------------------|-------|
+| LTR390 VIN | 3v3 | 3.3V power |
+| LTR390 GND | GND | |
+| LTR390 SDA | IO7 | I2C data (configurable via `I2C_SDA_PIN`) |
+| LTR390 SCL | IO8 | I2C clock (configurable via `I2C_SCL_PIN`) |
+| Battery | on-board battery connector | Shell has a bay for the pack |
 
-### Battery Monitoring (Optional)
+I2C needs pull-ups on SDA/SCL; the Adafruit LTR390 breakout includes 10K pull-ups on board, so no extra parts are needed with it.
 
-The XIAO doesn't expose battery voltage directly. To enable battery percentage display, add a voltage divider:
+**Built-in pins used by the board itself** (do not repurpose): IO10–IO15 and IO42 (e-paper panel), IO0/IO3/IO4 (3-way switch), IO2 (battery ADC), IO38–IO41 (microSD).
 
-```
-BAT+ ----[100K]----+---- D1 (GPIO2)
-                   |
-                 [100K]
-                   |
-GND ---------------+
-```
+### Battery Monitoring
 
-Battery sensing is disabled by default (`BATTERY_SENSE_ENABLED = false`). After wiring the divider, set `BATTERY_SENSE_ENABLED = true` in `config.h` to show battery data.
+Built in — a 2:1 divider on `BAT_PIN = 2`, enabled by default (`BATTERY_SENSE_ENABLED = true`). No external resistors needed.
 
-**Calibration:** If battery % is wrong at full charge, adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if high).
+**Calibration:** If battery % is wrong at full charge, adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if high). If the reading is implausible rather than merely off, see the `BAT_PIN` note in the branch banner above.
 
 ### GBA Link Cable Wiring (Optional)
 
@@ -198,16 +199,7 @@ Only needed if using GBA Link output mode. Recommended: install a real GBA link 
 
 A breakout board such as the [Palmr breakout board](https://github.com/Palmr/gb-link-cable) still works, but the link cable can come loose easily if you intend to move around much. An actual link port is a much more robust solution.
 
-**Recommended Ojo-side link port wiring (XIAO ESP32S3):**
-
-| Ojo Connection | Ojo-side GBA Port Pin Type | Equivalent P1 Breakout Pad | Notes |
-|----------------|----------------------------|----------------------------|-------|
-| D9 (GPIO8) | SI | SO | Payload bit 0 |
-| GND | GND | SI | Shared ground |
-| D8 (GPIO7) | SD | SD | Payload bit 1 |
-| D7 (GPIO44) | SC | SC | Frame phase; toggles every `GBA_LINK_FRAME_TOGGLE_MS` |
-
-**Recommended Ojo-side link port wiring (T-QT Pro):** same as above, using the board-edge solder pads next to the GND pad:
+**Recommended Ojo-side link port wiring (Mini E-Paper S3),** using the header pads:
 
 | Ojo Connection | Ojo-side GBA Port Pin Type | Equivalent P1 Breakout Pad | Notes |
 |----------------|----------------------------|----------------------------|-------|
@@ -215,6 +207,8 @@ A breakout board such as the [Palmr breakout board](https://github.com/Palmr/gb-
 | GND pad | GND | SI | Shared ground |
 | IO17 pad | SD | SD | Payload bit 1 |
 | IO16 pad | SC | SC | Frame phase; toggles every `GBA_LINK_FRAME_TOGGLE_MS` |
+
+Other free header pads (IO5, IO6, IO9, IO21) also work if these are inconvenient; set them via `GBA_PIN_SC`/`GBA_PIN_SD`/`GBA_PIN_SO` in `config.h`. Avoid IO7/IO8 (I2C) and IO38–IO41 (microSD).
 
 Leave the Ojo-side port `SO` and `VDD35` contacts unconnected. If you use a breakout board instead of a port, wire the equivalent P1 breakout pads listed above.
 
@@ -246,7 +240,7 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 - Lower values respond faster but reduce electrical timing margin; higher values are slower but more tolerant.
 
 **Notes:**
-- Keep all signals at 3.3V logic (both supported boards are 3.3V native, so no level shifting is needed)
+- Keep all signals at 3.3V logic (the ESP32-S3 is 3.3V native, so no level shifting is needed)
 - The ESP32 writes data pins (SD, SO) before the phase pin (SC) so the GBA always samples stable data when it detects a phase edge. The GBA-side ASM patches include a consecutive-match check that discards any single-frame misread, adding one frame (~17ms) of latency on real bar changes but eliminating visible glitches.
 
 
@@ -258,36 +252,40 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 
 **Install via Arduino Library Manager:**
 - Adafruit LTR390 Library
-- Adafruit SSD1306 (XIAO build only)
 - Adafruit GFX Library
 - Adafruit BusIO
 - NimBLE-Arduino (by h2zero)
 - Callback (by Tom Stewart)
-- GFX Library for Arduino (by moononournation, a.k.a. Arduino_GFX) — **T-QT Pro build only**; no configuration needed, the display pins are fixed board wiring set in `TQTDisplay.h`
+- GxEPD2 (by Jean-Marc Zingg) — the e-paper driver; no configuration needed, the panel pins are fixed board wiring set in `config.h`
 
 **Install manually (included in repo as ESP32-BLE-CompositeHID-master.zip, or download from GitHub):**
 - ESP32-BLE-CompositeHID: https://github.com/Mystfit/ESP32-BLE-CompositeHID
 
-**Why not TFT_eSPI (which LilyGO's own T-QT samples use)?** TFT_eSPI's last release (2.5.43) crashes in `tft.init()` on the ESP32-S3 under esp32 core 3.x (StoreProhibited panic → boot loop; [known issue](https://github.com/Bodmer/TFT_eSPI/issues/3329)). LilyGO's samples work because they bundle a modified TFT_eSPI and target the older 2.0.x core, but this project requires core 3.x. Arduino_GFX supports the GC9107 natively on current cores.
+**Why GxEPD2 and not the bundled GxEPD from LilyGO's repo?** LilyGO's [Mini-Epaper repo](https://github.com/Xinyuan-LilyGO/LilyGO-Mini-Epaper) vendors the older GxEPD library and targets esp32 core 2.0.x. GxEPD2 is its actively maintained successor, has a native GDEW0102T4/UC8175 driver with fast partial update, works on core 3.x (which this project requires), and installs straight from the Library Manager with no vendored copy to keep in sync.
 
 ### Board Settings (Arduino IDE)
 
 - **Boards Manager URL:** `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
 - **Board package:** esp32 by Espressif Systems
-- **Recommended version:** `3.3.7`
-- **Board:**
-  - XIAO build: **XIAO_ESP32S3**
-  - T-QT Pro build: **ESP32S3 Dev Module** (no T-QT entry exists in the ESP32 core) with these settings — everything not listed stays at its default:
-    - **Flash Size:** 4MB (32Mb) for the common N4R2 variant; 8MB (64Mb) for the N8 variant (chip marking `ESP32-S3FN4R2` = N4R2)
-    - **PSRAM:** QSPI PSRAM (N4R2) or Disabled (N8)
-    - **Partition Scheme:** Huge APP (3MB No OTA/1MB SPIFFS) — the sketch is too large for the default 1.2MB app partition
-    - **Flash Mode:** QIO 80MHz, **CPU Frequency:** 240MHz, **Events/Arduino Run On:** Core 1
-    - USB settings identical to the XIAO build (below)
+- **Recommended version:** `3.3.7` or newer (verified building on `3.3.10`)
+- **Board:** **ESP32S3 Dev Module** (no Mini E-Paper entry exists in the ESP32 core) with these settings — everything not listed stays at its default:
+  - **Flash Size:** 4MB (32Mb) — the S3 variant is `ESP32-S3FN4R2`
+  - **PSRAM:** QSPI PSRAM
+  - **Partition Scheme:** Huge APP (3MB No OTA/1MB SPIFFS) — the sketch is too large for the default 1.2MB app partition
+  - **Flash Mode:** QIO 80MHz, **CPU Frequency:** 240MHz, **Events/Arduino Run On:** Core 1
 - **USB Mode:** USB-OTG (TinyUSB)
 - **USB CDC On Boot:** Enabled (required for CDC mode; normal runtime remains XInput unless you enter CDC mode from the XInput screen or set `USB_HID_ENABLED = false`)
 - **Upload Mode:** USB-OTG CDC (TinyUSB) (required for CDC-mode uploads; UART0/Hardware CDC will fail to auto-connect in this setup)
 - If CDC UI appears inconsistent/garbled after failed uploads, do one upload with **Erase All Flash Before Sketch Upload = Enabled**, then set it back to Disabled.
-- Remember to select your board at the top of `config.h` as well (`BOARD_SEEED_XIAO_ESP32S3` or `BOARD_LILYGO_T_QT_PRO`).
+- **To force download mode** (if an upload will not start): hold the switch's center press (GPIO0 — it is also the boot button) while plugging in USB.
+
+For reference, the exact command this branch was verified building with:
+
+```
+arduino-cli compile \
+  -b esp32:esp32:esp32s3:USBMode=default,CDCOnBoot=cdc,FlashSize=4M,PSRAM=enabled,PartitionScheme=huge_app \
+  BoktaiSensor.ino
+```
 
 ----------------------------------------------------------------------
 
@@ -295,19 +293,29 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 
 ### Button Controls
 
+The board has a single 3-way tactile switch on the top edge: **left (GPIO3)**, **center press (GPIO0)**, **right (GPIO4)**.
+
+| Direction | Tap | Hold 2s |
+|-----------|-----|---------|
+| **Center press** (GPIO0) | Next screen | Power on/off, CDC mode — see below |
+| **Right** (GPIO4) | Next screen | — |
+| **Left** (GPIO3) | Previous screen | — |
+
+Tap directions are configurable via `BUTTON_TAP_STEP` / `BUTTON2_TAP_STEP` / `BUTTON3_TAP_STEP` in config.h.
+
 **When device is ON:**
 - **Tap:** Cycle screens (BOKTAI 1 → 2 → 3 → XInput → 1...). The XInput screen is always present and doubles as the diagnostics screen.
-- **Hold 2s on a game screen:** Power OFF (deep sleep, ~10uA)
-- **Hold 2s on the XInput screen:** Restart into CDC mode for USB serial output and firmware upload
-- **Hold 2s while in CDC mode:** Exit CDC mode and sleep (next wake returns to XInput mode)
+- **Hold center 2s on a game screen:** Power OFF (deep sleep, ~10uA)
+- **Hold center 2s on the XInput screen:** Restart into CDC mode for USB serial output and firmware upload
+- **Hold center 2s while in CDC mode:** Exit CDC mode and sleep (next wake returns to XInput mode)
 - If screensaver is active, first tap wakes the screen
 
 **When waking from sleep:**
-- **Hold 2s:** Power ON
-- **Short press/tap:** Immediately shows "Hold 2s to power on"
+- **Hold center 2s:** Power ON
+- **Short press/tap on center:** Immediately shows "Hold 2s to power on"
 - If there is no button activity for 10 seconds, it returns to sleep
 
-**T-QT Pro:** The **right button** advances to the next screen when the device is on; it has no long-press action and cannot wake the device from sleep (hardware limitation — only GPIO0 is wake-capable). The **left button (GPIO0)** handles everything else described above (hold 2s for power/CDC), except its tap cycles screens *backward* instead of forward. Directions are configurable via `BUTTON_TAP_STEP`/`BUTTON2_TAP_STEP` in config.h.
+Only the **center press** can wake the device from deep sleep, so it is the power button. Left and right do nothing while asleep — this is why they have no long-press action.
 
 ### HID Control Mode Details (Bluetooth + USB)
 
@@ -340,7 +348,9 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 
 ### Screensaver
 
-After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan). Alternatively, set `SCREENSAVER_ACTIVE = false` to disable it without changing the time value. The status row appears only when battery data is available and/or BLE is actively connected or pairing.
+After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a centered "Ojo del Sol" logo and the panel is put into hibernation (~1µA) with the image retained. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable, or `SCREENSAVER_ACTIVE = false` to disable it without changing the time value. The status row appears only when battery data is available and/or BLE is actively connected or pairing; if either changes while the screensaver is up, it redraws once.
+
+**Unlike the OLED builds on `main`, the logo does not bounce.** Animating it would refresh the panel continuously for no benefit: e-paper has no burn-in to avoid, and each refresh costs time, power, and panel life. Here the screensaver is the *low-power* state rather than a burn-in guard — sensing, BLE, and GBA link output all keep running while the panel sleeps.
 
 ----------------------------------------------------------------------
 
@@ -382,34 +392,13 @@ Bars    Boktai 1    Boktai 2 & 3
 
 Set `AUTO_MODE = false` to use per-game `BOKTAI_1/2/3_UV_MIN` and `BOKTAI_1/2/3_UV_SATURATION` values (`BOKTAI_1_UV_MIN`, `BOKTAI_1_UV_SATURATION`, etc.). Bar thresholds follow the same non-linear cartridge curve as AUTO mode, but each game can use a different UV range.
 
-### Transparent Enclosure Compensation
+### Enclosure Compensation — not on this branch
 
-If the sensor is behind a transparent window, model that window as transmission loss:
+This build runs the LTR390 exposed, so all threshold values in config.h (`AUTO_UV_MIN`, `AUTO_UV_SATURATION`, and the per-game `BOKTAI_*_UV_MIN`/`BOKTAI_*_UV_SATURATION` values) are plain open-air UVI readings and are compared against the sensor reading directly. There is no window-transmission correction step.
 
-```c
-const bool UV_ENCLOSURE_COMP_ENABLED = true;
-const float UV_ENCLOSURE_TRANSMITTANCE = 0.42; // 42% UV passes through the window
-const float UV_ENCLOSURE_UVI_OFFSET = 0.000;     // Optional bias correction
-```
+If you do put the sensor behind a window, the compensation code is on `main` (`UV_ENCLOSURE_COMP_ENABLED`, `UV_ENCLOSURE_TRANSMITTANCE`, `UV_ENCLOSURE_UVI_OFFSET`, `UV_THRESHOLDS_CALIBRATED_OPEN_AIR`). See also the [UV Blocking Warning](#uv-blocking-warning) below — compensation corrects scale loss, it cannot recover signal that never reached the sensor.
 
-The current repo default in `config.h` is `0.833`, based on the enclosure linked above; expect to recalibrate this value for your own case/window material.
-
-Firmware applies compensation once after raw-to-UVI conversion:
-
-`corrected_uvi = max(0, (measured_uvi - offset) / transmittance)`
-
-Quick calibration:
-1. Temporarily set `UV_ENCLOSURE_COMP_ENABLED = false` while collecting calibration readings.
-2. Take side-by-side readings at the same time/angle: one sensor open-air, one in-box.
-3. Compute `in_box_uvi / open_air_uvi` across several samples.
-4. Use the median ratio as `UV_ENCLOSURE_TRANSMITTANCE`.
-5. Re-enable compensation (`UV_ENCLOSURE_COMP_ENABLED = true`).
-
-**Threshold calibration mode:** By default (`UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true`), all threshold values in config.h (`AUTO_UV_MIN`, `AUTO_UV_SATURATION`, and the per-game `BOKTAI_*_UV_MIN`/`BOKTAI_*_UV_SATURATION` values) are assumed to be open-air UVI values — set while the case is open or without an enclosure. The firmware compensates sensor readings to open-air equivalent before comparing against them. Set `UV_THRESHOLDS_CALIBRATED_OPEN_AIR = false` if you instead calibrated thresholds with the sensor inside the closed enclosure; bar comparison will then use the raw (uncompensated) reading directly.
-
-For open-air builds (sensor always exposed when device is in use): set `UV_ENCLOSURE_COMP_ENABLED = false` and leave `UV_THRESHOLDS_CALIBRATED_OPEN_AIR = true`. Compensation is a no-op so raw equals compensated.
-
-Note: On the XInput screen, `UVI` is the measured (pre-compensation) value and `UVI comp'ed` is the value used for bar calculation (post-compensation; post-smoothing if `UVI_SMOOTHING_ENABLED = true`).
+Note: On the XInput screen, `UVI` is the value straight from the sensor and `UVI smoothed` is the value used for bar calculation. They are identical unless `UVI_SMOOTHING_ENABLED = true`.
 
 ### Stability Tuning
 
@@ -431,22 +420,28 @@ If the bar display feels jumpy:
 
 ### LTR390 UV Sensor
 - Reference sensitivity: 2300 counts/UVI at 18x gain, 400ms integration
-- Formula (measured): `UVI = raw / 2300` (at our settings: gain 18x, 20-bit/400ms, 500ms rate)
-- Formula (corrected, optional enclosure compensation): `UVI = max(0, (measured_uvi - offset) / transmittance)`
+- Formula: `UVI = raw / 2300` (at our settings: gain 18x, 20-bit/400ms, 500ms rate). The sensor is exposed on this branch, so no enclosure correction is applied on top.
 - Peak response: 300-350nm (UV-A/UV-B)
 - **Not inverted**: higher values = more UV
 
+### E-Paper Panel (GDEW0102T4 / UC8175)
+- 80x128 native (portrait), driven at rotation 1 or 3 for a 128x80 landscape UI
+- The UI is authored at 128x64 monochrome and rendered into an offscreen 1-bit canvas (`EPaperDisplay.h`, a `GFXcanvas1` subclass mirroring the `Adafruit_SSD1306` API the sketch uses), then pushed centered onto the panel. Set canvas pixels become **black ink** — the inverse of the OLED builds — so the artwork reads correctly on paper.
+- Pushes are skipped when the new frame is pixel-identical to what is already on the panel, so repeated identical draws (e.g. the "Hold 2s to power on" prompt redrawing while the button is held) cost nothing
+- Partial (differential) refresh is used by default, with a full refresh every `EPAPER_FULL_REFRESH_EVERY` pushes to clear ghosting. A full refresh is also forced after any panel hibernate or power cut, because the controller loses the previous-image RAM that a differential refresh diffs against.
+
 ### Power Management
-- Wire the LTR390 directly to `3V3`, same as the OLED
+- Wire the LTR390 directly to `3v3`
 - Cutting the LTR390 breakout LED trace is recommended because the LED is hardwired to VIN
-- Battery sensing and low-voltage cutoff are disabled by default; enable after wiring and validating the battery divider (`BATTERY_SENSE_ENABLED`, `BATTERY_CUTOFF_ENABLED`)
+- Battery sensing and low-voltage cutoff are both enabled by default on this board (the divider is built in). Validate the reading on the XInput screen before trusting the cutoff.
 - Battery sampling/cutoff checks run on a timed loop and are not dependent on UV "new data" events
-- OLED uses Display OFF + Charge Pump OFF commands
-- On wake, firmware explicitly re-enables the OLED charge pump/display before drawing
+- **Screensaver = low-power idle:** the panel hibernates (~1µA) with its image retained while sensing, BLE, and GBA link output keep running
+- **Before deep sleep** the firmware clears the canvas and pushes that blank frame *before* cutting the panel rail. E-paper retains its last image with no power, so skipping this would leave the UI visible for the whole sleep.
+- The panel rail enable pin is latched off through deep sleep (`gpio_hold_en` + `gpio_deep_sleep_hold_en`) and released on wake
 - Deep sleep current: ~10µA (varies with module pull-ups)
 
 ### UV Blocking Warning
-Most glass and many plastics block UV strongly (often 90%+). Compensation can correct scale loss, but it cannot recover signal if too little UV reaches the sensor. Prefer an open aperture, quartz glass, or UV-transparent acrylic.
+Most glass and many plastics block UV strongly (often 90%+). Prefer an open aperture, quartz glass, or UV-transparent acrylic. This branch has no enclosure compensation at all, so anything over the sensor directly scales your readings down.
 
 ----------------------------------------------------------------------
 
@@ -457,42 +452,52 @@ If button presses are being seen, Serial should print `Device button pressed` wh
 1. Set `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud). Serial output is only active in CDC mode — enter CDC mode from the XInput screen (hold 2s), or set `USB_HID_ENABLED = false` to always use CDC.
    - At UVI 6, expect ~13800 raw counts (6 × 2300)
    - If raw = 0, sensor may not be in UV mode
-2. Ensure sensor faces the sky (not blocked by hand/case)
-3. If using an enclosure window, verify `UV_ENCLOSURE_TRANSMITTANCE` and use UV-transparent material
+2. Ensure sensor faces the sky (not blocked by hand/case). This branch has no enclosure compensation — anything over the sensor scales readings down directly.
+3. Check the LTR390 wiring to the IO7/IO8 pads and that the breakout's pull-ups are present
 4. Indoor UV is near zero — test outside
 
-### Battery shows 0%
-XIAO build: you need the voltage divider circuit and `BATTERY_SENSE_ENABLED = true`. Keep battery sensing disabled until the divider is wired. (The T-QT Pro's divider is built in, so this doesn't apply there.)
+### Battery shows 0% or an implausible voltage
+Battery sensing is built in and enabled by default. If the ADC average on the XInput screen looks like noise or a stuck value rather than a plausible voltage, `BAT_PIN` may be wrong for your board revision — see the `BAT_PIN` row in the branch banner at the top.
 
 ### Battery % is wrong
 Adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if high).
 
 ### Device powers off quickly
-Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Cutoff is disabled by default; only enable it after battery sensing is wired and validated.
+Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Both battery sensing and cutoff are on by default on this board; if the ADC reading is bad (above) the cutoff can fire spuriously — set `BATTERY_CUTOFF_ENABLED = false` while you sort it out.
 
 ### Device won't wake
-1. Hold button for full 2 seconds
-2. A short press should immediately show the "Hold 2s to power on" prompt
+1. Hold the switch's **center press** for a full 2 seconds. Left/right cannot wake the device — only GPIO0 is wake-capable.
+2. A short center press should immediately show the "Hold 2s to power on" prompt
 3. After 10s of no activity, it returns to sleep
-4. If the display fails to initialize, the device enters deep sleep after about 2 seconds using the normal sleep path (same cleanup and button-release debounce as manual sleep). On the XIAO build, check I2C wiring and `DISPLAY_I2C_ADDR` in config.h (some modules use `0x3D` instead of `0x3C`)
-5. T-QT Pro: only the **left button (GPIO0, next to USB)** can wake the device — the right button does nothing while asleep
+4. If the display fails to initialize, the device enters deep sleep after about 2 seconds using the normal sleep path (same cleanup and button-release debounce as manual sleep)
 
-### Display is blank, mirrored, or inverted after entering CDC mode
-1. Update to the latest firmware (the boot sequence now re-asserts OLED power and canonical panel state after the software restart)
-2. Confirm `Tools > Upload Mode` is set to `USB-OTG CDC (TinyUSB)`
-3. If needed, re-enter CDC mode once (hold 2s on the XInput screen), then upload again
+### Panel is completely blank
+1. First suspect `EPD_POWER_PIN` — try `21` instead of the default `42`. See the branch banner at the top for why this is ambiguous.
+2. Set `USB_HID_ENABLED = false` temporarily and watch the serial monitor. The firmware prints a boot banner and a marker after each init stage (`Initializing display (GxEPD2 / GDEW0102T4)...` then `Display initialized`), so the last line tells you which step failed.
+3. If `Display init failed` prints, `EPaperDisplay::begin()` rejected the panel — check the `EPD_*_PIN` values in config.h against your board.
+4. Remember the device shows a blank panel *on purpose* while asleep. Confirm it is actually powered on (hold center 2s) before treating a white screen as a fault.
+
+### Panel shows a stale screen, faint ghosting, or streaks
+- Ghosting after many partial refreshes is normal for e-paper. Lower `EPAPER_FULL_REFRESH_EVERY` in config.h to clear it more often (at the cost of more visible full-refresh flashing).
+- A stale image that never updates while the device is on usually means pushes are being suppressed. Set `DEBUG_SERIAL = true` and confirm UV data is arriving.
+- The screen intentionally lags: updates are rate-limited to `EPAPER_MIN_REFRESH_MS` (default 1500ms). Lower it for a snappier display and more panel wear. The HID and GBA link outputs are not rate-limited.
+
+### Screen updates feel too slow / too fast
+`EPAPER_MIN_REFRESH_MS` is the floor between panel refreshes. This only affects the *display* — the emulator/GBA outputs always track the sensor as fast as it produces data.
+
+### Display looks wrong after entering CDC mode
+1. Confirm `Tools > Upload Mode` is set to `USB-OTG CDC (TinyUSB)`
+2. The boot sequence forces a full refresh after the software restart, which should clear any partial-refresh artifacts
+3. If needed, re-enter CDC mode once (hold center 2s on the XInput screen), then upload again
 
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
 This was a known compatibility issue between esp32 core `3.3.7` and older versions of NimBLE-Arduino. It is resolved as of NimBLE-Arduino v2.3.9 — update the library via Arduino Library Manager and rebuild.
 
-### T-QT Pro: build fails with `Arduino_GFX_Library.h: No such file or directory`
-Install "GFX Library for Arduino" (by moononournation) via the Library Manager.
+### Build fails with `GxEPD2_BW.h: No such file or directory`
+Install "GxEPD2" (by Jean-Marc Zingg) via the Library Manager.
 
-### T-QT Pro: boot loop / COM port keeps disconnecting and reconnecting
-If you modified the code to use TFT_eSPI: its last release (2.5.43) crashes at `tft.init()` on ESP32-S3 with esp32 core 3.x — this firmware uses Arduino_GFX instead for exactly that reason. Otherwise, set `USB_HID_ENABLED = false` temporarily and watch the serial monitor: the firmware prints a boot banner and a marker after each init stage, so the last line tells you which step crashes.
-
-### T-QT Pro: screen shows garbage, wrong colors, or an offset image
-T-QT units exist with two panel revisions (LilyGO ships separate factory firmware for the newer panel). Arduino_GFX's GC9107 driver is expected to handle the common revision; if your unit misbehaves, try `TQT_DISPLAY_ROTATION` values 0-3 in config.h first, then report it via a GitHub issue — the panel-specific init from LilyGO's [`extras` folder](https://github.com/Xinyuan-LilyGO/T-QT/tree/main/extras) may need porting.
+### Upload won't start / COM port not appearing
+Hold the switch's center press (GPIO0, also the boot button) while plugging in USB to force download mode.
 
 ----------------------------------------------------------------------
 
@@ -510,8 +515,9 @@ T-QT units exist with two panel revisions (LilyGO ships separate factory firmwar
 - **[Kalasoiro](https://github.com/Kalasoiro/esp32s3-tinyusb-xinput)** - XInput TinyUSB reference implementation (included as `esp32s3-tinyusb-xinput-main.zip`)
 - **LanHikariDS** — Additional support via Discord
 - **[Drakodan](https://tasvideos.org/9369S)** — Original cartridge sensor chip identification (Hamamatsu Photonics G5842) and spectral range documentation
+- **[Jean-Marc Zingg](https://github.com/ZinggJM/GxEPD2)** — GxEPD2, the e-paper display library this branch uses
 - [GBATEK Solar Sensor Documentation](https://problemkaputt.de/gbatek.htm)
-- [Seeed XIAO ESP32S3 Wiki](https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/)
+- [LilyGO Mini E-Paper S3 product page](https://lilygo.cc/en-us/products/mini-e-paper-core) and [LilyGO-Mini-Epaper repo](https://github.com/Xinyuan-LilyGO/LilyGO-Mini-Epaper) (source of the pin map)
 - [Adafruit LTR390](https://www.adafruit.com/product/4831)
 
 ----------------------------------------------------------------------

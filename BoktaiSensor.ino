@@ -1,12 +1,8 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include "config.h"
-#if defined(BOARD_LILYGO_T_QT_PRO)
-#include "TQTDisplay.h"
+#include "EPaperDisplay.h"
 #include "driver/gpio.h"
-#else
-#include <Adafruit_SSD1306.h>
-#endif
 #include "Adafruit_LTR390.h"
 #include "esp_sleep.h"
 #include "esp_attr.h"       // RTC_DATA_ATTR
@@ -27,18 +23,12 @@
 #endif
 
 // Display settings
-// The UI is authored at 128x64. On the XIAO build that is the physical
-// SSD1306 OLED; on the T-QT Pro it is a canvas pushed centered onto the
-// 128x128 TFT.
+// The UI is authored at 128x64 monochrome: a canvas pushed centered onto the
+// 128x80 (landscape) e-paper panel. Set pixels become black ink.
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#if defined(BOARD_LILYGO_T_QT_PRO)
-TQTDisplay display(SCREEN_WIDTH, SCREEN_HEIGHT);
+EPaperDisplay display(SCREEN_WIDTH, SCREEN_HEIGHT);
 #define DISPLAY_WHITE 1
-#else
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-#define DISPLAY_WHITE SSD1306_WHITE
-#endif
 bool displayInitialized = false;
 // Icon dimensions (shared by status bar and screensaver)
 const int16_t STATUS_BATT_ICON_W = 20;
@@ -48,17 +38,6 @@ const int16_t STATUS_BT_ICON_H = 10;
 const int16_t STATUS_BT_GAP = 2;
 const int16_t STATUS_TEXT_GAP = 2;
 const int16_t STATUS_RIGHT_MARGIN = 3;
-#if !defined(BOARD_LILYGO_T_QT_PRO)
-const uint8_t SSD1306_CHARGEPUMP_DISABLE = 0x10;
-const uint8_t SSD1306_CHARGEPUMP_ENABLE = 0x14;
-const uint8_t SSD1306_DEACTIVATE_SCROLL_CMD = 0x2E;
-const uint8_t SSD1306_DISPLAYALLON_RESUME_CMD = 0xA4;
-const uint8_t SSD1306_NORMALDISPLAY_CMD = 0xA6;
-const uint8_t SSD1306_SEGREMAP_DEFAULT = 0xA1;
-const uint8_t SSD1306_COMSCANDEC_CMD = 0xC8;
-const uint8_t SSD1306_SETDISPLAYOFFSET_CMD = 0xD3;
-const uint8_t SSD1306_SETSTARTLINE0_CMD = 0x40;
-#endif
 
 // Sensor settings
 Adafruit_LTR390 ltr = Adafruit_LTR390();
@@ -79,10 +58,15 @@ const uint8_t MEAS_RATE_500MS = 0x04;
 unsigned long buttonPressStart = 0;
 bool buttonWasPressed = false;
 
-// Secondary button state (unused when BUTTON2_ENABLED is false)
-unsigned long button2PressStart = 0;
-bool button2WasPressed = false;
-bool button2SuppressShortPress = false;
+// Auxiliary button state. The board's 3-way switch gives two screen-only
+// buttons alongside the power button; each needs its own press tracking.
+struct AuxButtonState {
+  unsigned long pressStart;
+  bool wasPressed;
+  bool suppressShortPress;
+};
+AuxButtonState button2State = { 0, false, false };
+AuxButtonState button3State = { 0, false, false };
 
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
@@ -112,7 +96,6 @@ unsigned long lowBatteryStart = 0;
 const char SCREENSAVER_TEXT[] = "Ojo del Sol";
 const bool SCREENSAVER_ENABLED = SCREENSAVER_ACTIVE && (SCREENSAVER_TIME > 0);
 const unsigned long SCREENSAVER_TIMEOUT_MS = SCREENSAVER_TIME * 60UL * 1000UL;
-const unsigned long SCREENSAVER_MOVE_MS = 60;
 const int16_t SCREENSAVER_IMAGE_W = 24;
 const int16_t SCREENSAVER_IMAGE_H = 24;
 const int16_t SCREENSAVER_IMAGE_TEXT_GAP = 8;
@@ -128,14 +111,14 @@ const uint8_t OJO_DEL_SOL_BITMAP[] PROGMEM = {
   0x00, 0x18, 0x10, 0x00, 0x30, 0x10, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00
 };
 unsigned long lastScreenActivityMs = 0;
-unsigned long lastScreensaverMoveMs = 0;
 bool screensaverActive = false;
 bool screensaverJustExited = false;
+// The screensaver is a single static frame on e-paper, so track whether it has
+// already been pushed for the current layout.
+bool screensaverDrawn = false;
 bool suppressShortPress = false;
 int16_t screensaverX = 0;
 int16_t screensaverY = 0;
-int8_t screensaverDx = 1;
-int8_t screensaverDy = 1;
 int16_t screensaverTextW = 0;
 int16_t screensaverTextH = 0;
 int16_t screensaverTextX1 = 0;
@@ -235,49 +218,22 @@ void updateUsbMeter(int bars, int numBars);
 void logDeviceButtonPress(const char* context);
 void syncRuntimeButtonStateAfterStartup();
 
-#if defined(BOARD_LILYGO_T_QT_PRO)
+// Restore the panel rail and controller if a screensaver hibernation or a
+// previous deep sleep left them down.
 void wakeDisplayHardware() {
-  // Re-enable the backlight (active LOW) and wake the panel if it slept.
-  gpio_hold_dis((gpio_num_t)TFT_BACKLIGHT_PIN);
-  pinMode(TFT_BACKLIGHT_PIN, OUTPUT);
-  digitalWrite(TFT_BACKLIGHT_PIN, LOW);
-  if (display.panelWake()) {
-    display.fillPanelBlack();
+  if (!displayInitialized) {
+    return;
   }
+  display.wakePanel();
 }
 
-// Blank the panel and cut the backlight. The backlight pin is held so it
-// stays off through deep sleep (released again by wakeDisplayHardware).
+// Hibernate the panel and cut its rail ahead of deep sleep. The enable pin is
+// latched so it stays off through sleep (released again by wakePanel()).
+// E-paper keeps its last image with no power, so callers clear the canvas and
+// push it first to leave a blank screen behind.
 void displayPanelOff() {
-  display.panelSleep();
-  digitalWrite(TFT_BACKLIGHT_PIN, HIGH);  // Active LOW: HIGH = off
-  gpio_hold_en((gpio_num_t)TFT_BACKLIGHT_PIN);
+  display.powerDownForSleep();
 }
-#else
-void wakeDisplayHardware() {
-  // Sleep path disables the charge pump; explicitly restore it before drawing.
-  display.ssd1306_command(SSD1306_DEACTIVATE_SCROLL_CMD);
-  display.ssd1306_command(SSD1306_CHARGEPUMP);
-  display.ssd1306_command(SSD1306_CHARGEPUMP_ENABLE);
-  display.ssd1306_command(SSD1306_DISPLAYON);
-  // Re-assert canonical panel mode to recover from occasional restart drift.
-  display.ssd1306_command(SSD1306_DISPLAYALLON_RESUME_CMD);
-  display.ssd1306_command(SSD1306_NORMALDISPLAY_CMD);
-  display.ssd1306_command(SSD1306_SEGREMAP_DEFAULT);
-  display.ssd1306_command(SSD1306_COMSCANDEC_CMD);
-  display.ssd1306_command(SSD1306_SETDISPLAYOFFSET_CMD);
-  display.ssd1306_command(0x00);
-  display.ssd1306_command(SSD1306_SETSTARTLINE0_CMD);
-  delay(2);  // SSD1306 charge pump stabilization
-}
-
-// Turn the panel off and disable the charge pump ahead of deep sleep.
-void displayPanelOff() {
-  display.ssd1306_command(SSD1306_DISPLAYOFF);
-  display.ssd1306_command(SSD1306_CHARGEPUMP);
-  display.ssd1306_command(SSD1306_CHARGEPUMP_DISABLE);
-}
-#endif
 
 // ---------------------------------------------------------------------------
 // USB XInput gamepad helpers
@@ -351,11 +307,11 @@ void exitCdcModeAndSleep() {
   display.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
   display.setCursor((SCREEN_WIDTH - (int16_t)w) / 2, 28);
   display.print(msg);
-  display.display();
+  display.displayNow();
   delay(1000);
 
   display.clearDisplay();
-  display.display();
+  display.displayNow();
   displayPanelOff();
 
   Wire.end();
@@ -386,7 +342,7 @@ void enterCdcMode() {
   display.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
   display.setCursor((SCREEN_WIDTH - (int16_t)w) / 2, 28);
   display.print(msg);
-  display.display();
+  display.displayNow();
   delay(1000);
 
   // Cleanly release I2C before software restart to avoid occasional
@@ -418,7 +374,9 @@ void showHoldPowerOnPrompt() {
     display.print("wake:");
     display.print((int)bootWakeCause);
   }
-  display.display();
+  // Callers re-draw this prompt periodically while the button is held. The
+  // frame is identical each time, so the panel is only actually refreshed once.
+  display.displayNow();
 }
 
 void logDeviceButtonPress(const char* context) {
@@ -492,11 +450,7 @@ void setup() {
       delay(10);
     }
     Serial.println();
-    #if defined(BOARD_LILYGO_T_QT_PRO)
-    Serial.println("Ojo del Sol boot - board: LilyGO T-QT Pro");
-    #else
-    Serial.println("Ojo del Sol boot - board: Seeed XIAO ESP32S3");
-    #endif
+    Serial.println("Ojo del Sol boot - board: LilyGO Mini E-Paper S3");
     // Why did we just boot? A wake cause of 2 (EXT0) immediately after a
     // long-press means deep sleep was entered and the button re-woke it.
     Serial.print("Wake cause: ");
@@ -504,18 +458,25 @@ void setup() {
   }
   initHidPressTiming();
 
-  // Configure power button with internal pull-up (active LOW)
+  // Configure buttons with internal pull-ups (active LOW)
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   if (BUTTON2_ENABLED && BUTTON2_PIN >= 0) {
     pinMode(BUTTON2_PIN, INPUT_PULLUP);
   }
+  if (BUTTON3_ENABLED && BUTTON3_PIN >= 0) {
+    pinMode(BUTTON3_PIN, INPUT_PULLUP);
+  }
   if (serialEnabled) {
     // LOW here on an EXT0 wake means the button was still held at wake time.
-    Serial.print("Button level at boot - BTN_L: ");
+    Serial.print("Button level at boot - PRESS: ");
     Serial.print(digitalRead(BUTTON_PIN));
     if (BUTTON2_ENABLED && BUTTON2_PIN >= 0) {
-      Serial.print("  BTN_R: ");
+      Serial.print("  RIGHT: ");
       Serial.print(digitalRead(BUTTON2_PIN));
+    }
+    if (BUTTON3_ENABLED && BUTTON3_PIN >= 0) {
+      Serial.print("  LEFT: ");
+      Serial.print(digitalRead(BUTTON3_PIN));
     }
     Serial.println();
   }
@@ -534,19 +495,11 @@ void setup() {
   if (BATTERY_SENSE_ENABLED) {
     analogSetPinAttenuation(BAT_PIN, ADC_11db);
   }
-  // Initialize I2C for the LTR390 (and, on the XIAO build, the OLED)
+  // Initialize I2C for the LTR390
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
-  #if defined(BOARD_LILYGO_T_QT_PRO)
-  if (serialEnabled) Serial.println("Initializing display (Arduino_GFX / GC9107)...");
-  // Release the backlight hold from a previous deep sleep before init.
-  gpio_hold_dis((gpio_num_t)TFT_BACKLIGHT_PIN);
-  bool displayOk = display.begin(TQT_DISPLAY_ROTATION);
-  #else
-  // Keep control of Wire pin config by skipping the library's internal
-  // Wire.begin(); this improves consistency across software restarts.
-  bool displayOk = display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDR, true, false);
-  #endif
+  if (serialEnabled) Serial.println("Initializing display (GxEPD2 / GDEW0102T4)...");
+  bool displayOk = display.begin(EPAPER_DISPLAY_ROTATION);
   if (!displayOk) {
     if (serialEnabled) Serial.println("Display init failed");
     delay(2000);
@@ -588,19 +541,10 @@ void setup() {
       enterDeepSleep();
     }
   }
-  // Re-assert charge pump and canonical panel state after any restart or power-on.
-  // In CDC mode this recovers the display from drift caused by the software restart.
-  // A double flush with a 10ms gap stabilizes the panel against occasional blank boots.
+  // Bring the panel back up if the power-on prompt path put it down, and clear
+  // any ghosting the prompt left with a full refresh on the next push.
   wakeDisplayHardware();
-  #if HAS_USB_HID
-  if (inCdcMode) {
-    display.clearDisplay();
-    display.display();
-    delay(50);
-    display.clearDisplay();
-    display.display();
-  }
-  #endif
+  display.requestFullRefresh();
 
   if (!initLTR390()) {
     if (serialEnabled) Serial.println("LTR390 not found - check wiring; sleeping");
@@ -608,7 +552,7 @@ void setup() {
     display.setTextSize(1);
     display.setCursor(10, 28);
     display.print("LTR390 failed");
-    display.display();
+    display.displayNow();
     delay(2000);
     enterDeepSleep();
   }
@@ -626,15 +570,7 @@ void setup() {
   if (serialEnabled) {
     Serial.println("LTR390 configured: UV mode, 18x gain, 20-bit (~400ms)");
     Serial.println("Expected: ~2300 counts per UVI");
-    if (UV_ENCLOSURE_COMP_ENABLED) {
-      Serial.print("UV enclosure compensation: ON (T=");
-      Serial.print(UV_ENCLOSURE_TRANSMITTANCE, 4);
-      Serial.print(", offset=");
-      Serial.print(UV_ENCLOSURE_UVI_OFFSET, 4);
-      Serial.println(")");
-    } else {
-      Serial.println("UV enclosure compensation: OFF");
-    }
+    Serial.println("Sensor is exposed: no enclosure compensation applied");
   }
   
   if (!inCdcMode) {
@@ -657,7 +593,7 @@ void setup() {
     display.drawBitmap(iconX, iconY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, DISPLAY_WHITE);
     display.setCursor(textX - wakeX1, textY - wakeY1);
     display.print(wakeText);
-    display.display();
+    display.displayNow();
     delay(2000);
   }
 
@@ -681,7 +617,7 @@ void setup() {
 void loop() {
   // Check power button for tap (change game) or long-press (sleep)
   handlePowerButton();
-  handleSecondButton();
+  handleAuxButtons();
   updateScreensaverState();
   updateBluetoothState();
   updateBatteryStatus();
@@ -690,8 +626,7 @@ void loop() {
   // Wait for new sensor data
   bool newData = false;
   if (ltr.newDataAvailable()) {
-    float uvi = calculateUVI();
-    float uviForBars = UV_THRESHOLDS_CALIBRATED_OPEN_AIR ? uvi : cachedUviRaw;
+    float uviForBars = calculateUVI();
     if (UVI_SMOOTHING_ENABLED) {
       if (!hasSmoothedUvi) {
         smoothedUvi = uviForBars;
@@ -726,6 +661,8 @@ void loop() {
   screensaverJustExited = false;
   handleBlePresses();
   refreshSingleAnalogButton();
+  // Push any frame that was held back by the e-paper refresh rate limit.
+  display.tick();
   delay(1); // Keep loop responsive while allowing accurate GBA phase timing
 }
 
@@ -734,6 +671,7 @@ void noteScreenActivity() {
   if (screensaverActive) {
     screensaverActive = false;
     screensaverJustExited = true;
+    screensaverDrawn = false;
   }
 }
 
@@ -837,58 +775,36 @@ void updateScreensaverState() {
   unsigned long now = millis();
   if ((now - lastScreenActivityMs) >= SCREENSAVER_TIMEOUT_MS) {
     screensaverActive = true;
-    screensaverDx = 1;
-    screensaverDy = 1;
+    screensaverDrawn = false;
     calculateScreensaverLayout();
     screensaverLastLayoutPct = cachedBatteryPct;
     screensaverLastLayoutBleStatus = shouldShowScreensaverBluetoothStatus();
-    screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
-    screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
-    lastScreensaverMoveMs = 0;
   }
 }
 
+// Static, centered, drawn once. See the SCREENSAVER note in config.h for why
+// this does not animate on e-paper.
 void drawScreensaver() {
-  unsigned long now = millis();
-  if ((now - lastScreensaverMoveMs) < SCREENSAVER_MOVE_MS) {
-    return;
-  }
-  lastScreensaverMoveMs = now;
-
   bool bluetoothStatusVisible = shouldShowScreensaverBluetoothStatus();
   if (screensaverLastLayoutPct != cachedBatteryPct ||
       screensaverLastLayoutBleStatus != bluetoothStatusVisible) {
     calculateScreensaverLayout();
     screensaverLastLayoutPct = cachedBatteryPct;
     screensaverLastLayoutBleStatus = bluetoothStatusVisible;
+    screensaverDrawn = false;  // Battery/BLE status changed - redraw once
   }
 
-  int16_t maxX = SCREEN_WIDTH - screensaverBlockW;
-  int16_t maxY = SCREEN_HEIGHT - screensaverBlockH;
-  if (maxX < 0) {
-    maxX = 0;
-  }
-  if (maxY < 0) {
-    maxY = 0;
+  if (screensaverDrawn) {
+    return;
   }
 
-  screensaverX += screensaverDx;
-  screensaverY += screensaverDy;
-
-  if (screensaverX <= 0) {
+  screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
+  screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
+  if (screensaverX < 0) {
     screensaverX = 0;
-    screensaverDx = 1;
-  } else if (screensaverX >= maxX) {
-    screensaverX = maxX;
-    screensaverDx = -1;
   }
-
-  if (screensaverY <= 0) {
+  if (screensaverY < 0) {
     screensaverY = 0;
-    screensaverDy = 1;
-  } else if (screensaverY >= maxY) {
-    screensaverY = maxY;
-    screensaverDy = -1;
   }
 
   display.clearDisplay();
@@ -909,7 +825,12 @@ void drawScreensaver() {
     drawScreensaverBattery(batteryX, batteryY);
   }
 
-  display.display();
+  display.displayNow();
+  // Nothing more will change until the user presses a button, so drop the
+  // panel to ~1uA. E-paper keeps the image visible while hibernating, and the
+  // next push wakes it automatically.
+  display.hibernatePanel();
+  screensaverDrawn = true;
 }
 
 void drawDebugDisplay() {
@@ -935,8 +856,9 @@ void drawDebugDisplay() {
   display.print("UVI:");
   display.print(cachedUviRaw, 3);
 
+  // Same as UVI above unless UVI_SMOOTHING_ENABLED is on.
   display.setCursor(0, 30);
-  display.print("UVI comp'ed:");
+  display.print("UVI smoothed:");
   display.print(cachedUvi, 3);
 
   // Battery readings
@@ -985,7 +907,7 @@ void drawMainDisplay() {
   // 4. UV Index (Small, Secondary)
   display.setTextSize(1);
   display.setCursor(64, 18);
-  display.print(UV_ENCLOSURE_COMP_ENABLED ? "cUVI:" : "UVI:");
+  display.print("UVI:");
   display.print(cachedUvi, 3);
 
   // 5. Draw Sun Gauge (8 or 10 segments depending on game)
@@ -1086,21 +1008,6 @@ void updateUvDivisorFromSensor() {
     Serial.print("UV divisor: ");
     Serial.println(uvDivisor, 4);
   }
-}
-
-float applyEnclosureCompensation(float measuredUvi) {
-  if (!UV_ENCLOSURE_COMP_ENABLED) {
-    return measuredUvi;
-  }
-  if (UV_ENCLOSURE_TRANSMITTANCE <= 0.0f) {
-    return measuredUvi;
-  }
-
-  float corrected = (measuredUvi - UV_ENCLOSURE_UVI_OFFSET) / UV_ENCLOSURE_TRANSMITTANCE;
-  if (corrected < 0.0f) {
-    corrected = 0.0f;
-  }
-  return corrected;
 }
 
 // Raphi's original Boktai cartridge bar thresholds (raphi.xyz/~raphi/boktai/sensor_graph/).
@@ -1326,39 +1233,47 @@ void handlePowerButton() {
   }
 }
 
-// Handle the secondary button (T-QT BTN_R): tap cycles screens (direction
-// set by BUTTON2_TAP_STEP). No long-press action; it cannot wake the device
-// from deep sleep.
-void handleSecondButton() {
-  if (!BUTTON2_ENABLED || BUTTON2_PIN < 0) {
+// Handle one auxiliary button (the 3-way switch's left/right directions): tap
+// cycles screens (direction set by the button's *_TAP_STEP). No long-press
+// action; neither can wake the device from deep sleep.
+void handleAuxButton(bool enabled, int pin, int tapStep, AuxButtonState& state,
+                     const char* logContext) {
+  if (!enabled || pin < 0) {
     return;
   }
 
-  bool buttonPressed = (digitalRead(BUTTON2_PIN) == LOW);
+  bool buttonPressed = (digitalRead(pin) == LOW);
 
-  if (buttonPressed && !button2WasPressed) {
-    logDeviceButtonPress("runtime, button 2");
-    button2PressStart = millis();
-    button2WasPressed = true;
+  if (buttonPressed && !state.wasPressed) {
+    logDeviceButtonPress(logContext);
+    state.pressStart = millis();
+    state.wasPressed = true;
     if (screensaverActive) {
-      button2SuppressShortPress = true;
+      state.suppressShortPress = true;
     }
     noteScreenActivity();
   }
-  else if (buttonPressed && button2WasPressed) {
+  else if (buttonPressed && state.wasPressed) {
     noteScreenActivity();
   }
-  else if (!buttonPressed && button2WasPressed) {
-    unsigned long pressDuration = millis() - button2PressStart;
+  else if (!buttonPressed && state.wasPressed) {
+    unsigned long pressDuration = millis() - state.pressStart;
     // Bounded like the power button: a deliberate long hold is not a tap, so
     // it must not silently change the screen on release.
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS &&
-        !button2SuppressShortPress) {
-      cycleUiScreen(BUTTON2_TAP_STEP);
+        !state.suppressShortPress) {
+      cycleUiScreen(tapStep);
     }
-    button2SuppressShortPress = false;
-    button2WasPressed = false;
+    state.suppressShortPress = false;
+    state.wasPressed = false;
   }
+}
+
+void handleAuxButtons() {
+  handleAuxButton(BUTTON2_ENABLED, BUTTON2_PIN, BUTTON2_TAP_STEP, button2State,
+                  "runtime, right");
+  handleAuxButton(BUTTON3_ENABLED, BUTTON3_PIN, BUTTON3_TAP_STEP, button3State,
+                  "runtime, left");
 }
 
 // Wait for power-on with 10-second timeout.
@@ -1386,7 +1301,9 @@ bool waitForPowerOn() {
     
     // Check for timeout (10 seconds of no button activity)
     if ((now - lastActivity) >= DISPLAY_TIMEOUT_MS) {
-      displayPanelOff();
+      // The panel is left on deliberately: enterDeepSleep() clears it and
+      // pushes that blank frame before cutting the rail, and e-paper would
+      // otherwise keep showing this prompt for the whole sleep.
       return false;  // Timed out - caller should go to sleep
     }
     
@@ -1465,10 +1382,12 @@ void enterDeepSleep() {
     Serial.flush();
   }
 
-  // Turn off display
+  // Leave a blank panel behind. E-paper retains its last image with no power,
+  // so this must be pushed before the rail is cut or the UI would stay visible
+  // for the whole sleep.
   if (displayInitialized) {
     display.clearDisplay();
-    display.display();
+    display.displayNow();
     displayPanelOff();
   }
   if (serialEnabled) {
@@ -2268,7 +2187,7 @@ void handleLowBatteryCutoff() {
       display.setTextSize(1);
       display.setCursor(31, 28);
       display.print("LOW BATTERY");
-      display.display();
+      display.displayNow();
       delay(1500);
       enterDeepSleep();
     }
@@ -2326,22 +2245,22 @@ bool initLTR390() {
   return false;
 }
 
-// Calculate UV Index from raw sensor data
+// Calculate UV Index from raw sensor data.
+// The LTR390 is exposed on this build, so the reading needs no enclosure
+// transmission correction.
 float calculateUVI() {
   uint32_t rawUVS = ltr.readUVS();
   float divisor = (uvDivisor > 0.0f) ? uvDivisor : UV_SENSITIVITY_COUNTS_PER_UVI;
   float measuredUvi = (float)rawUVS / divisor;
-  float correctedUvi = applyEnclosureCompensation(measuredUvi);
 
   cachedRawUVS = rawUVS;
   cachedUviRaw = measuredUvi;
-  
+
   // Debug output
   if (serialEnabled && DEBUG_SERIAL_UV) {
     Serial.print("UV raw: "); Serial.print(rawUVS);
-    Serial.print(" UVI measured: "); Serial.print(measuredUvi, 3);
-    Serial.print(" UVI corrected: "); Serial.println(correctedUvi, 3);
+    Serial.print(" UVI: "); Serial.println(measuredUvi, 3);
   }
-  
-  return correctedUvi;
+
+  return measuredUvi;
 }
