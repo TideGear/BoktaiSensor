@@ -387,7 +387,7 @@ const unsigned long BLE_RESYNC_INTERVAL_MS = 60000; // Clamp + refill interval
 // When true, normal runtime enumerates as USB XInput.
 // USB CDC serial is entered from the DEBUG screen (hold 2s), then exits back
 // to XInput-on-next-wake with another 2s hold.
-const bool USB_HID_ENABLED = true;
+const bool USB_HID_ENABLED = false;
 
 // =============================================================================
 // DEBUG

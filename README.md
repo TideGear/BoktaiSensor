@@ -601,6 +601,28 @@ Note that panel refreshes block the main loop, which briefly stalls GBA link pha
 2. The boot sequence forces a full refresh after the software restart, which should clear any partial-refresh artifacts
 3. If needed, re-enter CDC mode once (hold center 2s on the XInput screen), then upload again
 
+### Serial Monitor shows nothing, even though the device is clearly running
+A COM port appears, the display works, buttons work — and not one line is ever printed. Two independent things have to be right, and each fails silently on its own.
+
+**1. `Tools > USB CDC On Boot` must be Enabled.** This is the usual culprit, because Disabled is the ESP32S3 Dev Module default. The core binds `Serial` at compile time:
+
+```c
+#else   // !ARDUINO_USB_CDC_ON_BOOT -- Serial is used from UART0
+#define Serial Serial0
+```
+
+With it Disabled, `Serial` is UART0 on GPIO43/44. This board is native-USB only — there is no USB-UART bridge behind those pins — so every print goes to header pads wired to nothing, while the COM port you can see belongs to the native USB device that `Serial` never writes to. The sketch cannot override this; it is fixed by the board setting.
+
+The firmware detects this and shows a `Serial -> UART0 / Enable CDC On Boot` notice at boot. There is also a build-time `#warning`, but **Arduino IDE defaults compiler warnings to "None", which suppresses it** — set `File > Preferences > Compiler warnings` to `Default` or higher if you want to catch it at build time.
+
+**2. The device must be in CDC mode, not XInput.** In XInput mode `serialEnabled` is false, `Serial.begin()` is never called, and TinyUSB presents XInput descriptors with no CDC interface at all. Either:
+- Set `USB_HID_ENABLED = false` for a debugging session — every cold boot then auto-restarts once into CDC, or
+- Tap to the XInput screen and hold center 2s.
+
+The screen header on the diagnostics screen reads `XInput` or `CDC`, which tells you which mode is live.
+
+**Expect the COM number to change.** The CDC-mode switch involves an `esp_restart()`, so the device drops off USB and re-enumerates. Windows may assign a different port, and the Serial Monitor stays pinned to whatever you selected. Re-pick the port after the device settles, then reopen the monitor.
+
 ### BLE crashes at startup (`block_locate_free` TLSF assert)
 This was a known compatibility issue between esp32 core `3.3.7` and older versions of NimBLE-Arduino. It is resolved as of NimBLE-Arduino v2.3.9 — update the library via Arduino Library Manager and rebuild.
 

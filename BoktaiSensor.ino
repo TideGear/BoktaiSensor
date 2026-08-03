@@ -22,6 +22,24 @@
 #define HAS_USB_HID 0
 #endif
 
+// Which peripheral Serial binds to is decided by a board setting, not by this
+// sketch. With Tools > USB CDC On Boot set to Disabled, the core defines
+// Serial as Serial0 = UART0 on GPIO43/44. This board has no USB-UART bridge
+// behind those pins (it is native-USB only), so every DEBUG_SERIAL print goes
+// nowhere while a COM port for the USB device is still present and silent — a
+// failure whose only symptom is absence.
+//
+// The #warning below is free but unreliable as a safeguard: both arduino-cli
+// and the Arduino IDE default to suppressing warnings entirely, so it is
+// invisible to exactly the person who needs it. SERIAL_REACHES_USB carries the
+// same fact to runtime, where showSerialUnreachableNotice() puts it on screen.
+#if !defined(ARDUINO_USB_CDC_ON_BOOT) || !ARDUINO_USB_CDC_ON_BOOT
+#warning "USB CDC On Boot is Disabled: Serial is UART0 (GPIO43/44), not USB, so DEBUG_SERIAL output will not reach the Serial Monitor. Set Tools > USB CDC On Boot: Enabled."
+const bool SERIAL_REACHES_USB = false;
+#else
+const bool SERIAL_REACHES_USB = true;
+#endif
+
 // Display settings
 // The UI is authored at 128x64 monochrome: a canvas pushed centered onto the
 // 128x80 (landscape) e-paper panel. Set pixels become black ink.
@@ -392,6 +410,31 @@ void showHoldPowerOnPrompt() {
   display.displayNow();
 }
 
+// Transient boot notice when DEBUG_SERIAL is on but Serial cannot reach USB.
+// Shown on screen because the equivalent build-time #warning is suppressed at
+// the default compiler warning level, and the failure is otherwise silent:
+// a COM port still appears, the device still runs, and nothing is ever printed.
+void showSerialUnreachableNotice() {
+  const char line1[] = "Serial -> UART0";
+  const char line2[] = "Enable CDC On Boot";
+  int16_t x1, y1;
+  uint16_t w, h;
+
+  display.clearDisplay();
+  display.setTextSize(1);
+
+  display.getTextBounds(line1, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((SCREEN_WIDTH - (int16_t)w) / 2 - x1, 22 - y1);
+  display.print(line1);
+
+  display.getTextBounds(line2, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((SCREEN_WIDTH - (int16_t)w) / 2 - x1, 36 - y1);
+  display.print(line2);
+
+  display.displayNow();
+  delay(2500);
+}
+
 // Transient boot notice when the LTR390 did not answer. Purely informational:
 // boot continues either way, and this screen is replaced by the normal UI.
 void showSensorMissingNotice() {
@@ -571,6 +614,12 @@ void setup() {
   // any ghosting the prompt left with a full refresh on the next push.
   wakeDisplayHardware();
   display.requestFullRefresh();
+
+  // Asked for serial logging but the board settings send it to pins that go
+  // nowhere on this board. Say so on screen; nothing else ever will.
+  if (DEBUG_SERIAL && !SERIAL_REACHES_USB) {
+    showSerialUnreachableNotice();
+  }
 
   // A missing sensor is not fatal: the rest of the device (display, buttons,
   // battery, BLE/USB HID, GBA link) still works, so boot continues with UV
