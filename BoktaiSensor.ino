@@ -30,6 +30,14 @@
 EPaperDisplay display(SCREEN_WIDTH, SCREEN_HEIGHT);
 #define DISPLAY_WHITE 1
 bool displayInitialized = false;
+// Bluetooth status glyph states. Each renders as a distinct static icon; see
+// drawBluetoothIcon() for why nothing here animates.
+enum BluetoothIconState {
+  BT_ICON_OFF = 0,
+  BT_ICON_PAIRING,
+  BT_ICON_CONNECTED
+};
+
 // Status bar icon dimensions
 const int16_t STATUS_BATT_ICON_W = 20;
 const int16_t STATUS_BATT_ICON_H = 9;
@@ -92,7 +100,9 @@ bool uiScreenChanged = false;
 unsigned long lastBatterySampleTime = 0;
 const int BATTERY_PCT_UNKNOWN = -1;
 int cachedBatteryPct = BATTERY_PCT_UNKNOWN;
-bool batteryDisplayDirty = false;
+// Something in the status row changed (battery sample, BLE connect/pairing) and
+// no UV reading is due to trigger a redraw on its own.
+bool statusDisplayDirty = false;
 float cachedBatteryVoltage = -1.0f;
 float cachedBatteryAdcAvg = -1.0f;
 bool hasBatteryReading = false;
@@ -146,8 +156,6 @@ unsigned long blePressHoldMs = 0;      // Set by initHidPressTiming()
 bool bleConnected = false;
 bool blePairingActive = false;
 unsigned long blePairingStartMs = 0;
-bool bleIconFlashOn = true;
-unsigned long bleIconLastToggleMs = 0;
 bool bleSyncPending = false;
 unsigned long bleLastResyncMs = 0;
 int bleDeviceBars = 0;
@@ -165,7 +173,6 @@ int bleSyncRemaining = 0;
 int bleSyncDirection = 0;
 int bleRefillRemaining = 0;
 int bleRefillDirection = 0;
-const unsigned long BLE_ICON_FLASH_MS = 500;
 const int BLE_DIR_DEC = -1;
 const int BLE_DIR_INC = 1;
 const int BOKTAI1_STEP_COUNT = 10;
@@ -655,13 +662,13 @@ void loop() {
 
   updateGbaLinkOutput(cachedFilledBars);
 
-  if (newData || batteryDisplayDirty || uiScreenChanged) {
+  if (newData || statusDisplayDirty || uiScreenChanged) {
     // A screen change is a direct response to a button press, so it must not
     // wait on the routine refresh interval.
     drawMainDisplay(uiScreenChanged);
     uiScreenChanged = false;
   }
-  batteryDisplayDirty = false;
+  statusDisplayDirty = false;
   logPanelRefreshTiming();
 
   handleBlePresses();
@@ -1406,31 +1413,46 @@ void drawBoktaiGauge(int y, int h, int filledBars, int totalBars) {
   }
 }
 
-bool isBluetoothIconOn() {
+BluetoothIconState getBluetoothIconState() {
   if (!BLUETOOTH_ENABLED) {
-    return false;
+    return BT_ICON_OFF;
   }
   if (bleConnected) {
-    return true;
+    return BT_ICON_CONNECTED;
   }
   if (blePairingActive) {
-    return bleIconFlashOn;
+    return BT_ICON_PAIRING;
   }
-  return false;
+  return BT_ICON_OFF;
 }
 
-void drawBluetoothIcon(int x, int y, bool on) {
-  if (!on) {
+// Two static glyphs, no animation. The OLED builds flash this icon while
+// pairing, which is the wrong idiom for e-paper: every toggle changes the frame,
+// and a changed frame is a legitimate reason to refresh the panel, so a 500ms
+// blink would burn refreshes for the whole 60s pairing window.
+//
+//   pairing   = solid badge with the rune knocked out. Loud on purpose; it is
+//               transient and you have BLE_PAIRING_TIMEOUT_MS to act on it.
+//   connected = plain rune. Quiet steady state, and less ink for the state the
+//               device spends nearly all its time in.
+void drawBluetoothIcon(int x, int y, BluetoothIconState state) {
+  if (state == BT_ICON_OFF) {
     return;
   }
 
-  display.drawLine(x + 3, y, x + 3, y + (STATUS_BT_ICON_H - 1), DISPLAY_WHITE);
-  display.drawLine(x + 3, y, x + 7, y + 2, DISPLAY_WHITE);
-  display.drawLine(x + 3, y + 4, x + 7, y + 2, DISPLAY_WHITE);
-  display.drawLine(x + 3, y + 4, x + 7, y + 6, DISPLAY_WHITE);
-  display.drawLine(x + 3, y + (STATUS_BT_ICON_H - 1), x + 7, y + 6, DISPLAY_WHITE);
-  display.drawLine(x + 3, y + 4, x, y + 2, DISPLAY_WHITE);
-  display.drawLine(x + 3, y + 4, x, y + 6, DISPLAY_WHITE);
+  uint16_t ink = DISPLAY_WHITE;
+  if (state == BT_ICON_PAIRING) {
+    display.fillRect(x, y, STATUS_BT_ICON_W, STATUS_BT_ICON_H, DISPLAY_WHITE);
+    ink = 0;  // Knock the rune out of the badge
+  }
+
+  display.drawLine(x + 3, y, x + 3, y + (STATUS_BT_ICON_H - 1), ink);
+  display.drawLine(x + 3, y, x + 7, y + 2, ink);
+  display.drawLine(x + 3, y + 4, x + 7, y + 2, ink);
+  display.drawLine(x + 3, y + 4, x + 7, y + 6, ink);
+  display.drawLine(x + 3, y + (STATUS_BT_ICON_H - 1), x + 7, y + 6, ink);
+  display.drawLine(x + 3, y + 4, x, y + 2, ink);
+  display.drawLine(x + 3, y + 4, x, y + 6, ink);
 }
 
 void drawBatteryGauge(int x, int y, int pct) {
@@ -1445,7 +1467,7 @@ void drawBatteryGauge(int x, int y, int pct) {
 void drawStatusIcons() {
   bool batteryVisible = (cachedBatteryPct >= 0);
   bool btReserved = BLUETOOTH_ENABLED;
-  bool btOn = isBluetoothIconOn();
+  BluetoothIconState btState = getBluetoothIconState();
 
   int16_t batteryX = SCREEN_WIDTH - STATUS_BATT_ICON_W - STATUS_RIGHT_MARGIN;
   int16_t batteryY = 2;
@@ -1473,7 +1495,7 @@ void drawStatusIcons() {
     } else {
       drawX = SCREEN_WIDTH - STATUS_BT_ICON_W - STATUS_RIGHT_MARGIN;
     }
-    drawBluetoothIcon(drawX, btY, btOn);
+    drawBluetoothIcon(drawX, btY, btState);
   }
 }
 
@@ -1537,8 +1559,7 @@ void startBlePairing() {
   }
   blePairingActive = true;
   blePairingStartMs = millis();
-  bleIconFlashOn = true;
-  bleIconLastToggleMs = blePairingStartMs;
+  statusDisplayDirty = true;  // Show the pairing badge without waiting
   startBleAdvertising();
 }
 
@@ -1852,6 +1873,9 @@ void updateBluetoothState() {
   bool connectedNow = compositeHID.isConnected();
   if (connectedNow != bleConnected) {
     bleConnected = connectedNow;
+    // The status glyph is static now, so nothing else would prompt a redraw of
+    // it. Mark the display dirty so connecting or dropping shows up promptly.
+    statusDisplayDirty = true;
     if (bleConnected) {
       blePairingActive = false;
       stopBleAdvertising();
@@ -1880,9 +1904,7 @@ void updateBluetoothState() {
     if (BLE_PAIRING_TIMEOUT_MS > 0 && (now - blePairingStartMs) >= BLE_PAIRING_TIMEOUT_MS) {
       blePairingActive = false;
       stopBleAdvertising();
-    } else if ((now - bleIconLastToggleMs) >= BLE_ICON_FLASH_MS) {
-      bleIconFlashOn = !bleIconFlashOn;
-      bleIconLastToggleMs = now;
+      statusDisplayDirty = true;  // Pairing badge needs to come off the screen
     }
   }
 }
@@ -2089,7 +2111,7 @@ void updateBatteryStatus() {
   // the battery sample is the only thing left that keeps the status row and
   // the debug screen's voltage rows live. Harmless when the sensor is present:
   // the frame is usually identical and the panel push is skipped.
-  batteryDisplayDirty = true;
+  statusDisplayDirty = true;
 
   if (BLUETOOTH_ENABLED && cachedBatteryPct >= 0) {
     compositeHID.setBatteryLevel((uint8_t)cachedBatteryPct);
