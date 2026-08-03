@@ -352,6 +352,24 @@ After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display 
 
 **Unlike the OLED builds on `main`, the logo does not bounce.** Animating it would refresh the panel continuously for no benefit: e-paper has no burn-in to avoid, and each refresh costs time, power, and panel life. Here the screensaver is the *low-power* state rather than a burn-in guard — sensing, BLE, and GBA link output all keep running while the panel sleeps.
 
+### Running Without the Sensor
+
+The LTR390 is optional at boot. If it does not answer on I2C, the device shows
+
+```
+LTR390 not found
+Running without UV
+```
+
+for about 2.5 seconds and then **continues booting normally**. Everything that does not depend on UV keeps working: display, buttons, screen cycling, battery monitoring and cutoff, Bluetooth/USB HID pairing and reports, GBA link output, screensaver, and CDC mode.
+
+With no sensor:
+- The bar count stays at **0** and the HID/GBA outputs report an empty gauge
+- UV readouts show **`N/A`** rather than `0`, on both the game screens and the XInput screen — a missing sensor should not be mistakable for darkness
+- Every sensor access is skipped, so a floating I2C bus cannot produce phantom readings
+
+This makes the board usable for bring-up and for testing the display, buttons, HID pairing, and link wiring before the sensor is attached. The sensor is only probed at boot, so **restart after connecting it.**
+
 ----------------------------------------------------------------------
 
 ## Calibration
@@ -447,7 +465,12 @@ Most glass and many plastics block UV strongly (often 90%+). Prefer an open aper
 
 ## Troubleshooting
 
+### "LTR390 not found / Running without UV" at boot
+The sensor did not answer on I2C. This is **not fatal** — the device finishes booting and runs normally without it (see [Running Without the Sensor](#running-without-the-sensor)). UV rows read `N/A` instead of `0`. Check the wiring to the IO7/IO8 pads, that the breakout has pull-ups, and that it is powered from `3v3`. Reconnecting the sensor requires a restart.
+
 ### UV sensor reads 0 or very low
+First confirm you did **not** see "LTR390 not found" at boot — if the readouts say `N/A` rather than a number, the sensor was never detected (above).
+
 If button presses are being seen, Serial should print `Device button pressed` whenever the device button is pressed.
 1. Set `DEBUG_SERIAL = true` and check Serial Monitor (115200 baud). Serial output is only active in CDC mode — enter CDC mode from the XInput screen (hold 2s), or set `USB_HID_ENABLED = false` to always use CDC.
    - At UVI 6, expect ~13800 raw counts (6 × 2300)

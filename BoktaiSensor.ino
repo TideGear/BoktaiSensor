@@ -54,6 +54,12 @@ const float UV_REFERENCE_INT_MS = 400.0f;
 float uvDivisor = UV_SENSITIVITY_COUNTS_PER_UVI;
 const uint8_t MEAS_RATE_500MS = 0x04;
 
+// Whether the LTR390 answered at boot. When false the device runs normally
+// with UV readings shown as unavailable and the bar count pinned at 0; every
+// sensor access is skipped so a missing device cannot produce phantom data
+// from a floating I2C bus.
+bool sensorPresent = false;
+
 // Power button state tracking
 unsigned long buttonPressStart = 0;
 bool buttonWasPressed = false;
@@ -87,6 +93,7 @@ bool uiScreenChanged = false;
 unsigned long lastBatterySampleTime = 0;
 const int BATTERY_PCT_UNKNOWN = -1;
 int cachedBatteryPct = BATTERY_PCT_UNKNOWN;
+bool batteryDisplayDirty = false;
 float cachedBatteryVoltage = -1.0f;
 float cachedBatteryAdcAvg = -1.0f;
 bool hasBatteryReading = false;
@@ -379,6 +386,29 @@ void showHoldPowerOnPrompt() {
   display.displayNow();
 }
 
+// Transient boot notice when the LTR390 did not answer. Purely informational:
+// boot continues either way, and this screen is replaced by the normal UI.
+void showSensorMissingNotice() {
+  const char line1[] = "LTR390 not found";
+  const char line2[] = "Running without UV";
+  int16_t x1, y1;
+  uint16_t w, h;
+
+  display.clearDisplay();
+  display.setTextSize(1);
+
+  display.getTextBounds(line1, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((SCREEN_WIDTH - (int16_t)w) / 2 - x1, 22 - y1);
+  display.print(line1);
+
+  display.getTextBounds(line2, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor((SCREEN_WIDTH - (int16_t)w) / 2 - x1, 36 - y1);
+  display.print(line2);
+
+  display.displayNow();
+  delay(2500);
+}
+
 void logDeviceButtonPress(const char* context) {
   if (!serialEnabled) {
     return;
@@ -546,33 +576,36 @@ void setup() {
   wakeDisplayHardware();
   display.requestFullRefresh();
 
-  if (!initLTR390()) {
-    if (serialEnabled) Serial.println("LTR390 not found - check wiring; sleeping");
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(10, 28);
-    display.print("LTR390 failed");
-    display.displayNow();
-    delay(2000);
-    enterDeepSleep();
+  // A missing sensor is not fatal: the rest of the device (display, buttons,
+  // battery, BLE/USB HID, GBA link) still works, so boot continues with UV
+  // readings marked unavailable. Useful for bring-up before the LTR390 is
+  // wired. Reconnecting it needs a restart — it is only probed here.
+  sensorPresent = initLTR390();
+
+  if (!sensorPresent) {
+    if (serialEnabled) {
+      Serial.println("LTR390 not found - check wiring; continuing without UV data");
+    }
+    showSensorMissingNotice();
+  } else {
+    // Configure LTR390 for UV sensing mode
+    // Gain 18x: Datasheet reference setting for UVI sensitivity
+    // Resolution 20-bit: Datasheet accuracy setting (~400ms integration)
+    // Measurement rate 500ms: Matches datasheet example timing
+    ltr.setMode(LTR390_MODE_UVS);
+    ltr.setGain(LTR390_GAIN_18);
+    ltr.setResolution(LTR390_RESOLUTION_20BIT);
+    setMeasurementRate(MEAS_RATE_500MS);
+    updateUvDivisorFromSensor();
+
+    if (serialEnabled) {
+      Serial.println("LTR390 configured: UV mode, 18x gain, 20-bit (~400ms)");
+      Serial.println("Expected: ~2300 counts per UVI");
+      Serial.println("Sensor is exposed: no enclosure compensation applied");
+    }
   }
 
-  // Configure LTR390 for UV sensing mode
-  // Gain 18x: Datasheet reference setting for UVI sensitivity
-  // Resolution 20-bit: Datasheet accuracy setting (~400ms integration)
-  // Measurement rate 500ms: Matches datasheet example timing
-  ltr.setMode(LTR390_MODE_UVS);
-  ltr.setGain(LTR390_GAIN_18);
-  ltr.setResolution(LTR390_RESOLUTION_20BIT);
-  setMeasurementRate(MEAS_RATE_500MS);
-  updateUvDivisorFromSensor();
-  
-  if (serialEnabled) {
-    Serial.println("LTR390 configured: UV mode, 18x gain, 20-bit (~400ms)");
-    Serial.println("Expected: ~2300 counts per UVI");
-    Serial.println("Sensor is exposed: no enclosure compensation applied");
-  }
-  
+
   if (!inCdcMode) {
     // Show wake-up confirmation
     display.clearDisplay();
@@ -623,9 +656,10 @@ void loop() {
   updateBatteryStatus();
   handleLowBatteryCutoff();
 
-  // Wait for new sensor data
+  // Wait for new sensor data. With no sensor this never fires, so the bar
+  // count stays 0 and the HID/GBA outputs keep reporting an empty gauge.
   bool newData = false;
-  if (ltr.newDataAvailable()) {
+  if (sensorPresent && ltr.newDataAvailable()) {
     float uviForBars = calculateUVI();
     if (UVI_SMOOTHING_ENABLED) {
       if (!hasSmoothedUvi) {
@@ -653,10 +687,13 @@ void loop() {
 
   if (screensaverActive) {
     drawScreensaver();
-  } else if (newData || screensaverJustExited || uiScreenChanged) {
+  } else if (newData || batteryDisplayDirty || screensaverJustExited || uiScreenChanged) {
     drawMainDisplay();
     uiScreenChanged = false;
   }
+  // Cleared even when the screensaver swallowed it; that path tracks battery
+  // changes through its own layout check.
+  batteryDisplayDirty = false;
 
   screensaverJustExited = false;
   handleBlePresses();
@@ -847,19 +884,32 @@ void drawDebugDisplay() {
   display.print("DEBUG");
   #endif
 
-  // UV readings
+  // UV readings. Reported as N/A rather than 0 when no sensor answered at
+  // boot, so a missing sensor cannot be mistaken for darkness.
   display.setCursor(0, 10);
   display.print("UV raw:");
-  display.print(cachedRawUVS);
+  if (sensorPresent) {
+    display.print(cachedRawUVS);
+  } else {
+    display.print("N/A");
+  }
 
   display.setCursor(0, 20);
   display.print("UVI:");
-  display.print(cachedUviRaw, 3);
+  if (sensorPresent) {
+    display.print(cachedUviRaw, 3);
+  } else {
+    display.print("N/A");
+  }
 
   // Same as UVI above unless UVI_SMOOTHING_ENABLED is on.
   display.setCursor(0, 30);
   display.print("UVI smoothed:");
-  display.print(cachedUvi, 3);
+  if (sensorPresent) {
+    display.print(cachedUvi, 3);
+  } else {
+    display.print("N/A");
+  }
 
   // Battery readings
   bool haveBatteryReading = BATTERY_SENSE_ENABLED && hasBatteryReading;
@@ -908,7 +958,11 @@ void drawMainDisplay() {
   display.setTextSize(1);
   display.setCursor(64, 18);
   display.print("UVI:");
-  display.print(cachedUvi, 3);
+  if (sensorPresent) {
+    display.print(cachedUvi, 3);
+  } else {
+    display.print("N/A");
+  }
 
   // 5. Draw Sun Gauge (8 or 10 segments depending on game)
   drawBoktaiGauge(38, 20, cachedFilledBars, cachedNumBars);
@@ -2163,6 +2217,11 @@ void updateBatteryStatus() {
   lastBatterySampleTime = now;
 
   cachedBatteryPct = readBatteryPercentage();
+  // Without a UV sensor there are no "new data" events to drive redraws, so
+  // the battery sample is the only thing left that keeps the status row and
+  // the debug screen's voltage rows live. Harmless when the sensor is present:
+  // the frame is usually identical and the panel push is skipped.
+  batteryDisplayDirty = true;
 
   if (BLUETOOTH_ENABLED && cachedBatteryPct >= 0) {
     compositeHID.setBatteryLevel((uint8_t)cachedBatteryPct);
