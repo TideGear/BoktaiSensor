@@ -137,6 +137,10 @@ float cachedUviRaw = 0.0f;
 float cachedUvi = 0.0f;
 int cachedFilledBars = 0;
 int cachedNumBars = 0;
+// Bar values last handed to the panel, so a change can be spotted and pushed
+// without waiting on the routine e-paper refresh interval.
+int lastDisplayedBars = -1;
+int lastDisplayedNumBars = -1;
 float smoothedUvi = 0.0f;
 bool hasSmoothedUvi = false;
 bool gameChanged = false;
@@ -688,7 +692,9 @@ void loop() {
   if (screensaverActive) {
     drawScreensaver();
   } else if (newData || batteryDisplayDirty || screensaverJustExited || uiScreenChanged) {
-    drawMainDisplay();
+    // A screen change or screensaver exit is a direct response to a button
+    // press, so it must not wait on the routine refresh interval.
+    drawMainDisplay(uiScreenChanged || screensaverJustExited);
     uiScreenChanged = false;
   }
   // Cleared even when the screensaver swallowed it; that path tracks battery
@@ -870,7 +876,9 @@ void drawScreensaver() {
   screensaverDrawn = true;
 }
 
-void drawDebugDisplay() {
+// immediate: skip the routine refresh interval because the user is waiting on
+// this frame (see drawMainDisplay).
+void drawDebugDisplay(bool immediate) {
   display.clearDisplay();
 
   // Draw Status Icons (Top Right)
@@ -930,14 +938,25 @@ void drawDebugDisplay() {
     display.print("N/A");
   }
 
-  display.display();
+  if (immediate) {
+    display.displayPriority();
+  } else {
+    display.display();
+  }
 }
 
-void drawMainDisplay() {
+// immediate: the user pressed a button to get here, so do not make them wait on
+// the routine refresh interval. A changed bar count is treated the same way —
+// the gauge is the whole point of the device, so it never queues behind the
+// incidental UVI/battery churn.
+void drawMainDisplay(bool immediate) {
   if (currentScreen == DEBUG_SCREEN_INDEX) {
-    drawDebugDisplay();
+    drawDebugDisplay(immediate);
     return;
   }
+
+  bool barsChanged = (cachedFilledBars != lastDisplayedBars) ||
+                     (cachedNumBars != lastDisplayedNumBars);
 
   display.clearDisplay();
 
@@ -967,7 +986,13 @@ void drawMainDisplay() {
   // 5. Draw Sun Gauge (8 or 10 segments depending on game)
   drawBoktaiGauge(38, 20, cachedFilledBars, cachedNumBars);
 
-  display.display();
+  if (immediate || barsChanged) {
+    display.displayPriority();
+  } else {
+    display.display();
+  }
+  lastDisplayedBars = cachedFilledBars;
+  lastDisplayedNumBars = cachedNumBars;
 }
 
 void updateGbaLinkOutput(int bars) {

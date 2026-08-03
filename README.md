@@ -149,7 +149,7 @@ This outputs a framed 3-wire value (SC + SD + SO) for use with a physical GBA vi
 ### 4. Display Only / Manual Entry (Not Recommended)
 Read the bar count from the screen and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method above.
 
-**Note:** E-paper is the one display in this project that is genuinely readable in direct sunlight, so manual entry is more viable on this board than on the OLED/TFT builds. It still lags the other outputs by up to `EPAPER_MIN_REFRESH_MS` (default 1500ms).
+**Note:** E-paper is the one display in this project that is genuinely readable in direct sunlight, so manual entry is more viable on this board than on the OLED/TFT builds. The bar count refreshes as soon as it changes, so the screen is not meaningfully behind the other outputs.
 
 ----------------------------------------------------------------------
 
@@ -169,7 +169,11 @@ The [LilyGO Mini E-Paper S3](https://lilygo.cc/en-us/products/mini-e-paper-core)
 - Battery sensing is built in (2:1 divider, `BAT_PIN = 2`) and enabled by default; no resistors needed.
 - GBA link output uses the IO16 (SC), IO17 (SD), IO18 (SO) header pads plus a GND pad. See [GBA Link Cable Wiring](#gba-link-cable-wiring-optional).
 - The microSD slot (IO38–IO41) is unused by this firmware. Avoid those pins if you repurpose headers.
-- **Refresh behavior:** e-paper refreshes take hundreds of milliseconds and the panel wears with each one, so the firmware never redraws as freely as an OLED. Frames identical to what is already on screen are skipped, updates are rate-limited to `EPAPER_MIN_REFRESH_MS` (default 1500ms), and every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) is promoted to a full refresh to clear accumulated ghosting. Expect the bar count to lag real UV changes by up to about 1.5 seconds on screen — the HID/GBA outputs are **not** rate-limited and still update as fast as the sensor produces data.
+- **Refresh behavior:** e-paper refreshes take hundreds of milliseconds and the panel wears with each one, so the firmware does not redraw as freely as an OLED. Frames identical to what is already on screen are skipped, and every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) is promoted to a full refresh to clear accumulated ghosting. Updates run in **two lanes**:
+  - **Priority** — a changed bar count, or a screen change you just pressed a button for. Refreshes immediately (`EPAPER_PRIORITY_MIN_REFRESH_MS`, default `0` = no floor), so the sun gauge tracks the sensor as closely as the panel allows.
+  - **Routine** — incidental churn like the UVI decimals ticking over or the battery percentage moving. Held to `EPAPER_MIN_REFRESH_MS` (default 1500ms).
+
+  Because the gauge no longer waits on the routine lane, **raising `EPAPER_MIN_REFRESH_MS` is a cheap way to cut panel wear** — the only cost is a staler UVI readout on the game screens. The HID and GBA link outputs were never rate-limited and still update as fast as the sensor produces data.
 
 ### Wiring
 
@@ -503,10 +507,17 @@ Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Both battery sensing and cutof
 ### Panel shows a stale screen, faint ghosting, or streaks
 - Ghosting after many partial refreshes is normal for e-paper. Lower `EPAPER_FULL_REFRESH_EVERY` in config.h to clear it more often (at the cost of more visible full-refresh flashing).
 - A stale image that never updates while the device is on usually means pushes are being suppressed. Set `DEBUG_SERIAL = true` and confirm UV data is arriving.
-- The screen intentionally lags: updates are rate-limited to `EPAPER_MIN_REFRESH_MS` (default 1500ms). Lower it for a snappier display and more panel wear. The HID and GBA link outputs are not rate-limited.
+- The UVI decimals and battery percentage intentionally lag by up to `EPAPER_MIN_REFRESH_MS` (default 1500ms). The **bar count does not** — it refreshes immediately.
 
-### Screen updates feel too slow / too fast
-`EPAPER_MIN_REFRESH_MS` is the floor between panel refreshes. This only affects the *display* — the emulator/GBA outputs always track the sensor as fast as it produces data.
+### The bar gauge refreshes too often / too much flicker
+Bar changes bypass the routine refresh interval by design. If borderline light makes the count oscillate between two levels and the constant refreshing bothers you, enable `BAR_HYSTERESIS_ENABLED` in config.h — that stops the oscillation at the source rather than masking it. Raising `EPAPER_PRIORITY_MIN_REFRESH_MS` above `0` is the blunt alternative.
+
+The bar count cannot change faster than the LTR390's 500ms measurement rate, and each refresh blocks until the panel's BUSY line clears, so there is a natural ceiling on how often this happens.
+
+### The gauge still feels slow
+At the default settings nothing in the firmware throttles bar updates — the remaining floor is the panel's own refresh time. If that is not fast enough on real hardware, the next lever is region-limited refreshes (updating only the changed rectangle instead of the whole panel). That is **not** implemented: the current UI spreads its changing elements (battery percentage at the top, bar digit and UVI in the middle, gauge at the bottom) across most of the panel, so a single bounding box would still cover roughly 50–75% of it. Worth revisiting with real timing numbers in hand.
+
+Note that panel refreshes block the main loop, which briefly stalls GBA link phase toggling and HID reports. More frequent bar refreshes mean more frequent stalls — the GBA-side patch tolerates this (its consecutive-match check discards single-frame misreads), but it is the reason the routine lane stays throttled.
 
 ### Display looks wrong after entering CDC mode
 1. Confirm `Tools > Upload Mode` is set to `USB-OTG CDC (TinyUSB)`

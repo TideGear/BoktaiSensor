@@ -80,23 +80,31 @@ public:
     fillScreen(0);
   }
 
-  // Rate-limited push. If the interval has not elapsed the frame is held and
-  // flushed by the next tick() (or by a later display()/displayNow()).
+  // Routine push, held to EPAPER_MIN_REFRESH_MS. If the interval has not
+  // elapsed the frame is kept and flushed by a later tick()/display() call.
   void display() {
-    pushFrame(false);
+    pushFrame(EPAPER_MIN_REFRESH_MS);
   }
 
-  // Immediate push, for one-shot status screens that must appear right away.
-  // Frames identical to what is already on the panel are still skipped.
+  // Push for content the user is waiting on — a changed bar count, or a screen
+  // change they just pressed a button for. Held only to
+  // EPAPER_PRIORITY_MIN_REFRESH_MS, which defaults to no floor at all.
+  void displayPriority() {
+    pushFrame(EPAPER_PRIORITY_MIN_REFRESH_MS);
+  }
+
+  // Unconditional push, for one-shot status screens that must appear right
+  // away. Frames identical to what is on the panel are still skipped.
   void displayNow() {
-    pushFrame(true);
+    pushFrame(0);
   }
 
-  // Called every loop iteration to flush a deferred frame once its rate-limit
-  // interval has elapsed.
+  // Called every loop iteration to flush a held frame once its interval has
+  // elapsed. Uses the shortest interval any deferred caller asked for, so a
+  // priority frame is never held back by a routine one.
   void tick() {
     if (pending) {
-      pushFrame(false);
+      pushFrame(pendingMinMs);
     }
   }
 
@@ -168,7 +176,7 @@ private:
     delay(10);  // Let the panel rail settle before the reset pulse
   }
 
-  void pushFrame(bool force) {
+  void pushFrame(unsigned long minIntervalMs) {
     if (lastFrame == nullptr) {
       return;
     }
@@ -178,8 +186,11 @@ private:
     }
 
     unsigned long now = millis();
-    if (!force && pushedOnce && (now - lastPushMs) < EPAPER_MIN_REFRESH_MS) {
-      pending = true;  // Hold this frame for tick() to flush
+    if (minIntervalMs > 0 && pushedOnce && (now - lastPushMs) < minIntervalMs) {
+      // Hold this frame for tick() to flush. Keep the shortest interval asked
+      // for so a routine push cannot delay a priority one already waiting.
+      pendingMinMs = pending ? min(pendingMinMs, minIntervalMs) : minIntervalMs;
+      pending = true;
       return;
     }
 
@@ -218,6 +229,7 @@ private:
   int16_t xOffset = 0;
   int16_t yOffset = 0;
   unsigned long lastPushMs = 0;
+  unsigned long pendingMinMs = 0;
   uint16_t partialsSinceFull = 0;
   bool pending = false;
   bool pushedOnce = false;

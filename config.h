@@ -206,12 +206,32 @@ const bool EPD_POWER_ACTIVE_HIGH = true;
 // degrees apart). Pick whichever matches your case orientation.
 const uint8_t EPAPER_DISPLAY_ROTATION = 1;
 
-// Minimum time between panel refreshes. E-paper refreshes take hundreds of
-// milliseconds and the panel wears with each one, so the UI cannot be redrawn
-// as freely as an OLED. Frames that arrive sooner are held and the newest one
-// is pushed when the interval elapses; frames identical to what is already on
-// screen are skipped entirely. Lower = more responsive but more panel wear.
+// Minimum time between ROUTINE panel refreshes. E-paper refreshes take hundreds
+// of milliseconds and the panel wears with each one, so the UI cannot be redrawn
+// as freely as an OLED. Frames that arrive sooner are held and the newest one is
+// pushed when the interval elapses; frames identical to what is already on
+// screen are skipped entirely.
+//
+// This governs incidental changes only — the UVI decimals ticking over, the
+// battery percentage moving. The sun gauge does NOT wait on it; see
+// EPAPER_PRIORITY_MIN_REFRESH_MS below. Since the gauge is independent, raising
+// this is a cheap way to cut panel wear: the only cost is a staler UVI readout
+// on the game screens (the XInput screen is there when you need precision).
 const unsigned long EPAPER_MIN_REFRESH_MS = 1500;
+
+// Minimum time between PRIORITY refreshes: a changed bar count, or a screen
+// change the user just pressed a button for. These bypass the interval above so
+// the gauge tracks the sensor as closely as the panel physically allows.
+//
+// 0 = no floor, the fastest the hardware can go. That is not unbounded: the
+// LTR390 is configured for a 500ms measurement rate, so the bar count cannot
+// change more often than that, and each refresh blocks until the panel's BUSY
+// line clears.
+//
+// Raise this only if the extra refreshes bother you. Note that if the bar count
+// oscillates between two levels in borderline light, BAR_HYSTERESIS_ENABLED
+// above is the better fix — it stops the oscillation instead of hiding it.
+const unsigned long EPAPER_PRIORITY_MIN_REFRESH_MS = 0;
 
 // Repeated partial refreshes leave faint ghosting behind. Every Nth refresh is
 // promoted to a full refresh (slower, flashes black/white) to clear it.
