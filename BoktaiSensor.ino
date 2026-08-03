@@ -131,6 +131,10 @@ const uint8_t OJO_DEL_SOL_BITMAP[] PROGMEM = {
 // long press), so its release is not also read as a screen-changing tap.
 bool suppressShortPress = false;
 
+// millis() of the last accepted screen-changing tap. Used by acceptScreenTap()
+// to drop the stray second contact one rock of the 3-way switch can produce.
+unsigned long lastScreenChangeMs = 0;
+
 // Cached display values
 uint32_t cachedRawUVS = 0;
 float cachedUviRaw = 0.0f;
@@ -1145,6 +1149,47 @@ void refreshGameState(bool refreshOutputs) {
   }
 }
 
+// Gate for screen-changing taps.
+//
+// The 3-way switch is a single spring-return lever over three contacts, not
+// three independent buttons, so one deliberate rock can briefly close a second
+// contact. Two filters cover the two ways that happens:
+//
+//   - Grazing another contact on the way in is short, and the existing
+//     DEBOUNCE_MS floor on press duration already rejects it.
+//   - Grazing one on the rebound back to center happens after the intended tap
+//     has already been accepted, and can easily last longer than DEBOUNCE_MS.
+//     That is what this settle window is for: the first tap wins and anything
+//     inside BUTTON_SETTLE_MS after it is dropped. Without it, a rock right
+//     followed by a graze left reads as +1 then -1, landing back where it
+//     started — which looks exactly like the switch being ignored.
+//
+// A *_TAP_STEP of 0 disables that button's tap action entirely.
+// Returns true if the screen actually changed.
+bool acceptScreenTap(int tapStep, const char* logContext) {
+  if (tapStep == 0) {
+    return false;
+  }
+
+  unsigned long now = millis();
+  if (lastScreenChangeMs != 0 && (now - lastScreenChangeMs) < BUTTON_SETTLE_MS) {
+    if (serialEnabled) {
+      Serial.print("Tap ignored (");
+      Serial.print(logContext != nullptr ? logContext : "?");
+      Serial.print(") - ");
+      Serial.print(now - lastScreenChangeMs);
+      Serial.print("ms after the last one, inside the ");
+      Serial.print(BUTTON_SETTLE_MS);
+      Serial.println("ms settle window");
+    }
+    return false;
+  }
+
+  lastScreenChangeMs = now;
+  cycleUiScreen(tapStep);
+  return true;
+}
+
 // Advance the UI screen by step (+1 forward, -1 backward), updating game
 // state when a game screen is selected.
 void cycleUiScreen(int step) {
@@ -1216,7 +1261,7 @@ void handlePowerButton() {
     unsigned long pressDuration = millis() - buttonPressStart;
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
       if (!suppressShortPress) {
-        cycleUiScreen(BUTTON_TAP_STEP);
+        acceptScreenTap(BUTTON_TAP_STEP, "center");
       }
     }
     suppressShortPress = false;
@@ -1243,9 +1288,11 @@ void handleAuxButton(bool enabled, int pin, int tapStep, AuxButtonState& state,
   else if (!buttonPressed && state.wasPressed) {
     unsigned long pressDuration = millis() - state.pressStart;
     // Bounded like the power button: a deliberate long hold is not a tap, so
-    // it must not silently change the screen on release.
+    // it must not silently change the screen on release. The DEBOUNCE_MS floor
+    // also rejects a brief graze of this contact while the lever is on its way
+    // to the other side.
     if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
-      cycleUiScreen(tapStep);
+      acceptScreenTap(tapStep, logContext);
     }
     state.wasPressed = false;
   }

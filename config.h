@@ -156,7 +156,13 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 // switch, and holding it at reset enters download mode instead of running.
 //
 // Tap directions: center or right advances to the next screen, left goes back.
-// Adjust the *_TAP_STEP values to change this.
+// Adjust the *_TAP_STEP values to change this. A step of 0 disables that
+// button's tap action, leaving only its long-press behaviour (if any).
+//
+// Setting BUTTON_TAP_STEP = 0 makes the center press power-only. Worth doing if
+// rocking the lever sometimes changes the screen unexpectedly: the three
+// contacts share one lever, so a rock can graze the center on its way over, and
+// with no tap action on the center that path cannot affect the screen at all.
 const int BUTTON_PIN = 0;     // Center press (GPIO0) - power; tap = next screen
 const int BUTTON_TAP_STEP = 1;
 
@@ -170,6 +176,21 @@ const int BUTTON3_TAP_STEP = -1;
 
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time
 const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
+
+// After a tap changes the screen, ignore further taps for this long.
+//
+// The 3-way switch is one spring-return lever over three contacts, not three
+// independent buttons. Rocking it can briefly close a second contact as the
+// lever springs back through center, and that stray contact can last longer than
+// DEBOUNCE_MS. Without this window, a rock right followed by a graze left reads
+// as +1 then -1 and lands back on the screen you started from — which looks like
+// the switch being flaky or ignored.
+//
+// Taps closer together than this are invisible anyway: the panel needs roughly a
+// second per refresh, so a second screen change inside this window could not be
+// drawn before being replaced. Raise it if rocks still double-fire; lower it if
+// deliberate fast taps get dropped.
+const unsigned long BUTTON_SETTLE_MS = 300;
 
 // -----------------------------------------------------------------------------
 // E-PAPER DISPLAY

@@ -301,7 +301,7 @@ arduino-cli compile \
 
 ### Button Controls
 
-The board has a single 3-way tactile switch on the top edge: **left (GPIO3)**, **center press (GPIO0)**, **right (GPIO4)**.
+The board has a single 3-way tactile switch on the top edge — one spring-return lever that rocks **left (GPIO3)** or **right (GPIO4)** and can also be **pressed inward (GPIO0)**.
 
 | Direction | Tap | Hold 2s |
 |-----------|-----|---------|
@@ -309,7 +309,9 @@ The board has a single 3-way tactile switch on the top edge: **left (GPIO3)**, *
 | **Right** (GPIO4) | Next screen | — |
 | **Left** (GPIO3) | Previous screen | — |
 
-Tap directions are configurable via `BUTTON_TAP_STEP` / `BUTTON2_TAP_STEP` / `BUTTON3_TAP_STEP` in config.h.
+Tap directions are configurable via `BUTTON_TAP_STEP` / `BUTTON2_TAP_STEP` / `BUTTON3_TAP_STEP` in config.h. A step of `0` disables that button's tap action, leaving only its long-press behaviour.
+
+**Because it is one lever, the three contacts are not independent.** A single deliberate rock can briefly close a second contact — either grazing one on the way over, or catching one as the lever springs back through center. Two filters keep that from registering as a second tap: contacts held for less than `DEBOUNCE_MS` are rejected outright, and after any accepted tap, further taps are ignored for `BUTTON_SETTLE_MS` (default 300ms). See [the switch changes screens then changes back](#rocking-the-switch-changes-the-screen-then-immediately-changes-back) if you still see it misbehave.
 
 **When device is ON:**
 - **Tap:** Cycle screens (BOKTAI 1 → 2 → 3 → XInput → 1...). The XInput screen is always present and doubles as the diagnostics screen.
@@ -516,6 +518,25 @@ Adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if hig
 
 ### Device powers off quickly
 Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Both battery sensing and cutoff are on by default on this board; if the ADC reading is bad (above) the cutoff can fire spuriously — set `BATTERY_CUTOFF_ENABLED = false` while you sort it out.
+
+### Rocking the switch changes the screen then immediately changes back
+Or more generally, the switch feels unreliable — sometimes a rock does nothing.
+
+This is contact cross-talk, not a debounce problem in the usual sense. The 3-way switch is a single spring-return lever over three contacts, so one deliberate rock can close a second contact as the lever travels or springs back through center. A rock right that also grazes left registers as `+1` then `-1` and lands you back on the screen you started from, which reads as "the switch was ignored".
+
+The firmware filters this two ways: contacts held under `DEBOUNCE_MS` (50ms) are rejected, and after any accepted tap further taps are ignored for `BUTTON_SETTLE_MS` (300ms). If it still happens:
+
+1. **Raise `BUTTON_SETTLE_MS`.** 300ms covers a normal rebound; a worn or loose lever may need 400–500ms. Taps closer together than this are invisible anyway, since the panel needs roughly a second per refresh.
+2. **Set `BUTTON_TAP_STEP = 0`** to make the center press power-only. This removes a whole cross-talk path — if the lever is grazing the *center* contact on its way over, no settle window is needed because the center can no longer affect the screen at all.
+3. **Watch which contacts actually fire.** With `DEBUG_SERIAL = true` in CDC mode, every press logs its source (`center`, `runtime, left`, `runtime, right`) and every suppressed tap logs why:
+
+   ```
+   Device button pressed (runtime, right)
+   Device button pressed (runtime, left)
+   Tap ignored (runtime, left) - 84ms after the last one, inside the 300ms settle window
+   ```
+
+   That tells you exactly which pairs of contacts are colliding, which is the difference between a config tweak and a genuinely faulty switch.
 
 ### Device won't wake
 1. Hold the switch's **center press** for a full 2 seconds. Left/right cannot wake the device — only GPIO0 is wake-capable.
