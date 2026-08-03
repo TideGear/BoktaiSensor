@@ -248,17 +248,23 @@ const int I2C_SDA_PIN = 7;                // IO7 pad
 const int I2C_SCL_PIN = 8;                // IO8 pad
 
 // -----------------------------------------------------------------------------
-// DISPLAY SCREENSAVER
+// NO-SENSOR BAR SWEEP
 // -----------------------------------------------------------------------------
-// After SCREENSAVER_TIME minutes of no button activity, show the "Ojo del Sol"
-// screensaver.
+// When no LTR390 answered at boot, cycle the bar count 0 -> max -> 0 as fast as
+// the panel can redraw instead of leaving the gauge pinned at 0.
 //
-// On e-paper the screensaver is drawn once, centered, and then the panel is put
-// into hibernation with the image retained — there is no bouncing animation.
-// Animating would refresh the panel continuously for no benefit: e-paper has no
-// burn-in to avoid, and each refresh costs time, power, and panel life.
-const bool SCREENSAVER_ACTIVE = true;
-const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (equivalent to SCREENSAVER_ACTIVE = false)
+// This doubles as a panel benchmark — the sweep advances one bar per completed
+// refresh, so the visible rate IS the panel's real refresh rate — and as an
+// end-to-end test of the output chain, since the sweeping value is also sent
+// over Bluetooth/USB HID and the GBA link.
+//
+// Set false to leave the gauge at 0 instead. Do that if you are testing HID
+// pairing or emulator mapping and a swinging meter would get in the way.
+//
+// Note this refreshes the panel continuously for as long as the device is on
+// with no sensor attached, which is real panel wear. It is a bring-up and demo
+// aid, not something to leave running for hours.
+const bool NO_SENSOR_BAR_SWEEP = true;
 
 // =============================================================================
 // CONNECTIVITY

@@ -30,7 +30,7 @@
 EPaperDisplay display(SCREEN_WIDTH, SCREEN_HEIGHT);
 #define DISPLAY_WHITE 1
 bool displayInitialized = false;
-// Icon dimensions (shared by status bar and screensaver)
+// Status bar icon dimensions
 const int16_t STATUS_BATT_ICON_W = 20;
 const int16_t STATUS_BATT_ICON_H = 9;
 const int16_t STATUS_BT_ICON_W = 8;
@@ -69,10 +69,9 @@ bool buttonWasPressed = false;
 struct AuxButtonState {
   unsigned long pressStart;
   bool wasPressed;
-  bool suppressShortPress;
 };
-AuxButtonState button2State = { 0, false, false };
-AuxButtonState button3State = { 0, false, false };
+AuxButtonState button2State = { 0, false };
+AuxButtonState button3State = { 0, false };
 
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
@@ -99,15 +98,9 @@ float cachedBatteryAdcAvg = -1.0f;
 bool hasBatteryReading = false;
 unsigned long lowBatteryStart = 0;
 
-// Screensaver state
-const char SCREENSAVER_TEXT[] = "Ojo del Sol";
-const bool SCREENSAVER_ENABLED = SCREENSAVER_ACTIVE && (SCREENSAVER_TIME > 0);
-const unsigned long SCREENSAVER_TIMEOUT_MS = SCREENSAVER_TIME * 60UL * 1000UL;
-const int16_t SCREENSAVER_IMAGE_W = 24;
-const int16_t SCREENSAVER_IMAGE_H = 24;
-const int16_t SCREENSAVER_IMAGE_TEXT_GAP = 8;
-const int16_t SCREENSAVER_TEXT_BATT_GAP = 8;
-const int16_t SCREENSAVER_BATT_GAP = 2;
+// "Ojo del Sol" logo, shown on the power-on screen
+const int16_t OJO_ICON_W = 24;
+const int16_t OJO_ICON_H = 24;
 
 const uint8_t OJO_DEL_SOL_BITMAP[] PROGMEM = {
   0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x08, 0x0C, 0x00, 0x08, 0x18, 0x00,
@@ -117,19 +110,10 @@ const uint8_t OJO_DEL_SOL_BITMAP[] PROGMEM = {
   0x00, 0x7E, 0x00, 0x04, 0x00, 0x20, 0x0E, 0x00, 0x70, 0x3C, 0x18, 0x30,
   0x00, 0x18, 0x10, 0x00, 0x30, 0x10, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00
 };
-unsigned long lastScreenActivityMs = 0;
-bool screensaverActive = false;
-bool screensaverJustExited = false;
-// The screensaver is a single static frame on e-paper, so track whether it has
-// already been pushed for the current layout.
-bool screensaverDrawn = false;
+
+// Set when the power button is still held as setup() ends (from the power-on
+// long press), so its release is not also read as a screen-changing tap.
 bool suppressShortPress = false;
-int16_t screensaverX = 0;
-int16_t screensaverY = 0;
-int16_t screensaverTextW = 0;
-int16_t screensaverTextH = 0;
-int16_t screensaverTextX1 = 0;
-int16_t screensaverTextY1 = 0;
 
 // Cached display values
 uint32_t cachedRawUVS = 0;
@@ -141,6 +125,9 @@ int cachedNumBars = 0;
 // without waiting on the routine e-paper refresh interval.
 int lastDisplayedBars = -1;
 int lastDisplayedNumBars = -1;
+// No-sensor bar sweep: direction, and the panel push count it last stepped on.
+int sweepDirection = 1;
+uint32_t lastSweepPushCount = 0;
 float smoothedUvi = 0.0f;
 bool hasSmoothedUvi = false;
 bool gameChanged = false;
@@ -210,17 +197,6 @@ int16_t usbStickRX = 0, usbStickRY = 0;
 int usbMeterBars = -1;
 int usbMeterNumBars = -1;
 
-char screensaverBatteryText[6] = "";
-int16_t screensaverBatteryTextW = 0;
-int16_t screensaverBatteryTextH = 0;
-int16_t screensaverBatteryW = 0;
-int16_t screensaverBatteryH = 0;
-int16_t screensaverBlockW = 0;
-int16_t screensaverBlockH = 0;
-bool screensaverBatteryVisible = false;
-int screensaverLastLayoutPct = -2;  // Cache key for layout recalculation (-2 = never calculated)
-bool screensaverLastLayoutBleStatus = false;
-
 void initHidPressTiming();
 int clampGameIndex(int game);
 void refreshGameState(bool refreshOutputs);
@@ -229,8 +205,7 @@ void updateUsbMeter(int bars, int numBars);
 void logDeviceButtonPress(const char* context);
 void syncRuntimeButtonStateAfterStartup();
 
-// Restore the panel rail and controller if a screensaver hibernation or a
-// previous deep sleep left them down.
+// Restore the panel rail and controller if a previous deep sleep left them down.
 void wakeDisplayHardware() {
   if (!displayInitialized) {
     return;
@@ -394,7 +369,7 @@ void showHoldPowerOnPrompt() {
 // boot continues either way, and this screen is replaced by the normal UI.
 void showSensorMissingNotice() {
   const char line1[] = "LTR390 not found";
-  const char line2[] = "Running without UV";
+  const char* line2 = NO_SENSOR_BAR_SWEEP ? "Demo: bar sweep" : "Running without UV";
   int16_t x1, y1;
   uint16_t w, h;
 
@@ -557,16 +532,6 @@ void setup() {
   #endif
 
   display.setTextSize(1);
-  int16_t ssX1, ssY1;
-  uint16_t ssW, ssH;
-  display.getTextBounds(SCREENSAVER_TEXT, 0, 0, &ssX1, &ssY1, &ssW, &ssH);
-  screensaverTextW = (int16_t)ssW;
-  screensaverTextH = (int16_t)ssH;
-  screensaverTextX1 = ssX1;
-  screensaverTextY1 = ssY1;
-  calculateScreensaverLayout();
-  screensaverLastLayoutPct = cachedBatteryPct;
-  screensaverLastLayoutBleStatus = BLUETOOTH_ENABLED && (bleConnected || blePairingActive);
   if (!inCdcMode) {
     // Wait for power-on: show prompt for 10s, reset on button activity.
     // This always shows immediately so a short wake tap reliably shows the prompt.
@@ -609,7 +574,6 @@ void setup() {
     }
   }
 
-
   if (!inCdcMode) {
     // Show wake-up confirmation
     display.clearDisplay();
@@ -619,15 +583,15 @@ void setup() {
     uint16_t wakeW, wakeH;
     display.getTextBounds(wakeText, 0, 0, &wakeX1, &wakeY1, &wakeW, &wakeH);
     const int16_t wakeGap = 8;
-    int16_t blockW = SCREENSAVER_IMAGE_W + wakeGap + (int16_t)wakeW;
-    int16_t blockH = (SCREENSAVER_IMAGE_H > (int16_t)wakeH) ? SCREENSAVER_IMAGE_H : (int16_t)wakeH;
+    int16_t blockW = OJO_ICON_W + wakeGap + (int16_t)wakeW;
+    int16_t blockH = (OJO_ICON_H > (int16_t)wakeH) ? OJO_ICON_H : (int16_t)wakeH;
     int16_t blockX = (SCREEN_WIDTH - blockW) / 2;
     int16_t blockY = (SCREEN_HEIGHT - blockH) / 2;
     int16_t iconX = blockX;
-    int16_t iconY = blockY + ((blockH - SCREENSAVER_IMAGE_H) / 2);
-    int16_t textX = blockX + SCREENSAVER_IMAGE_W + wakeGap;
+    int16_t iconY = blockY + ((blockH - OJO_ICON_H) / 2);
+    int16_t textX = blockX + OJO_ICON_W + wakeGap;
     int16_t textY = blockY + ((blockH - (int16_t)wakeH) / 2);
-    display.drawBitmap(iconX, iconY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, DISPLAY_WHITE);
+    display.drawBitmap(iconX, iconY, OJO_DEL_SOL_BITMAP, OJO_ICON_W, OJO_ICON_H, DISPLAY_WHITE);
     display.setCursor(textX - wakeX1, textY - wakeY1);
     display.print(wakeText);
     display.displayNow();
@@ -635,7 +599,6 @@ void setup() {
   }
 
   refreshGameState(false);
-  lastScreenActivityMs = millis();
   #if HAS_USB_HID
   if (inCdcMode) {
     uiScreenChanged = true;  // Force initial display draw on first loop iteration
@@ -655,15 +618,16 @@ void loop() {
   // Check power button for tap (change game) or long-press (sleep)
   handlePowerButton();
   handleAuxButtons();
-  updateScreensaverState();
   updateBluetoothState();
   updateBatteryStatus();
   handleLowBatteryCutoff();
 
-  // Wait for new sensor data. With no sensor this never fires, so the bar
-  // count stays 0 and the HID/GBA outputs keep reporting an empty gauge.
+  // Wait for new sensor data. With no sensor this never fires; the bar sweep
+  // below drives the gauge instead.
   bool newData = false;
-  if (sensorPresent && ltr.newDataAvailable()) {
+  if (!sensorPresent) {
+    newData = advanceNoSensorBarSweep();
+  } else if (ltr.newDataAvailable()) {
     float uviForBars = calculateUVI();
     if (UVI_SMOOTHING_ENABLED) {
       if (!hasSmoothedUvi) {
@@ -689,19 +653,14 @@ void loop() {
 
   updateGbaLinkOutput(cachedFilledBars);
 
-  if (screensaverActive) {
-    drawScreensaver();
-  } else if (newData || batteryDisplayDirty || screensaverJustExited || uiScreenChanged) {
-    // A screen change or screensaver exit is a direct response to a button
-    // press, so it must not wait on the routine refresh interval.
-    drawMainDisplay(uiScreenChanged || screensaverJustExited);
+  if (newData || batteryDisplayDirty || uiScreenChanged) {
+    // A screen change is a direct response to a button press, so it must not
+    // wait on the routine refresh interval.
+    drawMainDisplay(uiScreenChanged);
     uiScreenChanged = false;
   }
-  // Cleared even when the screensaver swallowed it; that path tracks battery
-  // changes through its own layout check.
   batteryDisplayDirty = false;
 
-  screensaverJustExited = false;
   handleBlePresses();
   refreshSingleAnalogButton();
   // Push any frame that was held back by the e-paper refresh rate limit.
@@ -709,171 +668,43 @@ void loop() {
   delay(1); // Keep loop responsive while allowing accurate GBA phase timing
 }
 
-void noteScreenActivity() {
-  lastScreenActivityMs = millis();
-  if (screensaverActive) {
-    screensaverActive = false;
-    screensaverJustExited = true;
-    screensaverDrawn = false;
-  }
-}
-
-bool shouldShowScreensaverBluetoothStatus() {
-  return BLUETOOTH_ENABLED && (bleConnected || blePairingActive);
-}
-
-void calculateScreensaverLayout() {
-  bool bluetoothStatusVisible = shouldShowScreensaverBluetoothStatus();
-  screensaverBatteryVisible = (cachedBatteryPct >= 0) || bluetoothStatusVisible;
-  screensaverBatteryText[0] = '\0';
-  screensaverBatteryTextW = 0;
-  screensaverBatteryTextH = 0;
-  screensaverBatteryW = 0;
-  screensaverBatteryH = 0;
-
-  display.setTextSize(1);
-  if (screensaverBatteryVisible) {
-    bool hasBattery = (cachedBatteryPct >= 0);
-    if (hasBattery) {
-      snprintf(screensaverBatteryText, sizeof(screensaverBatteryText), "%d%%", cachedBatteryPct);
-      int16_t x1, y1;
-      uint16_t w, h;
-      display.getTextBounds(screensaverBatteryText, 0, 0, &x1, &y1, &w, &h);
-      screensaverBatteryTextW = (int16_t)w;
-      screensaverBatteryTextH = (int16_t)h;
-    }
-
-    int16_t bluetoothW = 0;
-    if (bluetoothStatusVisible) {
-      bluetoothW = STATUS_BT_ICON_W;
-    }
-
-    if (hasBattery) {
-      screensaverBatteryW = screensaverBatteryTextW + SCREENSAVER_BATT_GAP + STATUS_BATT_ICON_W;
-      if (bluetoothStatusVisible) {
-        screensaverBatteryW += bluetoothW + STATUS_BT_GAP;
-      }
-      screensaverBatteryH = max(screensaverBatteryTextH, STATUS_BATT_ICON_H);
-    } else {
-      screensaverBatteryW = bluetoothW;
-      screensaverBatteryH = bluetoothW > 0 ? STATUS_BT_ICON_H : 0;
-    }
-
-    if (bluetoothStatusVisible) {
-      screensaverBatteryH = max(screensaverBatteryH, STATUS_BT_ICON_H);
-    }
+// With no LTR390 attached there is nothing to measure, so run the gauge up and
+// down its full range as fast as the panel can redraw. Doubles as a panel
+// benchmark (the visible rate is the panel's real refresh rate) and as an
+// end-to-end check of the HID and GBA link outputs, which carry the swept value
+// like any other reading.
+//
+// Paced by completed panel pushes rather than loop iterations. The loop runs at
+// roughly 1kHz; stepping a bar that often would flood the BLE/USB stacks with
+// thousands of reports per second for frames the panel never displayed.
+//
+// Returns true when the bar count changed, matching the sensor path's newData.
+bool advanceNoSensorBarSweep() {
+  if (!NO_SENSOR_BAR_SWEEP) {
+    return false;
   }
 
-  screensaverBlockW = screensaverTextW;
-  if (SCREENSAVER_IMAGE_W > screensaverBlockW) {
-    screensaverBlockW = SCREENSAVER_IMAGE_W;
+  uint32_t pushes = display.pushCount();
+  if (pushes == lastSweepPushCount) {
+    return false;  // Panel is still working on the previous step
   }
-  if (screensaverBatteryW > screensaverBlockW) {
-    screensaverBlockW = screensaverBatteryW;
-  }
+  lastSweepPushCount = pushes;
 
-  screensaverBlockH = SCREENSAVER_IMAGE_H + SCREENSAVER_IMAGE_TEXT_GAP + screensaverTextH;
-  if (screensaverBatteryVisible) {
-    screensaverBlockH += SCREENSAVER_TEXT_BATT_GAP + screensaverBatteryH;
-  }
-}
+  cachedNumBars = GAME_BARS[currentGame];
+  gameChanged = false;
 
-void drawScreensaverBattery(int16_t x, int16_t y) {
-  if (!screensaverBatteryVisible) {
-    return;
-  }
-
-  bool hasBattery = (cachedBatteryPct >= 0);
-  bool bluetoothStatusVisible = shouldShowScreensaverBluetoothStatus();
-  int16_t cursorX = x;
-
-  display.setTextSize(1);
-  if (bluetoothStatusVisible) {
-    int16_t btY = y + ((screensaverBatteryH - STATUS_BT_ICON_H) / 2);
-    drawBluetoothIcon(cursorX, btY, isBluetoothIconOn());
-    cursorX += STATUS_BT_ICON_W;
-    if (hasBattery) {
-      cursorX += STATUS_BT_GAP;
-    }
-  }
-  if (hasBattery) {
-    int16_t textY = y + ((screensaverBatteryH - screensaverBatteryTextH) / 2);
-    display.setCursor(cursorX, textY);
-    display.print(screensaverBatteryText);
-    cursorX += screensaverBatteryTextW + SCREENSAVER_BATT_GAP;
-
-    int16_t iconY = y + ((screensaverBatteryH - STATUS_BATT_ICON_H) / 2);
-    drawBatteryGauge(cursorX, iconY, cachedBatteryPct);
-  }
-}
-
-void updateScreensaverState() {
-  if (!SCREENSAVER_ENABLED) {
-    return;
-  }
-  if (screensaverActive) {
-    return;
+  cachedFilledBars += sweepDirection;
+  if (cachedFilledBars >= cachedNumBars) {
+    cachedFilledBars = cachedNumBars;
+    sweepDirection = -1;
+  } else if (cachedFilledBars <= 0) {
+    cachedFilledBars = 0;
+    sweepDirection = 1;
   }
 
-  unsigned long now = millis();
-  if ((now - lastScreenActivityMs) >= SCREENSAVER_TIMEOUT_MS) {
-    screensaverActive = true;
-    screensaverDrawn = false;
-    calculateScreensaverLayout();
-    screensaverLastLayoutPct = cachedBatteryPct;
-    screensaverLastLayoutBleStatus = shouldShowScreensaverBluetoothStatus();
-  }
-}
-
-// Static, centered, drawn once. See the SCREENSAVER note in config.h for why
-// this does not animate on e-paper.
-void drawScreensaver() {
-  bool bluetoothStatusVisible = shouldShowScreensaverBluetoothStatus();
-  if (screensaverLastLayoutPct != cachedBatteryPct ||
-      screensaverLastLayoutBleStatus != bluetoothStatusVisible) {
-    calculateScreensaverLayout();
-    screensaverLastLayoutPct = cachedBatteryPct;
-    screensaverLastLayoutBleStatus = bluetoothStatusVisible;
-    screensaverDrawn = false;  // Battery/BLE status changed - redraw once
-  }
-
-  if (screensaverDrawn) {
-    return;
-  }
-
-  screensaverX = (SCREEN_WIDTH - screensaverBlockW) / 2;
-  screensaverY = (SCREEN_HEIGHT - screensaverBlockH) / 2;
-  if (screensaverX < 0) {
-    screensaverX = 0;
-  }
-  if (screensaverY < 0) {
-    screensaverY = 0;
-  }
-
-  display.clearDisplay();
-
-  int16_t imageX = screensaverX + ((screensaverBlockW - SCREENSAVER_IMAGE_W) / 2);
-  int16_t imageY = screensaverY;
-  display.drawBitmap(imageX, imageY, OJO_DEL_SOL_BITMAP, SCREENSAVER_IMAGE_W, SCREENSAVER_IMAGE_H, DISPLAY_WHITE);
-
-  int16_t textX = screensaverX + ((screensaverBlockW - screensaverTextW) / 2);
-  int16_t textY = imageY + SCREENSAVER_IMAGE_H + SCREENSAVER_IMAGE_TEXT_GAP;
-  display.setTextSize(1);
-  display.setCursor(textX - screensaverTextX1, textY - screensaverTextY1);
-  display.print(SCREENSAVER_TEXT);
-
-  if (screensaverBatteryVisible) {
-    int16_t batteryX = screensaverX + ((screensaverBlockW - screensaverBatteryW) / 2);
-    int16_t batteryY = textY + screensaverTextH + SCREENSAVER_TEXT_BATT_GAP;
-    drawScreensaverBattery(batteryX, batteryY);
-  }
-
-  display.displayNow();
-  // Nothing more will change until the user presses a button, so drop the
-  // panel to ~1uA. E-paper keeps the image visible while hibernating, and the
-  // next push wakes it automatically.
-  display.hibernatePanel();
-  screensaverDrawn = true;
+  updateBluetoothMeter(cachedFilledBars, cachedNumBars);
+  updateUsbMeter(cachedFilledBars, cachedNumBars);
+  return true;
 }
 
 // immediate: skip the routine refresh interval because the user is waiting on
@@ -1260,16 +1091,11 @@ void handlePowerButton() {
     logDeviceButtonPress("runtime");
     buttonPressStart = millis();
     buttonWasPressed = true;
-    if (screensaverActive) {
-      suppressShortPress = true;
-    }
-    noteScreenActivity();
   }
   else if (buttonPressed && buttonWasPressed) {
-    noteScreenActivity();
     if ((millis() - buttonPressStart) >= LONG_PRESS_MS) {
       if (serialEnabled) {
-        Serial.print("BTN_L long-press fired after ");
+        Serial.print("Power button long-press fired after ");
         Serial.print(millis() - buttonPressStart);
         Serial.print("ms - inCdcMode=");
         #if HAS_USB_HID
@@ -1327,23 +1153,14 @@ void handleAuxButton(bool enabled, int pin, int tapStep, AuxButtonState& state,
     logDeviceButtonPress(logContext);
     state.pressStart = millis();
     state.wasPressed = true;
-    if (screensaverActive) {
-      state.suppressShortPress = true;
-    }
-    noteScreenActivity();
-  }
-  else if (buttonPressed && state.wasPressed) {
-    noteScreenActivity();
   }
   else if (!buttonPressed && state.wasPressed) {
     unsigned long pressDuration = millis() - state.pressStart;
     // Bounded like the power button: a deliberate long hold is not a tap, so
     // it must not silently change the screen on release.
-    if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS &&
-        !state.suppressShortPress) {
+    if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
       cycleUiScreen(tapStep);
     }
-    state.suppressShortPress = false;
     state.wasPressed = false;
   }
 }
@@ -1529,7 +1346,7 @@ void enterDeepSleep() {
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, 0);
 
   if (serialEnabled) {
-    Serial.print("Entering deep sleep... BTN_L level=");
+    Serial.print("Entering deep sleep... power button level=");
     Serial.println(digitalRead(BUTTON_PIN));
     Serial.flush();
   }

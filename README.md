@@ -57,9 +57,13 @@ Prof9's original code is released under the MIT License — see
 > ESP32S3 and LilyGO T-QT Pro builds — and the board-selection switch in
 > `config.h` — are on `main`.
 >
-> **Also removed on this branch:** UV enclosure compensation. This build runs
-> the LTR390 exposed (no window over the sensor), so there is no transmission
-> loss to model. If you need it, it lives on `main`.
+> **Also removed on this branch, both because e-paper makes them pointless:**
+> - **UV enclosure compensation** — this build runs the LTR390 exposed (no
+>   window over the sensor), so there is no transmission loss to model.
+> - **The screensaver** — it exists on `main` to limit OLED burn-in, which
+>   e-paper does not have.
+>
+> Both still live on `main` if you need them.
 >
 > **Status: untested on real hardware.** The firmware compiles clean and the
 > pin map follows LilyGO's own board header, but nothing here has been run on
@@ -128,7 +132,7 @@ USB CDC serial is not active during normal XInput runtime. To enable USB serial 
 
 With `DEBUG_SERIAL = true`, CDC output includes startup diagnostics, device-button press events, and any enabled UV/battery debug streams.
 
-In CDC mode the firmware runs fully (UV sensing, game display, screensaver, BLE, GBA link). The screen header shows **CDC** instead of **XInput**. Hold the button for 2 seconds from any screen to exit CDC mode and sleep; on next wake, the device boots back into XInput mode.
+In CDC mode the firmware runs fully (UV sensing, game display, BLE, GBA link). The screen header shows **CDC** instead of **XInput**. Hold the button for 2 seconds from any screen to exit CDC mode and sleep; on next wake, the device boots back into XInput mode.
 
 As an alternative, set `USB_HID_ENABLED = false` to have the firmware boot directly into CDC on wake.
 
@@ -312,7 +316,6 @@ Tap directions are configurable via `BUTTON_TAP_STEP` / `BUTTON2_TAP_STEP` / `BU
 - **Hold center 2s on a game screen:** Power OFF (deep sleep, ~10uA)
 - **Hold center 2s on the XInput screen:** Restart into CDC mode for USB serial output and firmware upload
 - **Hold center 2s while in CDC mode:** Exit CDC mode and sleep (next wake returns to XInput mode)
-- If screensaver is active, first tap wakes the screen
 
 **When waking from sleep:**
 - **Hold center 2s:** Power ON
@@ -350,11 +353,11 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 - **Pairing restarts on wake** — after waking from sleep, the device re-advertises for pairing
 - Bluetooth icon flashes while pairing, solid when connected
 
-### Screensaver
+### No Screensaver
 
-After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a centered "Ojo del Sol" logo and the panel is put into hibernation (~1µA) with the image retained. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable, or `SCREENSAVER_ACTIVE = false` to disable it without changing the time value. The status row appears only when battery data is available and/or BLE is actively connected or pairing; if either changes while the screensaver is up, it redraws once.
+**There is no screensaver on this branch.** The OLED builds on `main` use one to limit burn-in; e-paper has none to limit, so it was removed rather than reworked. The screen simply shows the current reading until you change screens or sleep the device.
 
-**Unlike the OLED builds on `main`, the logo does not bounce.** Animating it would refresh the panel continuously for no benefit: e-paper has no burn-in to avoid, and each refresh costs time, power, and panel life. Here the screensaver is the *low-power* state rather than a burn-in guard — sensing, BLE, and GBA link output all keep running while the panel sleeps.
+One consequence worth knowing: the screensaver was also the panel's idle low-power state (it hibernated the controller after 3 minutes). Without it the panel stays powered for as long as the device is on, so idle current while ON is somewhat higher. Sleep behavior is unchanged — hold the center press 2s and the panel is hibernated and its rail cut.
 
 ### Running Without the Sensor
 
@@ -362,15 +365,24 @@ The LTR390 is optional at boot. If it does not answer on I2C, the device shows
 
 ```
 LTR390 not found
-Running without UV
+Demo: bar sweep
 ```
 
-for about 2.5 seconds and then **continues booting normally**. Everything that does not depend on UV keeps working: display, buttons, screen cycling, battery monitoring and cutoff, Bluetooth/USB HID pairing and reports, GBA link output, screensaver, and CDC mode.
+for about 2.5 seconds and then **continues booting normally**. Everything that does not depend on UV keeps working: display, buttons, screen cycling, battery monitoring and cutoff, Bluetooth/USB HID pairing and reports, GBA link output, and CDC mode.
 
 With no sensor:
-- The bar count stays at **0** and the HID/GBA outputs report an empty gauge
+- The sun gauge **sweeps 0 → max → 0 continuously**, as fast as the panel can redraw (`NO_SENSOR_BAR_SWEEP`, default on)
 - UV readouts show **`N/A`** rather than `0`, on both the game screens and the XInput screen — a missing sensor should not be mistakable for darkness
 - Every sensor access is skipped, so a floating I2C bus cannot produce phantom readings
+
+The sweep is paced by *completed panel refreshes*, one bar per refresh, which makes it two useful things at once:
+
+1. **A panel benchmark.** The visible sweep rate *is* the panel's real refresh rate. Time a full 0→max→0 cycle and divide by `2 × bars` to get milliseconds per refresh — handy for deciding whether `EPAPER_MIN_REFRESH_MS` and the priority lane are tuned sensibly for your unit.
+2. **An end-to-end output test.** The swept value is sent over Bluetooth/USB HID and the GBA link like any real reading, so you can watch an emulator's solar meter swing, or scope the link pins, with no sensor attached.
+
+Pacing to refreshes rather than loop iterations matters: the loop runs at roughly 1kHz, and stepping a bar that often would flood the BLE/USB stacks with thousands of reports per second for frames the panel never displayed.
+
+Set `NO_SENSOR_BAR_SWEEP = false` to leave the gauge at 0 instead — do that if you are testing HID pairing or emulator button mapping and a swinging meter would get in the way. Note that the sweep refreshes the panel continuously for as long as the device is on without a sensor, which is real panel wear; it is a bring-up and demo aid, not something to leave running for hours.
 
 This makes the board usable for bring-up and for testing the display, buttons, HID pairing, and link wiring before the sensor is attached. The sensor is only probed at boot, so **restart after connecting it.**
 
@@ -457,7 +469,7 @@ If the bar display feels jumpy:
 - Cutting the LTR390 breakout LED trace is recommended because the LED is hardwired to VIN
 - Battery sensing and low-voltage cutoff are both enabled by default on this board (the divider is built in). Validate the reading on the XInput screen before trusting the cutoff.
 - Battery sampling/cutoff checks run on a timed loop and are not dependent on UV "new data" events
-- **Screensaver = low-power idle:** the panel hibernates (~1µA) with its image retained while sensing, BLE, and GBA link output keep running
+- **No idle panel hibernation while ON.** Removing the screensaver removed the only path that hibernated the controller mid-session, so the panel rail stays up until you sleep the device. Adding an idle hibernate that keeps the last image on screen (no logo, no visual change) would recover this if idle runtime matters.
 - **Before deep sleep** the firmware clears the canvas and pushes that blank frame *before* cutting the panel rail. E-paper retains its last image with no power, so skipping this would leave the UI visible for the whole sleep.
 - The panel rail enable pin is latched off through deep sleep (`gpio_hold_en` + `gpio_deep_sleep_hold_en`) and released on wake
 - Deep sleep current: ~10µA (varies with module pull-ups)
@@ -469,8 +481,10 @@ Most glass and many plastics block UV strongly (often 90%+). Prefer an open aper
 
 ## Troubleshooting
 
-### "LTR390 not found / Running without UV" at boot
-The sensor did not answer on I2C. This is **not fatal** — the device finishes booting and runs normally without it (see [Running Without the Sensor](#running-without-the-sensor)). UV rows read `N/A` instead of `0`. Check the wiring to the IO7/IO8 pads, that the breakout has pull-ups, and that it is powered from `3v3`. Reconnecting the sensor requires a restart.
+### "LTR390 not found" at boot, and the gauge sweeps up and down on its own
+The sensor did not answer on I2C. This is **not fatal** — the device finishes booting and runs normally without it, and the sweeping gauge is the deliberate no-sensor demo (see [Running Without the Sensor](#running-without-the-sensor)). UV rows read `N/A` instead of `0`. Check the wiring to the IO7/IO8 pads, that the breakout has pull-ups, and that it is powered from `3v3`. Reconnecting the sensor requires a restart.
+
+If you want a sensorless device to sit still instead of sweeping, set `NO_SENSOR_BAR_SWEEP = false`.
 
 ### UV sensor reads 0 or very low
 First confirm you did **not** see "LTR390 not found" at boot — if the readouts say `N/A` rather than a number, the sensor was never detected (above).

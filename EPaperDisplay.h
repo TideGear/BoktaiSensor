@@ -108,20 +108,10 @@ public:
     }
   }
 
-  // Panel to deep sleep (~1uA), image retained. Used by the screensaver: the
-  // artwork stays visible with the controller powered down. Any later push
-  // wakes it automatically.
-  void hibernatePanel() {
-    if (!powered || hibernating) {
-      return;
-    }
-    epd.hibernate();
-    hibernating = true;
-  }
-
-  // Hibernate and cut the panel rail, latching it off through deep sleep.
-  // E-paper keeps its last image unpowered, so whatever was pushed last stays
-  // on screen.
+  // Hibernate the controller (~1uA, image retained) and cut the panel rail,
+  // latching it off through deep sleep. E-paper keeps its last image unpowered,
+  // so whatever was pushed last stays on screen — callers push a blank frame
+  // first if they want the panel to look off.
   void powerDownForSleep() {
     hibernatePanel();
     digitalWrite(EPD_POWER_PIN, EPD_POWER_ACTIVE_HIGH ? LOW : HIGH);
@@ -130,7 +120,7 @@ public:
     powered = false;
   }
 
-  // Restore the rail and controller after hibernatePanel()/powerDownForSleep().
+  // Restore the rail and controller after powerDownForSleep().
   // Returns true if the panel actually had to be woken.
   bool wakePanel() {
     if (powered && !hibernating) {
@@ -163,11 +153,27 @@ public:
     forceFull = true;
   }
 
+  // Frames actually pushed to the panel since boot. Lets callers pace work to
+  // the panel's real refresh rate instead of guessing at it or running at loop
+  // speed. Used by the no-sensor bar sweep.
+  uint32_t pushCount() const {
+    return pushes;
+  }
+
 private:
   // The 128-wide canvas only fits across the panel's long axis, so portrait
   // rotations are not usable. Snap them to the nearest landscape rotation.
   static uint8_t landscapeRotation(uint8_t rotation) {
     return ((rotation % 4) == 3) ? 3 : 1;
+  }
+
+  // Controller to deep sleep with the image retained. Any later push wakes it.
+  void hibernatePanel() {
+    if (!powered || hibernating) {
+      return;
+    }
+    epd.hibernate();
+    hibernating = true;
   }
 
   void powerRailOn() {
@@ -220,6 +226,7 @@ private:
     lastPushMs = millis();
     pushedOnce = true;
     pending = false;
+    pushes++;
   }
 
   // Page height = panel height, so a frame is always a single page.
@@ -230,6 +237,7 @@ private:
   int16_t yOffset = 0;
   unsigned long lastPushMs = 0;
   unsigned long pendingMinMs = 0;
+  uint32_t pushes = 0;
   uint16_t partialsSinceFull = 0;
   bool pending = false;
   bool pushedOnce = false;
