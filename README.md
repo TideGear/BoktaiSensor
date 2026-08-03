@@ -539,7 +539,21 @@ The only levers that would meaningfully cut that number require vendoring and ha
 - **Waveform/PLL tuning.** `_Init_Part()` already loads custom 42-byte partial LUTs at a 15Hz PLL rather than using the panel's OTP waveform, so the easy win is taken. Shortening the LUT frame counts or raising the PLL is what is left.
 - **Enabling `usePartialUpdateWindow`** so the refresh scan is restricted to the gauge rows. The GxEPD2 author disabled it for this panel, presumably because it misbehaves, so this needs testing on real hardware.
 
-Measure before touching either. The [no-sensor bar sweep](#running-without-the-sensor) exists for exactly this: time a full cycle and divide by `2 × bars` to get real milliseconds per refresh, which may well be below GxEPD2's 1200ms timeout budget.
+Measure before touching either. Set `DEBUG_SERIAL_EPAPER = true` (on by default) and read the serial log in CDC mode — every completed refresh prints its actual duration:
+
+```
+EPD refresh #41 partial 1187ms
+EPD refresh #42 partial 1191ms
+EPD refresh #43 full 3402ms
+```
+
+Those numbers are what matters, not GxEPD2's timeout budgets. Pair it with the [no-sensor bar sweep](#running-without-the-sensor) for a continuous stream of samples.
+
+**What to read into the result:**
+- **Consistently near 1200ms** — that is suspiciously equal to GxEPD2's timeout. Either the panel really is that slow, or `_waitWhileBusy()` is timing out rather than seeing BUSY deassert (a wiring or polarity problem on `EPD_BUSY_PIN`). The panel would still draw correctly either way, so this is worth ruling out before blaming the hardware.
+- **Well under 1200ms and varying** — BUSY is being read properly and you are seeing the panel's true speed.
+
+Also note that **one refresh of latency is already the floor for real use.** With a live sensor the bar count changes by one occasionally, so the gauge is one refresh behind the sun and cannot do better. The sweep looks slow only because a full 0→max→0 cycle needs `2 × bars` refreshes by definition.
 
 ### The screen flashes inverted every so often
 **Expected.** Every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) is promoted to a full refresh, and a full refresh clears ghosting by driving the panel through an inversion sequence — the whole screen goes dark, then light, then redraws. On this panel that takes up to ~3.6s. Waking from sleep also forces one, since the controller loses the previous-image RAM that a partial refresh diffs against.

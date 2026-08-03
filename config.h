@@ -367,5 +367,11 @@ const bool DEBUG_SERIAL = true;
 // Periodic Serial debug stream controls. These only apply when DEBUG_SERIAL = true.
 const bool DEBUG_SERIAL_BATTERY = false;
 const bool DEBUG_SERIAL_UV = true;
+// Logs how long each panel refresh actually blocked on the panel's BUSY line,
+// and whether it was a partial or a full refresh. This is the hard floor on how
+// fast the gauge can change, so measure it rather than trusting GxEPD2's
+// conservative budgets (1200ms partial / 3600ms full for this panel).
+// Pair with NO_SENSOR_BAR_SWEEP for a continuous stream of samples.
+const bool DEBUG_SERIAL_EPAPER = true;
 
 #endif

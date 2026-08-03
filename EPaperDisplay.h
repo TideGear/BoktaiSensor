@@ -160,6 +160,18 @@ public:
     return pushes;
   }
 
+  // Wall time the most recent push took, nearly all of it spent blocked on the
+  // panel's BUSY line. This is the hard floor on how fast the UI can change,
+  // so it is worth knowing the real number for your unit rather than trusting
+  // GxEPD2's conservative timeout budgets.
+  unsigned long lastPushDurationMs() const {
+    return lastDuration;
+  }
+
+  bool lastPushWasFull() const {
+    return lastWasFull;
+  }
+
 private:
   // The 128-wide canvas only fits across the panel's long axis, so portrait
   // rotations are not usable. Snap them to the nearest landscape rotation.
@@ -214,6 +226,7 @@ private:
       partialsSinceFull++;
     }
 
+    unsigned long refreshStartMs = millis();
     epd.firstPage();
     do {
       epd.fillScreen(GxEPD_WHITE);
@@ -221,6 +234,8 @@ private:
       epd.drawBitmap(xOffset, yOffset, getBuffer(), width(), height(),
                      GxEPD_BLACK, GxEPD_WHITE);
     } while (epd.nextPage());
+    lastDuration = millis() - refreshStartMs;
+    lastWasFull = full;
 
     memcpy(lastFrame, getBuffer(), frameBytes);
     lastPushMs = millis();
@@ -237,10 +252,12 @@ private:
   int16_t yOffset = 0;
   unsigned long lastPushMs = 0;
   unsigned long pendingMinMs = 0;
+  unsigned long lastDuration = 0;
   uint32_t pushes = 0;
   uint16_t partialsSinceFull = 0;
   bool pending = false;
   bool pushedOnce = false;
+  bool lastWasFull = false;
   bool forceFull = true;
   bool hibernating = true;
   bool powered = false;

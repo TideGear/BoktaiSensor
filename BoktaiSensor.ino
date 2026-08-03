@@ -128,6 +128,8 @@ int lastDisplayedNumBars = -1;
 // No-sensor bar sweep: direction, and the panel push count it last stepped on.
 int sweepDirection = 1;
 uint32_t lastSweepPushCount = 0;
+// Panel push count the refresh-timing log last reported on.
+uint32_t lastLoggedPushCount = 0;
 float smoothedUvi = 0.0f;
 bool hasSmoothedUvi = false;
 bool gameChanged = false;
@@ -660,12 +662,36 @@ void loop() {
     uiScreenChanged = false;
   }
   batteryDisplayDirty = false;
+  logPanelRefreshTiming();
 
   handleBlePresses();
   refreshSingleAnalogButton();
   // Push any frame that was held back by the e-paper refresh rate limit.
   display.tick();
   delay(1); // Keep loop responsive while allowing accurate GBA phase timing
+}
+
+// Report how long each completed panel refresh actually took. Nearly all of it
+// is time blocked on the panel's BUSY line, so this is the hard floor on how
+// fast the gauge can change — worth measuring rather than assuming, since
+// GxEPD2's budgets for this panel (1200ms partial, 3600ms full) are timeouts
+// rather than expected durations.
+void logPanelRefreshTiming() {
+  if (!serialEnabled || !DEBUG_SERIAL_EPAPER) {
+    return;
+  }
+
+  uint32_t pushes = display.pushCount();
+  if (pushes == lastLoggedPushCount) {
+    return;
+  }
+  lastLoggedPushCount = pushes;
+
+  Serial.print("EPD refresh #");
+  Serial.print(pushes);
+  Serial.print(display.lastPushWasFull() ? " full " : " partial ");
+  Serial.print(display.lastPushDurationMs());
+  Serial.println("ms");
 }
 
 // With no LTR390 attached there is nothing to measure, so run the gauge up and
