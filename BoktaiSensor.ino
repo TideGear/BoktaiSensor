@@ -135,8 +135,16 @@ int cachedNumBars = 0;
 // without waiting on the routine e-paper refresh interval.
 int lastDisplayedBars = -1;
 int lastDisplayedNumBars = -1;
-// No-sensor bar sweep: direction, and the panel push count it last stepped on.
+// No-sensor bar demo. The sequence loops: walk the gauge up and down one bar at
+// a time, then blink every bar on and off together NO_SENSOR_BAR_SWEEP_FLASHES
+// times, then start over.
+enum SweepPhase {
+  SWEEP_PHASE_WALK = 0,  // One bar at a time, 0 -> max -> 0
+  SWEEP_PHASE_FLASH      // All bars at once, full -> empty
+};
+SweepPhase sweepPhase = SWEEP_PHASE_WALK;
 int sweepDirection = 1;
+int sweepFlashesDone = 0;
 uint32_t lastSweepPushCount = 0;
 // Panel push count the refresh-timing log last reported on.
 uint32_t lastLoggedPushCount = 0;
@@ -701,11 +709,25 @@ void logPanelRefreshTiming() {
   Serial.println("ms");
 }
 
-// With no LTR390 attached there is nothing to measure, so run the gauge up and
-// down its full range as fast as the panel can redraw. Doubles as a panel
-// benchmark (the visible rate is the panel's real refresh rate) and as an
-// end-to-end check of the HID and GBA link outputs, which carry the swept value
-// like any other reading.
+void resetNoSensorBarSweep() {
+  sweepPhase = SWEEP_PHASE_WALK;
+  sweepDirection = 1;
+  sweepFlashesDone = 0;
+}
+
+// With no LTR390 attached there is nothing to measure, so drive the gauge
+// through a repeating demo instead of leaving it pinned at 0:
+//
+//   1. Walk phase  - one bar at a time, 0 -> max -> 0
+//   2. Flash phase - every bar on and off together, NO_SENSOR_BAR_SWEEP_FLASHES
+//                    times (default 3)
+//   ...then loop back to the walk phase.
+//
+// The walk phase measures the panel (its visible step rate is the panel's real
+// refresh rate) and exercises single-bar transitions. The flash phase exercises
+// the opposite extreme: full-scale jumps, which is also the harshest case for
+// the HID and GBA link outputs, since they carry the demo value like any real
+// reading.
 //
 // Paced by completed panel pushes rather than loop iterations. The loop runs at
 // roughly 1kHz; stepping a bar that often would flood the BLE/USB stacks with
@@ -724,15 +746,40 @@ bool advanceNoSensorBarSweep() {
   lastSweepPushCount = pushes;
 
   cachedNumBars = GAME_BARS[currentGame];
-  gameChanged = false;
+  if (cachedNumBars <= 0) {
+    return false;
+  }
+  if (gameChanged) {
+    // Bar count changed under us; restart the sequence for the new game.
+    // refreshGameState() has already reset cachedFilledBars to 0.
+    resetNoSensorBarSweep();
+    gameChanged = false;
+  }
 
-  cachedFilledBars += sweepDirection;
-  if (cachedFilledBars >= cachedNumBars) {
-    cachedFilledBars = cachedNumBars;
-    sweepDirection = -1;
-  } else if (cachedFilledBars <= 0) {
-    cachedFilledBars = 0;
-    sweepDirection = 1;
+  if (sweepPhase == SWEEP_PHASE_WALK) {
+    cachedFilledBars += sweepDirection;
+    if (cachedFilledBars >= cachedNumBars) {
+      cachedFilledBars = cachedNumBars;
+      sweepDirection = -1;
+    } else if (cachedFilledBars <= 0) {
+      // Back to empty, so the up-and-down walk is done.
+      cachedFilledBars = 0;
+      sweepDirection = 1;
+      if (NO_SENSOR_BAR_SWEEP_FLASHES > 0) {
+        sweepPhase = SWEEP_PHASE_FLASH;
+        sweepFlashesDone = 0;
+      }
+    }
+  } else {
+    if (cachedFilledBars <= 0) {
+      cachedFilledBars = cachedNumBars;  // All bars on
+    } else {
+      cachedFilledBars = 0;              // All bars off completes one flash
+      sweepFlashesDone++;
+      if (sweepFlashesDone >= (int)NO_SENSOR_BAR_SWEEP_FLASHES) {
+        resetNoSensorBarSweep();  // Next step walks up from 0 again
+      }
+    }
   }
 
   updateBluetoothMeter(cachedFilledBars, cachedNumBars);

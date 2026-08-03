@@ -253,15 +253,20 @@ const int I2C_SDA_PIN = 7;                // IO7 pad
 const int I2C_SCL_PIN = 8;                // IO8 pad
 
 // -----------------------------------------------------------------------------
-// NO-SENSOR BAR SWEEP
+// NO-SENSOR BAR DEMO
 // -----------------------------------------------------------------------------
-// When no LTR390 answered at boot, cycle the bar count 0 -> max -> 0 as fast as
-// the panel can redraw instead of leaving the gauge pinned at 0.
+// When no LTR390 answered at boot, drive the gauge through a repeating demo as
+// fast as the panel can redraw instead of leaving it pinned at 0:
 //
-// This doubles as a panel benchmark — the sweep advances one bar per completed
+//   1. Walk  - one bar at a time, 0 -> max -> 0
+//   2. Flash - every bar on and off together, NO_SENSOR_BAR_SWEEP_FLASHES times
+//   ...then loop.
+//
+// This doubles as a panel benchmark — the demo advances one step per completed
 // refresh, so the visible rate IS the panel's real refresh rate — and as an
-// end-to-end test of the output chain, since the sweeping value is also sent
-// over Bluetooth/USB HID and the GBA link.
+// end-to-end test of the output chain, since the demo value is also sent over
+// Bluetooth/USB HID and the GBA link. The walk phase exercises single-bar
+// transitions; the flash phase exercises full-scale jumps.
 //
 // Set false to leave the gauge at 0 instead. Do that if you are testing HID
 // pairing or emulator mapping and a swinging meter would get in the way.
@@ -270,6 +275,11 @@ const int I2C_SCL_PIN = 8;                // IO8 pad
 // with no sensor attached, which is real panel wear. It is a bring-up and demo
 // aid, not something to leave running for hours.
 const bool NO_SENSOR_BAR_SWEEP = true;
+
+// All-bars-on/off blinks between each walk. 0 skips the flash phase, leaving
+// just the up-and-down walk. Each flash costs two panel refreshes, so a full
+// sequence is 2 * (bars + flashes) refreshes.
+const uint8_t NO_SENSOR_BAR_SWEEP_FLASHES = 3;
 
 // =============================================================================
 // CONNECTIVITY

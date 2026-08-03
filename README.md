@@ -374,18 +374,26 @@ Demo: bar sweep
 for about 2.5 seconds and then **continues booting normally**. Everything that does not depend on UV keeps working: display, buttons, screen cycling, battery monitoring and cutoff, Bluetooth/USB HID pairing and reports, GBA link output, and CDC mode.
 
 With no sensor:
-- The sun gauge **sweeps 0 → max → 0 continuously**, as fast as the panel can redraw (`NO_SENSOR_BAR_SWEEP`, default on)
+- The sun gauge runs a **repeating demo** as fast as the panel can redraw (`NO_SENSOR_BAR_SWEEP`, default on)
 - UV readouts show **`N/A`** rather than `0`, on both the game screens and the XInput screen — a missing sensor should not be mistakable for darkness
 - Every sensor access is skipped, so a floating I2C bus cannot produce phantom readings
 
-The sweep is paced by *completed panel refreshes*, one bar per refresh, which makes it two useful things at once:
+**The demo sequence,** one step per completed panel refresh:
 
-1. **A panel benchmark.** The visible sweep rate *is* the panel's real refresh rate. Time a full 0→max→0 cycle and divide by `2 × bars` to get milliseconds per refresh. GxEPD2 budgets up to 1200ms per partial refresh for this panel, so expect roughly a bar per second and a ~20s cycle on a 10-bar game; anything faster is your unit beating that budget. See [The gauge still feels slow](#the-gauge-still-feels-slow) for what that number means and what can be done about it.
-2. **An end-to-end output test.** The swept value is sent over Bluetooth/USB HID and the GBA link like any real reading, so you can watch an emulator's solar meter swing, or scope the link pins, with no sensor attached.
+1. **Walk** — one bar at a time, `0 → max → 0`
+2. **Flash** — every bar on and off together, `NO_SENSOR_BAR_SWEEP_FLASHES` times (default 3)
+3. …then loop back to the walk
 
-Pacing to refreshes rather than loop iterations matters: the loop runs at roughly 1kHz, and stepping a bar that often would flood the BLE/USB stacks with thousands of reports per second for frames the panel never displayed.
+For a 10-bar game that reads `1 2 3 4 5 6 7 8 9 10 9 8 7 6 5 4 3 2 1 0` then `10 0 10 0 10 0`, and repeats — `2 × (bars + flashes)` refreshes per full sequence, so 26 for a 10-bar game and 22 for an 8-bar one. At roughly a second per refresh, expect a full sequence to take about half a minute.
 
-Set `NO_SENSOR_BAR_SWEEP = false` to leave the gauge at 0 instead — do that if you are testing HID pairing or emulator button mapping and a swinging meter would get in the way. Note that the sweep refreshes the panel continuously for as long as the device is on without a sensor, which is real panel wear; it is a bring-up and demo aid, not something to leave running for hours.
+The two phases test opposite extremes, which is the point of having both:
+
+1. **A panel benchmark, from the walk.** The visible step rate *is* the panel's real refresh rate. For exact numbers read the serial log with `DEBUG_SERIAL_EPAPER` rather than timing it by eye — see [The gauge still feels slow](#the-gauge-still-feels-slow).
+2. **An end-to-end output test, from both.** The demo value is sent over Bluetooth/USB HID and the GBA link like any real reading, so you can watch an emulator's solar meter move or scope the link pins with no sensor attached. The walk exercises single-bar transitions (what real sunlight produces); the flash exercises full-scale jumps, the harshest case for the HID resync logic and the GBA link's two-phase framing.
+
+Pacing to refreshes rather than loop iterations matters: the loop runs at roughly 1kHz, and stepping that often would flood the BLE/USB stacks with thousands of reports per second for frames the panel never displayed.
+
+Set `NO_SENSOR_BAR_SWEEP = false` to leave the gauge at 0 instead — do that if you are testing HID pairing or emulator button mapping and a moving meter would get in the way. `NO_SENSOR_BAR_SWEEP_FLASHES = 0` keeps the walk but drops the flash phase. Note that the demo refreshes the panel continuously for as long as the device is on without a sensor, which is real panel wear; it is a bring-up and demo aid, not something to leave running for hours.
 
 This makes the board usable for bring-up and for testing the display, buttons, HID pairing, and link wiring before the sensor is attached. The sensor is only probed at boot, so **restart after connecting it.**
 
@@ -556,7 +564,7 @@ Those numbers are what matters, not GxEPD2's timeout budgets. Pair it with the [
 - **Consistently near 1200ms** — that is suspiciously equal to GxEPD2's timeout. Either the panel really is that slow, or `_waitWhileBusy()` is timing out rather than seeing BUSY deassert (a wiring or polarity problem on `EPD_BUSY_PIN`). The panel would still draw correctly either way, so this is worth ruling out before blaming the hardware.
 - **Well under 1200ms and varying** — BUSY is being read properly and you are seeing the panel's true speed.
 
-Also note that **one refresh of latency is already the floor for real use.** With a live sensor the bar count changes by one occasionally, so the gauge is one refresh behind the sun and cannot do better. The sweep looks slow only because a full 0→max→0 cycle needs `2 × bars` refreshes by definition.
+Also note that **one refresh of latency is already the floor for real use.** With a live sensor the bar count changes by one occasionally, so the gauge is one refresh behind the sun and cannot do better. The no-sensor demo looks slow only because a full sequence needs `2 × (bars + flashes)` refreshes by definition — 26 on a 10-bar game.
 
 ### The screen flashes inverted every so often
 **Expected.** Every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) is promoted to a full refresh, and a full refresh clears ghosting by driving the panel through an inversion sequence — the whole screen goes dark, then light, then redraws. On this panel that takes up to ~3.6s. Waking from sleep also forces one, since the controller loses the previous-image RAM that a partial refresh diffs against.
