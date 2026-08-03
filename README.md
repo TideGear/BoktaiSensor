@@ -377,7 +377,7 @@ With no sensor:
 
 The sweep is paced by *completed panel refreshes*, one bar per refresh, which makes it two useful things at once:
 
-1. **A panel benchmark.** The visible sweep rate *is* the panel's real refresh rate. Time a full 0→max→0 cycle and divide by `2 × bars` to get milliseconds per refresh — handy for deciding whether `EPAPER_MIN_REFRESH_MS` and the priority lane are tuned sensibly for your unit.
+1. **A panel benchmark.** The visible sweep rate *is* the panel's real refresh rate. Time a full 0→max→0 cycle and divide by `2 × bars` to get milliseconds per refresh. GxEPD2 budgets up to 1200ms per partial refresh for this panel, so expect roughly a bar per second and a ~20s cycle on a 10-bar game; anything faster is your unit beating that budget. See [The gauge still feels slow](#the-gauge-still-feels-slow) for what that number means and what can be done about it.
 2. **An end-to-end output test.** The swept value is sent over Bluetooth/USB HID and the GBA link like any real reading, so you can watch an emulator's solar meter swing, or scope the link pins, with no sensor attached.
 
 Pacing to refreshes rather than loop iterations matters: the loop runs at roughly 1kHz, and stepping a bar that often would flood the BLE/USB stacks with thousands of reports per second for frames the panel never displayed.
@@ -529,7 +529,24 @@ Bar changes bypass the routine refresh interval by design. If borderline light m
 The bar count cannot change faster than the LTR390's 500ms measurement rate, and each refresh blocks until the panel's BUSY line clears, so there is a natural ceiling on how often this happens.
 
 ### The gauge still feels slow
-At the default settings nothing in the firmware throttles bar updates — the remaining floor is the panel's own refresh time. If that is not fast enough on real hardware, the next lever is region-limited refreshes (updating only the changed rectangle instead of the whole panel). That is **not** implemented: the current UI spreads its changing elements (battery percentage at the top, bar digit and UVI in the middle, gauge at the bottom) across most of the panel, so a single bounding box would still cover roughly 50–75% of it. Worth revisiting with real timing numbers in hand.
+At the default settings **nothing in the firmware throttles bar updates.** The remaining floor is the panel's own refresh time, and for this panel that floor is high: GxEPD2's `GxEPD2_102` driver budgets `partial_refresh_time = 1200`ms and `full_refresh_time = 3600`ms for the GDEW0102T4. So expect roughly **one bar step per second**, and a full 0→max→0 sweep on a 10-bar game to take somewhere around 20 seconds.
+
+That also means `EPAPER_MIN_REFRESH_MS` (1500ms) is barely above the panel's own floor — the routine lane was never adding much delay on top of the hardware.
+
+**Region-limited refreshes would not help here,** despite being the obvious idea. `GxEPD2_102` declares `usePartialUpdateWindow = false`, so it deliberately skips the UC8175 Partial In/Out commands (`0x91`/`0x92`). A partial update restricts which *RAM* gets new data but still drives the waveform across the whole panel, so refresh time is independent of how much changed. Shrinking the rectangle would only save a few milliseconds of SPI transfer out of ~1200ms.
+
+The only levers that would meaningfully cut that number require vendoring and hand-editing GxEPD2's driver, and both carry real risk of ghosting or panel damage if you get the waveform wrong:
+- **Waveform/PLL tuning.** `_Init_Part()` already loads custom 42-byte partial LUTs at a 15Hz PLL rather than using the panel's OTP waveform, so the easy win is taken. Shortening the LUT frame counts or raising the PLL is what is left.
+- **Enabling `usePartialUpdateWindow`** so the refresh scan is restricted to the gauge rows. The GxEPD2 author disabled it for this panel, presumably because it misbehaves, so this needs testing on real hardware.
+
+Measure before touching either. The [no-sensor bar sweep](#running-without-the-sensor) exists for exactly this: time a full cycle and divide by `2 × bars` to get real milliseconds per refresh, which may well be below GxEPD2's 1200ms timeout budget.
+
+### The screen flashes inverted every so often
+**Expected.** Every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) is promoted to a full refresh, and a full refresh clears ghosting by driving the panel through an inversion sequence — the whole screen goes dark, then light, then redraws. On this panel that takes up to ~3.6s. Waking from sleep also forces one, since the controller loses the previous-image RAM that a partial refresh diffs against.
+
+Raise `EPAPER_FULL_REFRESH_EVERY` to see it less often, or set it to `0` to disable full refreshes entirely — the tradeoff is accumulated ghosting, which is what the periodic full refresh exists to clear.
+
+**If the screen instead settles inverted and stays that way** until the next update, that is *not* this, and is worth reporting as a bug — it would mean the controller's previous-image buffer has desynced from what is actually on the panel, so partial refreshes are computing the wrong transition.
 
 Note that panel refreshes block the main loop, which briefly stalls GBA link phase toggling and HID reports. More frequent bar refreshes mean more frequent stalls — the GBA-side patch tolerates this (its consecutive-match check discards single-frame misreads), but it is the reason the routine lane stays throttled.
 

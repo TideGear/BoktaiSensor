@@ -223,10 +223,15 @@ const unsigned long EPAPER_MIN_REFRESH_MS = 1500;
 // change the user just pressed a button for. These bypass the interval above so
 // the gauge tracks the sensor as closely as the panel physically allows.
 //
-// 0 = no floor, the fastest the hardware can go. That is not unbounded: the
-// LTR390 is configured for a 500ms measurement rate, so the bar count cannot
-// change more often than that, and each refresh blocks until the panel's BUSY
-// line clears.
+// 0 = no floor, the fastest the hardware can go. That is not unbounded, and the
+// hardware is the real limit here: GxEPD2 budgets up to 1200ms for a partial
+// refresh of this panel, and each refresh blocks until BUSY clears. So the
+// gauge steps at roughly one bar per second no matter what this is set to. (The
+// LTR390's 500ms measurement rate is the other, looser cap.)
+//
+// Because the panel floor is close to EPAPER_MIN_REFRESH_MS above, this setting
+// buys less than it looks like it should — it removes the interval wait, not the
+// refresh itself.
 //
 // Raise this only if the extra refreshes bother you. Note that if the bar count
 // oscillates between two levels in borderline light, BAR_HYSTERESIS_ENABLED
