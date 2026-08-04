@@ -1263,18 +1263,17 @@ void refreshGameState(bool refreshOutputs) {
 
 // Gate for screen-changing taps.
 //
-// The 3-way switch is a single spring-return lever over three contacts, not
-// three independent buttons, so one deliberate rock can briefly close a second
-// contact. Two filters cover the two ways that happens:
+// Left and right are opposite ends of one spring-return lever. Releasing a rock
+// lets it snap back through center, and it can overshoot far enough to brush
+// the opposite contact — after the intended tap has already been accepted, and
+// for longer than DEBOUNCE_MS. This settle window is what stops that: the first
+// tap of a rock wins and anything inside BUTTON_SETTLE_MS after it is dropped.
+// Without it, a rock right followed by a graze left reads as +1 then -1,
+// landing back where it started, which looks exactly like the switch being
+// ignored.
 //
-//   - Grazing another contact on the way in is short, and the existing
-//     DEBOUNCE_MS floor on press duration already rejects it.
-//   - Grazing one on the rebound back to center happens after the intended tap
-//     has already been accepted, and can easily last longer than DEBOUNCE_MS.
-//     That is what this settle window is for: the first tap wins and anything
-//     inside BUTTON_SETTLE_MS after it is dropped. Without it, a rock right
-//     followed by a graze left reads as +1 then -1, landing back where it
-//     started — which looks exactly like the switch being ignored.
+// The center press is on a different axis — actuating it requires the lever to
+// be centered — so it cannot collide with a rock and needs no special handling.
 //
 // A *_TAP_STEP of 0 disables that button's tap action entirely.
 // Returns true if the screen actually changed.

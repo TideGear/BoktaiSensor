@@ -301,7 +301,16 @@ arduino-cli compile \
 
 ### Button Controls
 
-The board has a single 3-way tactile switch on the top edge — one spring-return lever that rocks **left (GPIO4)** or **right (GPIO3)** and can also be **pressed inward (GPIO0)**.
+The board has a single 3-way tactile switch on the top edge: one spring-return lever with exactly three actuated states, which are mutually exclusive.
+
+| Lever state | Contact |
+|---|---|
+| Rocked right | GPIO3 |
+| Rocked left | GPIO4 |
+| Centered **and** pressed inward | GPIO0 |
+| Centered, not pressed (resting) | none — no input |
+
+Pressing inward requires the lever to be centered, so a rock cannot also actuate the center; they are different axes of motion.
 
 | Direction | Tap | Hold 2s |
 |-----------|-----|---------|
@@ -315,7 +324,7 @@ Tap directions are configurable via `BUTTON_TAP_STEP` / `BUTTON2_TAP_STEP` / `BU
 
 **Button presses are captured by an interrupt, not by polling.** A panel refresh blocks the main loop for roughly a second, and with the no-sensor demo running the panel refreshes back to back — so a press that begins and ends inside one of those windows would never be sampled at all. An ISR latches the falling edge and its timestamp; the handlers consume it when the loop resumes. Rock directions act on that latched edge rather than on release, so a quick flick registers even if the contact closes for only a few milliseconds.
 
-**Because it is one lever, the three contacts are also not independent.** A rock can briefly close a second contact as the lever springs back through center. `BUTTON_SETTLE_MS` (default 300ms) means the first edge of a rock wins and the rebound is dropped, and a fired direction will not re-arm until its own contact has been open for `DEBOUNCE_MS`. See [the switch behaves unreliably](#the-switch-behaves-unreliably-wrong-direction-double-change-or-no-change) if you still see it misbehave.
+**Left and right are opposite ends of the same lever, so they can bleed into each other.** Releasing a rock lets the lever snap back through center, and it can overshoot far enough to brush the opposite contact. `BUTTON_SETTLE_MS` (default 300ms) means the first edge of a rock wins and the rebound is dropped, and a fired direction will not re-arm until its own contact has been open for `DEBOUNCE_MS`. The center press is on a different axis and cannot collide with a rock. See [the switch behaves unreliably](#the-switch-behaves-unreliably-wrong-direction-double-change-or-no-change) if you still see it misbehave.
 
 **When device is ON:**
 - **Tap:** Cycle screens (BOKTAI 1 → 2 → 3 → XInput → 1...). The XInput screen is always present and doubles as the diagnostics screen.
@@ -530,11 +539,10 @@ Three distinct causes, with different fixes.
 
 **Nothing happens at all, sometimes.** A panel refresh blocks the main loop for roughly a second, and with the no-sensor demo running the panel refreshes almost continuously — so before the ISR latch was added, most presses landed in a blind spot and were never seen. If you are on older firmware this is very likely what you are hitting; update. If it persists on current firmware, check the serial log (below) for whether the press is being logged at all: logged-but-no-change is a settle-window question, never-logged is a wiring or contact problem.
 
-**It changes then changes back, or moves two screens.** Contact cross-talk. The lever can close a second contact as it springs back through center, and a rock right that also grazes left is `+1` then `-1` — right back where you started.
+**It changes then changes back, or moves two screens.** Cross-talk between left and right — the two ends of one lever. Releasing a rock lets it snap back through center and overshoot onto the opposite contact, so a rock right that also brushes left is `+1` then `-1`, right back where you started. The center press cannot cause this: actuating it requires the lever centered, which a rock never is.
 
 1. **Raise `BUTTON_SETTLE_MS`.** 300ms covers a normal rebound; a worn or loose lever may need 400–500ms. Taps closer together than this are invisible anyway, since the panel needs roughly a second per refresh.
-2. **Set `BUTTON_TAP_STEP = 0`** to make the center press power-only. This removes a whole cross-talk path — if the lever grazes the *center* contact on its way over, no settle window is needed because the center can no longer affect the screen at all.
-3. **Watch which contacts actually fire.** With `DEBUG_SERIAL = true` in CDC mode, every press logs its source (`center`, `runtime, left`, `runtime, right`) and every suppressed tap logs why:
+2. **Watch which contacts actually fire.** With `DEBUG_SERIAL = true` in CDC mode, every press logs its source (`center`, `runtime, left`, `runtime, right`) and every suppressed tap logs why:
 
    ```
    Device button pressed (runtime, right)

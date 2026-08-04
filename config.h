@@ -146,10 +146,21 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 // -----------------------------------------------------------------------------
 // BUTTONS
 // -----------------------------------------------------------------------------
-// The board's 3-way tactile switch on the top edge: press = GPIO0,
-// right = GPIO3, left = GPIO4. All three are RTC-capable pads, but only the
-// power button can wake the ESP32-S3 from deep sleep, so the center press
-// (GPIO0) takes that role: hold 2s to sleep/wake.
+// The board's 3-way tactile switch on the top edge. One spring-return lever
+// with exactly three actuated states, which are mutually exclusive:
+//
+//   rocked right                 -> GPIO3
+//   rocked left                  -> GPIO4
+//   centered AND pressed inward  -> GPIO0
+//
+// Centered but not pressed is the resting state and closes nothing. Pressing
+// inward requires being centered, so a rock cannot also actuate the center —
+// they are different axes of motion. Only left and right can plausibly bleed
+// into each other, via the lever overshooting through center on its way back.
+//
+// All three are RTC-capable pads, but only the power button can wake the
+// ESP32-S3 from deep sleep, so the center press (GPIO0) takes that role: hold
+// 2s to sleep/wake.
 //
 // GPIO0 is also the boot/download button. That is why the vendor's flash
 // instructions are "hold the button while plugging in USB" — it is the same
@@ -157,12 +168,8 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 //
 // Tap directions: center or right advances to the next screen, left goes back.
 // Adjust the *_TAP_STEP values to change this. A step of 0 disables that
-// button's tap action, leaving only its long-press behaviour (if any).
-//
-// Setting BUTTON_TAP_STEP = 0 makes the center press power-only. Worth doing if
-// rocking the lever sometimes changes the screen unexpectedly: the three
-// contacts share one lever, so a rock can graze the center on its way over, and
-// with no tap action on the center that path cannot affect the screen at all.
+// button's tap action, leaving only its long-press behaviour (if any), so
+// BUTTON_TAP_STEP = 0 makes the center press power-only.
 const int BUTTON_PIN = 0;     // Center press (GPIO0) - power; tap = next screen
 const int BUTTON_TAP_STEP = 1;
 
@@ -187,12 +194,15 @@ const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
 
 // After a tap changes the screen, ignore further taps for this long.
 //
-// The 3-way switch is one spring-return lever over three contacts, not three
-// independent buttons. Rocking it can briefly close a second contact as the
-// lever springs back through center, and that stray contact can last longer than
+// Left and right are opposite ends of one spring-return lever, not independent
+// buttons. Releasing a rock lets the lever snap back through center and it can
+// overshoot far enough to brush the opposite contact, for longer than
 // DEBOUNCE_MS. Without this window, a rock right followed by a graze left reads
 // as +1 then -1 and lands back on the screen you started from — which looks like
 // the switch being flaky or ignored.
+//
+// The center press cannot collide this way: actuating it requires the lever to
+// be centered, so it is on a different axis from a rock.
 //
 // Taps closer together than this are invisible anyway: the panel needs roughly a
 // second per refresh, so a second screen change inside this window could not be
