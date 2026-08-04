@@ -1307,6 +1307,12 @@ void cycleUiScreen(int step) {
   currentScreen = (currentScreen + NUM_UI_SCREENS + step) % NUM_UI_SCREENS;
   uiScreenChanged = true;
 
+  // Nearly every pixel is about to change, which is where a differential
+  // refresh leaves the most ghosting. Start the new screen clean instead.
+  if (EPAPER_FULL_REFRESH_ON_SCREEN_CHANGE) {
+    display.requestFullRefresh();
+  }
+
   if (currentScreen < NUM_GAMES) {
     currentGame = clampGameIndex(currentScreen);
     gameChanged = true;

@@ -282,6 +282,20 @@ const unsigned long EPAPER_PRIORITY_MIN_REFRESH_MS = 0;
 // 0 disables full refreshes entirely.
 const uint16_t EPAPER_FULL_REFRESH_EVERY = 30;
 
+// Also promote the refresh that follows a screen change to a full one.
+//
+// A screen change replaces nearly every pixel at once, which is the worst case
+// for a differential refresh — the most ghosting, from the transition most
+// likely to leave it visible against fresh content. A full refresh starts the
+// new screen clean, and resets the EPAPER_FULL_REFRESH_EVERY counter as a side
+// effect, so periodic full refreshes become rarer while you are cycling screens.
+//
+// The cost is real: a full refresh runs about 3x longer than a partial one and
+// flashes black/white on the way through, so a screen change feels distinctly
+// heavier. Set false to keep screen changes quick and let the periodic full
+// refresh clean up in its own time.
+const bool EPAPER_FULL_REFRESH_ON_SCREEN_CHANGE = true;
+
 // -----------------------------------------------------------------------------
 // I2C (LTR390 UV SENSOR)
 // -----------------------------------------------------------------------------

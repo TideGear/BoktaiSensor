@@ -173,7 +173,7 @@ The [LilyGO Mini E-Paper S3](https://lilygo.cc/en-us/products/mini-e-paper-core)
 - Battery sensing is built in (2:1 divider, `BAT_PIN = 2`) and enabled by default; no resistors needed.
 - GBA link output uses the IO16 (SC), IO17 (SD), IO18 (SO) header pads plus a GND pad. See [GBA Link Cable Wiring](#gba-link-cable-wiring-optional).
 - The microSD slot (IO38–IO41) is unused by this firmware. Avoid those pins if you repurpose headers.
-- **Refresh behavior:** e-paper refreshes take hundreds of milliseconds and the panel wears with each one, so the firmware does not redraw as freely as an OLED. Frames identical to what is already on screen are skipped, and every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) is promoted to a full refresh to clear accumulated ghosting. Updates run in **two lanes**:
+- **Refresh behavior:** e-paper refreshes take hundreds of milliseconds and the panel wears with each one, so the firmware does not redraw as freely as an OLED. Frames identical to what is already on screen are skipped. A refresh is promoted from partial to full every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) and on any screen change (`EPAPER_FULL_REFRESH_ON_SCREEN_CHANGE`), both to clear ghosting. Updates run in **two lanes**:
   - **Priority** — a changed bar count, or a screen change you just pressed a button for. Refreshes immediately (`EPAPER_PRIORITY_MIN_REFRESH_MS`, default `0` = no floor), so the sun gauge tracks the sensor as closely as the panel allows.
   - **Routine** — incidental churn like the UVI decimals ticking over or the battery percentage moving. Held to `EPAPER_MIN_REFRESH_MS` (default 1500ms).
 
@@ -488,7 +488,7 @@ If the bar display feels jumpy:
 - 80x128 native (portrait), driven at rotation 1 or 3 for a 128x80 landscape UI
 - The UI is authored at 128x64 monochrome and rendered into an offscreen 1-bit canvas (`EPaperDisplay.h`, a `GFXcanvas1` subclass mirroring the `Adafruit_SSD1306` API the sketch uses), then pushed centered onto the panel. Set canvas pixels become **black ink** — the inverse of the OLED builds — so the artwork reads correctly on paper.
 - Pushes are skipped when the new frame is pixel-identical to what is already on the panel, so repeated identical draws (e.g. the "Hold 2s to power on" prompt redrawing while the button is held) cost nothing
-- Partial (differential) refresh is used by default, with a full refresh every `EPAPER_FULL_REFRESH_EVERY` pushes to clear ghosting. A full refresh is also forced after any panel hibernate or power cut, because the controller loses the previous-image RAM that a differential refresh diffs against.
+- Partial (differential) refresh is used by default. A refresh is promoted to full when: it is the `EPAPER_FULL_REFRESH_EVERY`th push (clears accumulated ghosting), it follows a screen change (`EPAPER_FULL_REFRESH_ON_SCREEN_CHANGE` — nearly every pixel changes at once, the worst case for a differential refresh), or it follows a panel hibernate or power cut (the controller loses the previous-image RAM a differential refresh diffs against).
 
 ### Power Management
 - Wire the LTR390 directly to `3v3`
@@ -602,9 +602,11 @@ Those numbers are what matters, not GxEPD2's timeout budgets. Pair it with the [
 Also note that **one refresh of latency is already the floor for real use.** With a live sensor the bar count changes by one occasionally, so the gauge is one refresh behind the sun and cannot do better. The no-sensor demo looks slow only because a full sequence needs `2 × (bars + flashes)` refreshes by definition — 26 on a 10-bar game.
 
 ### The screen flashes inverted every so often
-**Expected.** Every `EPAPER_FULL_REFRESH_EVERY`th update (default 30) is promoted to a full refresh, and a full refresh clears ghosting by driving the panel through an inversion sequence — the whole screen goes dark, then light, then redraws. On this panel that takes up to ~3.6s. Waking from sleep also forces one, since the controller loses the previous-image RAM that a partial refresh diffs against.
+**Expected.** A full refresh clears ghosting by driving the panel through an inversion sequence — the whole screen goes dark, then light, then redraws. On this panel that takes up to ~3.6s, about 3x a partial refresh. Three things trigger one:
 
-Raise `EPAPER_FULL_REFRESH_EVERY` to see it less often, or set it to `0` to disable full refreshes entirely — the tradeoff is accumulated ghosting, which is what the periodic full refresh exists to clear.
+- Every `EPAPER_FULL_REFRESH_EVERY`th update (default 30). Raise it to see this less often, or `0` to disable it entirely — the tradeoff is ghosting accumulating with nothing to clear it.
+- **A screen change** (`EPAPER_FULL_REFRESH_ON_SCREEN_CHANGE`, default on). Nearly every pixel changes at once, so a differential refresh would leave its worst ghosting right where you are about to read fresh content. Set false if you would rather screen changes stayed quick.
+- Waking from sleep, since the controller loses the previous-image RAM that a partial refresh diffs against. Not configurable — a partial refresh there would smear.
 
 **If the screen instead settles inverted and stays that way** until the next update, that is *not* this, and is worth reporting as a bug — it would mean the controller's previous-image buffer has desynced from what is actually on the panel, so partial refreshes are computing the wrong transition.
 
