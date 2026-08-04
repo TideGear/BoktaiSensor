@@ -147,7 +147,7 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 // BUTTONS
 // -----------------------------------------------------------------------------
 // The board's 3-way tactile switch on the top edge: press = GPIO0,
-// left = GPIO3, right = GPIO4. All three are RTC-capable pads, but only the
+// right = GPIO3, left = GPIO4. All three are RTC-capable pads, but only the
 // power button can wake the ESP32-S3 from deep sleep, so the center press
 // (GPIO0) takes that role: hold 2s to sleep/wake.
 //
@@ -166,12 +166,20 @@ const unsigned long BATTERY_CUTOFF_HOLD_MS = 5000;
 const int BUTTON_PIN = 0;     // Center press (GPIO0) - power; tap = next screen
 const int BUTTON_TAP_STEP = 1;
 
+// Which physical direction each GPIO corresponds to was determined on hardware,
+// not from the vendor header — LilyGO's boards.h just calls them BUTTON_1 and
+// BUTTON_2 with no orientation attached.
+//
+// This assumes you are holding the board so the screen reads right way up at
+// EPAPER_DISPLAY_ROTATION = 1. Rotation 3 is that view turned 180 degrees, so
+// switching to it also swaps which contact is on your left: swap these two pin
+// numbers to match.
 const bool BUTTON2_ENABLED = true;
-const int BUTTON2_PIN = 4;    // Right (GPIO4) - tap = next screen
+const int BUTTON2_PIN = 3;    // Right (GPIO3) - tap = next screen
 const int BUTTON2_TAP_STEP = 1;
 
 const bool BUTTON3_ENABLED = true;
-const int BUTTON3_PIN = 3;    // Left (GPIO3) - tap = previous screen
+const int BUTTON3_PIN = 4;    // Left (GPIO4) - tap = previous screen
 const int BUTTON3_TAP_STEP = -1;
 
 const unsigned long DEBOUNCE_MS = 50;       // Button debounce time

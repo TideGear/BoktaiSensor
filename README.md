@@ -301,17 +301,21 @@ arduino-cli compile \
 
 ### Button Controls
 
-The board has a single 3-way tactile switch on the top edge — one spring-return lever that rocks **left (GPIO3)** or **right (GPIO4)** and can also be **pressed inward (GPIO0)**.
+The board has a single 3-way tactile switch on the top edge — one spring-return lever that rocks **left (GPIO4)** or **right (GPIO3)** and can also be **pressed inward (GPIO0)**.
 
 | Direction | Tap | Hold 2s |
 |-----------|-----|---------|
 | **Center press** (GPIO0) | Next screen | Power on/off, CDC mode — see below |
-| **Right** (GPIO4) | Next screen | — |
-| **Left** (GPIO3) | Previous screen | — |
+| **Right** (GPIO3) | Next screen | — |
+| **Left** (GPIO4) | Previous screen | — |
+
+Which GPIO is physically left vs right was determined on hardware — LilyGO's board header just names them `BUTTON_1` and `BUTTON_2` with no orientation attached. The table assumes you are holding the board so the screen reads right way up at `EPAPER_DISPLAY_ROTATION = 1`; **rotation 3 is that view turned 180°, so it also swaps which contact is on your left.** Swap `BUTTON2_PIN` and `BUTTON3_PIN` in config.h to match.
 
 Tap directions are configurable via `BUTTON_TAP_STEP` / `BUTTON2_TAP_STEP` / `BUTTON3_TAP_STEP` in config.h. A step of `0` disables that button's tap action, leaving only its long-press behaviour.
 
-**Because it is one lever, the three contacts are not independent.** A single deliberate rock can briefly close a second contact — either grazing one on the way over, or catching one as the lever springs back through center. Two filters keep that from registering as a second tap: contacts held for less than `DEBOUNCE_MS` are rejected outright, and after any accepted tap, further taps are ignored for `BUTTON_SETTLE_MS` (default 300ms). See [the switch changes screens then changes back](#rocking-the-switch-changes-the-screen-then-immediately-changes-back) if you still see it misbehave.
+**Button presses are captured by an interrupt, not by polling.** A panel refresh blocks the main loop for roughly a second, and with the no-sensor demo running the panel refreshes back to back — so a press that begins and ends inside one of those windows would never be sampled at all. An ISR latches the falling edge and its timestamp; the handlers consume it when the loop resumes. Rock directions act on that latched edge rather than on release, so a quick flick registers even if the contact closes for only a few milliseconds.
+
+**Because it is one lever, the three contacts are also not independent.** A rock can briefly close a second contact as the lever springs back through center. `BUTTON_SETTLE_MS` (default 300ms) means the first edge of a rock wins and the rebound is dropped, and a fired direction will not re-arm until its own contact has been open for `DEBOUNCE_MS`. See [the switch behaves unreliably](#the-switch-behaves-unreliably-wrong-direction-double-change-or-no-change) if you still see it misbehave.
 
 **When device is ON:**
 - **Tap:** Cycle screens (BOKTAI 1 → 2 → 3 → XInput → 1...). The XInput screen is always present and doubles as the diagnostics screen.
@@ -519,15 +523,17 @@ Adjust `VOLT_DIVIDER_MULT` in config.h (increase if reading low, decrease if hig
 ### Device powers off quickly
 Check `BATTERY_CUTOFF_ENABLED` and `VOLT_CUTOFF`. Both battery sensing and cutoff are on by default on this board; if the ADC reading is bad (above) the cutoff can fire spuriously — set `BATTERY_CUTOFF_ENABLED = false` while you sort it out.
 
-### Rocking the switch changes the screen then immediately changes back
-Or more generally, the switch feels unreliable — sometimes a rock does nothing.
+### The switch behaves unreliably: wrong direction, double change, or no change
+Three distinct causes, with different fixes.
 
-This is contact cross-talk, not a debounce problem in the usual sense. The 3-way switch is a single spring-return lever over three contacts, so one deliberate rock can close a second contact as the lever travels or springs back through center. A rock right that also grazes left registers as `+1` then `-1` and lands you back on the screen you started from, which reads as "the switch was ignored".
+**Left and right are swapped.** Which GPIO sits on which side is not documented by LilyGO — their header just names them `BUTTON_1` and `BUTTON_2`. Swap `BUTTON2_PIN` and `BUTTON3_PIN` in config.h. Note this also depends on how you hold the board: `EPAPER_DISPLAY_ROTATION = 3` is the rotation-1 view turned 180°, which swaps left and right along with it.
 
-The firmware filters this two ways: contacts held under `DEBOUNCE_MS` (50ms) are rejected, and after any accepted tap further taps are ignored for `BUTTON_SETTLE_MS` (300ms). If it still happens:
+**Nothing happens at all, sometimes.** A panel refresh blocks the main loop for roughly a second, and with the no-sensor demo running the panel refreshes almost continuously — so before the ISR latch was added, most presses landed in a blind spot and were never seen. If you are on older firmware this is very likely what you are hitting; update. If it persists on current firmware, check the serial log (below) for whether the press is being logged at all: logged-but-no-change is a settle-window question, never-logged is a wiring or contact problem.
+
+**It changes then changes back, or moves two screens.** Contact cross-talk. The lever can close a second contact as it springs back through center, and a rock right that also grazes left is `+1` then `-1` — right back where you started.
 
 1. **Raise `BUTTON_SETTLE_MS`.** 300ms covers a normal rebound; a worn or loose lever may need 400–500ms. Taps closer together than this are invisible anyway, since the panel needs roughly a second per refresh.
-2. **Set `BUTTON_TAP_STEP = 0`** to make the center press power-only. This removes a whole cross-talk path — if the lever is grazing the *center* contact on its way over, no settle window is needed because the center can no longer affect the screen at all.
+2. **Set `BUTTON_TAP_STEP = 0`** to make the center press power-only. This removes a whole cross-talk path — if the lever grazes the *center* contact on its way over, no settle window is needed because the center can no longer affect the screen at all.
 3. **Watch which contacts actually fire.** With `DEBUG_SERIAL = true` in CDC mode, every press logs its source (`center`, `runtime, left`, `runtime, right`) and every suppressed tap logs why:
 
    ```
@@ -536,7 +542,7 @@ The firmware filters this two ways: contacts held under `DEBOUNCE_MS` (50ms) are
    Tap ignored (runtime, left) - 84ms after the last one, inside the 300ms settle window
    ```
 
-   That tells you exactly which pairs of contacts are colliding, which is the difference between a config tweak and a genuinely faulty switch.
+   That tells you exactly which pairs of contacts are colliding, which is the difference between a config tweak and a genuinely faulty switch. A press logged as `runtime, during refresh` is one the ISR caught while the loop was blocked — working as intended, not a fault.
 
 ### Device won't wake
 1. Hold the switch's **center press** for a full 2 seconds. Left/right cannot wake the device — only GPIO0 is wake-capable.

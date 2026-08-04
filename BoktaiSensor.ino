@@ -96,14 +96,68 @@ bool sensorPresent = false;
 unsigned long buttonPressStart = 0;
 bool buttonWasPressed = false;
 
-// Auxiliary button state. The board's 3-way switch gives two screen-only
-// buttons alongside the power button; each needs its own press tracking.
-struct AuxButtonState {
-  unsigned long pressStart;
-  bool wasPressed;
+// Button presses are latched by an ISR, not discovered by polling alone.
+//
+// A panel refresh blocks the main loop for roughly a second, and with the
+// no-sensor demo running the panel refreshes back to back, so the loop is
+// blocked nearly all the time. A press that begins and ends inside one of those
+// windows is never sampled at all — the contact opens and closes while the CPU
+// sits in GxEPD2 waiting on BUSY. That is why the switch felt like it worked
+// only sometimes: most presses were landing in the blind spot.
+//
+// The ISR records the falling edge and when it happened; the handlers consume
+// it once the loop resumes. Repeated bounces inside one blocked window collapse
+// into a single latch, and BUTTON_SETTLE_MS still gates what becomes a tap.
+struct ButtonEdgeLatch {
+  volatile bool pending;
+  volatile uint32_t atMs;
+  // Main-loop only. Used by the aux handler to re-arm on a settled release;
+  // the power button tracks its own press state instead.
+  bool awaitingRelease;
+  unsigned long releasedAtMs;
 };
-AuxButtonState button2State = { 0, false };
-AuxButtonState button3State = { 0, false };
+ButtonEdgeLatch powerEdge = { false, 0, false, 0 };
+ButtonEdgeLatch button2Edge = { false, 0, false, 0 };
+ButtonEdgeLatch button3Edge = { false, 0, false, 0 };
+
+void IRAM_ATTR onPowerButtonEdge() {
+  if (!powerEdge.pending) {
+    powerEdge.atMs = millis();
+    powerEdge.pending = true;
+  }
+}
+
+void IRAM_ATTR onButton2Edge() {
+  if (!button2Edge.pending) {
+    button2Edge.atMs = millis();
+    button2Edge.pending = true;
+  }
+}
+
+void IRAM_ATTR onButton3Edge() {
+  if (!button3Edge.pending) {
+    button3Edge.atMs = millis();
+    button3Edge.pending = true;
+  }
+}
+
+// Returns true if an edge was waiting, and reports when it happened.
+bool consumePressLatch(ButtonEdgeLatch& latch, unsigned long* atMs) {
+  noInterrupts();
+  bool pending = latch.pending;
+  if (pending && atMs != nullptr) {
+    *atMs = latch.atMs;
+  }
+  latch.pending = false;
+  interrupts();
+  return pending;
+}
+
+void clearPressLatches() {
+  consumePressLatch(powerEdge, nullptr);
+  consumePressLatch(button2Edge, nullptr);
+  consumePressLatch(button3Edge, nullptr);
+}
 
 // Game selection (0 = Boktai 1, 1 = Boktai 2, 2 = Boktai 3)
 int currentGame = 0;
@@ -388,10 +442,10 @@ void enterCdcMode() {
 }
 #endif
 
-// Why the chip booted, captured before anything can overwrite it. In XInput
-// mode Serial is unavailable (usbHidActive), so this is surfaced on the
-// power-on prompt instead: 2 = EXT0, a real button wake; 0 = UNDEFINED, i.e.
-// a plain reset or crash rather than a wake.
+// Why the chip booted, captured before anything can overwrite it and logged
+// during startup: 2 = EXT0, a real button wake; 0 = UNDEFINED, i.e. a plain
+// reset or crash rather than a wake. Serial only, so it needs CDC mode — see
+// the USB notes in config.h.
 esp_sleep_wakeup_cause_t bootWakeCause = ESP_SLEEP_WAKEUP_UNDEFINED;
 
 void showHoldPowerOnPrompt() {
@@ -400,11 +454,6 @@ void showHoldPowerOnPrompt() {
   display.setTextSize(1);
   display.setCursor(4, 28);
   display.print("Hold 2s to power on");
-  if (DEBUG_SERIAL) {
-    display.setCursor(4, 44);
-    display.print("wake:");
-    display.print((int)bootWakeCause);
-  }
   // Callers re-draw this prompt periodically while the button is held. The
   // frame is identical each time, so the panel is only actually refreshed once.
   display.displayNow();
@@ -502,6 +551,9 @@ void syncRuntimeButtonStateAfterStartup() {
     buttonPressStart = 0;
     suppressShortPress = false;
   }
+  // Edges from the power-on hold and any boot-screen fumbling are history by
+  // now; do not let them fire a tap on the first loop iteration.
+  clearPressLatches();
 }
 
 void setup() {
@@ -545,6 +597,17 @@ void setup() {
   if (BUTTON3_ENABLED && BUTTON3_PIN >= 0) {
     pinMode(BUTTON3_PIN, INPUT_PULLUP);
   }
+
+  // Latch presses in an ISR so they survive the ~1s the loop spends blocked in
+  // a panel refresh. See ButtonEdgeLatch.
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), onPowerButtonEdge, FALLING);
+  if (BUTTON2_ENABLED && BUTTON2_PIN >= 0) {
+    attachInterrupt(digitalPinToInterrupt(BUTTON2_PIN), onButton2Edge, FALLING);
+  }
+  if (BUTTON3_ENABLED && BUTTON3_PIN >= 0) {
+    attachInterrupt(digitalPinToInterrupt(BUTTON3_PIN), onButton3Edge, FALLING);
+  }
+
   if (serialEnabled) {
     // LOW here on an EXT0 wake means the button was still held at wake time.
     Serial.print("Button level at boot - PRESS: ");
@@ -1260,16 +1323,22 @@ void handlePowerButton() {
     if (digitalRead(BUTTON_PIN) != LOW) {
       cdcRequireButtonRelease = false;
       buttonWasPressed = false;
+      consumePressLatch(powerEdge, nullptr);
     }
     return;
   }
   #endif
 
   bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
+  unsigned long latchedAtMs = 0;
+  bool latched = consumePressLatch(powerEdge, &latchedAtMs);
 
   if (buttonPressed && !buttonWasPressed) {
     logDeviceButtonPress("runtime");
-    buttonPressStart = millis();
+    // Prefer the ISR's timestamp: the press may have started up to a full panel
+    // refresh ago, and timing the hold from now would need a ~3s press to reach
+    // a 2s long-press.
+    buttonPressStart = latched ? latchedAtMs : millis();
     buttonWasPressed = true;
   }
   else if (buttonPressed && buttonWasPressed) {
@@ -1316,41 +1385,68 @@ void handlePowerButton() {
     suppressShortPress = false;
     buttonWasPressed = false;
   }
+  else if (!buttonPressed && latched) {
+    // Pressed and released entirely while the loop was blocked in a panel
+    // refresh, so there was never a chance to time it. Too short to have been a
+    // long-press hold across that window, so treat it as a tap.
+    logDeviceButtonPress("runtime, during refresh");
+    if (!suppressShortPress) {
+      acceptScreenTap(BUTTON_TAP_STEP, "center");
+    }
+    suppressShortPress = false;
+  }
 }
 
-// Handle one auxiliary button (the 3-way switch's left/right directions): tap
-// cycles screens (direction set by the button's *_TAP_STEP). No long-press
-// action; neither can wake the device from deep sleep.
-void handleAuxButton(bool enabled, int pin, int tapStep, AuxButtonState& state,
+// Handle one auxiliary rock direction: tap cycles screens (direction set by the
+// button's *_TAP_STEP). No long-press action; neither direction can wake the
+// device from deep sleep.
+//
+// Acts on the latched press edge rather than on release with a minimum hold.
+// Two reasons: a quick flick of a spring-return lever can close the contact for
+// well under DEBOUNCE_MS, and the release itself is often missed entirely
+// because the loop is blocked in a panel refresh. Firing on the edge catches
+// both, and BUTTON_SETTLE_MS still means one tap per rock — including when the
+// lever grazes the opposite contact on its way back through center, which
+// happens after the intended edge and therefore loses.
+void handleAuxButton(bool enabled, int pin, int tapStep, ButtonEdgeLatch& latch,
                      const char* logContext) {
   if (!enabled || pin < 0) {
     return;
   }
 
-  bool buttonPressed = (digitalRead(pin) == LOW);
+  bool held = (digitalRead(pin) == LOW);
 
-  if (buttonPressed && !state.wasPressed) {
-    logDeviceButtonPress(logContext);
-    state.pressStart = millis();
-    state.wasPressed = true;
-  }
-  else if (!buttonPressed && state.wasPressed) {
-    unsigned long pressDuration = millis() - state.pressStart;
-    // Bounded like the power button: a deliberate long hold is not a tap, so
-    // it must not silently change the screen on release. The DEBOUNCE_MS floor
-    // also rejects a brief graze of this contact while the lever is on its way
-    // to the other side.
-    if (pressDuration >= DEBOUNCE_MS && pressDuration < LONG_PRESS_MS) {
-      acceptScreenTap(tapStep, logContext);
+  // Having fired, wait for the contact to open and stay open before arming
+  // again. BUTTON_SETTLE_MS alone is not enough here: on a slow rock the
+  // release comes more than 300ms after the press, so bounce as the contact
+  // opens would fall outside the window and fire a second tap in the same
+  // direction.
+  if (latch.awaitingRelease) {
+    consumePressLatch(latch, nullptr);  // Edges while held, and release bounce
+    if (held) {
+      latch.releasedAtMs = 0;
+    } else if (latch.releasedAtMs == 0) {
+      latch.releasedAtMs = millis();
+    } else if ((millis() - latch.releasedAtMs) >= DEBOUNCE_MS) {
+      latch.awaitingRelease = false;
     }
-    state.wasPressed = false;
+    return;
   }
+
+  if (!consumePressLatch(latch, nullptr)) {
+    return;
+  }
+
+  latch.awaitingRelease = true;
+  latch.releasedAtMs = 0;
+  logDeviceButtonPress(logContext);
+  acceptScreenTap(tapStep, logContext);
 }
 
 void handleAuxButtons() {
-  handleAuxButton(BUTTON2_ENABLED, BUTTON2_PIN, BUTTON2_TAP_STEP, button2State,
+  handleAuxButton(BUTTON2_ENABLED, BUTTON2_PIN, BUTTON2_TAP_STEP, button2Edge,
                   "runtime, right");
-  handleAuxButton(BUTTON3_ENABLED, BUTTON3_PIN, BUTTON3_TAP_STEP, button3State,
+  handleAuxButton(BUTTON3_ENABLED, BUTTON3_PIN, BUTTON3_TAP_STEP, button3Edge,
                   "runtime, left");
 }
 
