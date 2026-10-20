@@ -437,6 +437,80 @@ If the bar display feels jumpy:
 
 ----------------------------------------------------------------------
 
+## Ojo del Sol Calibrator — UNTESTED
+
+> **Status: untested.** The firmware in `OjoDelSolCalibrator/` compiles for the ESP32-S3 (esp32 core 3.3.11), but it has **never been run on real hardware**. The cartridge-bus wiring and timing, the flash logging, and the serial commands are all unverified. The method itself was checked against a Boktai 3 (J) ROM and against a GBxCart RW, but not on this board. Expect to debug it, and please report what works and what doesn't.
+
+A separate device that reads a **real Boktai cartridge's solar sensor** and an **LTR390** at the same moment, and saves both to the board's flash. Leave it in the sun for hours, then dump the log over serial and compare the two sensors. This is the data needed to tune `AUTO_UV_MIN`, `AUTO_UV_SATURATION` and the bar thresholds against the real hardware.
+
+**What it logs** (one CSV row per sample, about once per second by default):
+
+| Column | Meaning |
+|--------|---------|
+| `uptime_ms` | Milliseconds since power-up (there is no clock, so you line runs up by uptime) |
+| `cart_status` | `ok`, or `timeout` if the cartridge's flag never rose (no cartridge, or a wiring fault) |
+| `cart_raw` | The game's raw sensor value. About 230 in the dark, falling toward 0 as it gets brighter |
+| `cart_bus` | `1` if the cartridge's GPIO registers read back what was written (a wiring check) |
+| `cart_ms` | How long the cartridge read took |
+| `ltr_status` | `ok`, `stale` (no fresh reading) or `absent` |
+| `ltr_raw`, `uvi` | LTR390 UV counts and `counts / 2300` (same settings as the main firmware) |
+
+### Hardware
+
+Written for an **ESP32-S3-CAM board with the camera unused** (any ESP32-S3 works if you change the pins in `OjoDelSolCalibrator/config.h`). The pins avoid PSRAM, the strapping pins, native USB and UART0.
+
+| Signal | GPIO |
+|--------|------|
+| Cartridge AD0, AD1, AD2, AD3 | 1, 2, 14, 21 |
+| Cartridge AD5, AD6 | 47, 42 |
+| Cartridge /CS, /RD, /WR | 41, 40, 39 |
+| LTR390 SDA, SCL | 4, 5 |
+
+GPIO39–42 are also the JTAG pins and GPIO39/40 are the SD card's CLK/DATA, so leave the SD slot empty. GPIO4/5 are the camera's control bus; the LTR390 (0x53) does not collide with the camera (0x30).
+
+**Cartridge wiring** — the cartridge is 3.3 V like the ESP32, so no level shifter is needed. Only the lines needed to reach the GPIO registers at 0x080000C4–C8 are driven, so the rest are tied off with resistors:
+
+| Cartridge pin(s) | Connect to |
+|------------------|------------|
+| VCC (pin 1) / GND (pin 32) | 3V3 / GND |
+| /WR (3), /RD (4), /CS (5) | the three GPIOs above, each with a ~10 k pull-up to 3V3 |
+| AD0–AD3, AD5, AD6 (pins 6–9, 11, 12) | the six GPIOs above |
+| AD4 (pin 10) and AD7–AD15 (pins 13–21) | each through ~10 k to GND |
+| A16–A23 (pins 22–29) | GND |
+| /CS2 (pin 30) | 3V3 through ~10 k (keeps the save RAM deselected) |
+| CLK (pin 2), /IRQ (pin 31) | leave unconnected |
+
+The pin numbers are the standard GBA cartridge edge connector pinout from memory — **verify them against a pinout diagram before wiring**. Power the board off before inserting or removing the cartridge.
+
+### Firmware setup
+
+- Open `OjoDelSolCalibrator/OjoDelSolCalibrator.ino` (the folder name must match the sketch).
+- Libraries: **Adafruit LTR390 Library** (plus Adafruit BusIO). LittleFS and Preferences come with the esp32 core.
+- Board: **ESP32S3 Dev Module**, with a **Partition Scheme that has a SPIFFS (LittleFS) partition**:
+  - *No OTA (1MB APP/3MB SPIFFS)* — about 14 hours of logging at one sample per second
+  - *ESP SR 16M (3MB APP/6MB SPIFFS/3.9MB MODEL)* — about 28 hours (16 MB flash only)
+- Settings such as pins, sample interval and the cartridge tick time live in `OjoDelSolCalibrator/config.h`. Raise `SAMPLE_INTERVAL_MS` for longer runs (5000 ms stretches 3 MB to about 3 days).
+- Serial is UART0 at 115200 baud, which is the board's **TTL** USB-C port.
+
+### Using it
+
+Power it up and it starts a new session file (`/cal_0001.csv`, `/cal_0002.csv`, …) on every boot. The numbering survives power cycles. Data is committed to flash every 10 rows, so a sudden power cut loses at most the last 10. When flash is nearly full it stops logging instead of corrupting anything. The on-board LED is **green** when both sensors read fine, **yellow** if the last sample had a cartridge or LTR390 problem, and **red** for a storage problem.
+
+Serial commands (type `help`): `status`, `list`, `dump [n]` (prints a session; sampling pauses while it runs), `delete <n|all>` (never the current session), `format`, `interval <ms>`, and `live on|off`.
+
+### Reading the data
+
+The game turns the cartridge's raw value into a 0–140 level with `level = calibration − cart_raw` (anything below 0 becomes 0, anything above 140 becomes 140), then maps that level to bars. The game sets `calibration` during its sensor setup as the dark `cart_raw` **minus 2**. So take the `cart_raw` the cartridge shows when the sensor is covered, subtract 2, and use that as the calibration. Plot `uvi` against the resulting level to see how the LTR390 maps onto the cartridge across a day of changing light.
+
+### Not verified yet
+
+- Whether the bus timing and the resistor-tied lines work on the ESP32-S3 (tested method only on a GBxCart RW, which drives the full bus).
+- Whether the sensor tolerates the game's ~750 µs tick on this setup (`CART_TICK_US` is adjustable).
+- The `cart_bus` read-back check is a guess about how the GPIO registers answer, so a `0` there is not proof of a fault.
+- Long-run behaviour: flash wear, the "out of space" handling, and recovery from a write error.
+
+----------------------------------------------------------------------
+
 ## Technical Notes
 
 ### Original Boktai Cartridge Sensor (from GBATEK and Drakodan)
