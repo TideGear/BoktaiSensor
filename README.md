@@ -376,6 +376,22 @@ Bars    Boktai 1    Boktai 2 & 3
 10      —           (max)
 ```
 
+The Boktai 1 column above matches the Japanese and US releases. **Boktai 1 (E)** (Europe) uses different thresholds, found by disassembling the ROM's bar-ladder routine (the first value at which each bar starts, in the same 0–140 scale):
+
+```
+Bars    Boktai 1 (E)
+1       1
+2       7
+3       15
+4       25
+5       38
+6       56
+7       98
+8       140
+```
+
+This differs from Raphi's Boktai 1 table (bars 3–6 start at 16, 28, 44 and 67 there). The config.h thresholds follow Raphi's table, so they do not reproduce the European release's gauge exactly.
+
 `AUTO_UV_MIN` maps to scaled value 1 and `AUTO_UV_SATURATION` maps to 140.
 
 ### Manual Mode
