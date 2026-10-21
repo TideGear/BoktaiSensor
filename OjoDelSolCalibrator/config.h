@@ -8,10 +8,13 @@
 // BOARD
 // =============================================================================
 // Written for an ESP32-S3-CAM board (16MB flash) with the camera NOT used.
-// The pins below avoid PSRAM (35-37), the strapping pins (0, 3, 45, 46), native
+// The pins below avoid octal PSRAM (33-37), the strapping pins (0, 3, 45, 46), native
 // USB (19, 20) and UART0 (43, 44, which feed the TTL USB-C port). GPIO39-42 are
-// the JTAG pins and GPIO39/40 are also the SD card's CLK/DATA, so leave the SD
-// slot empty and don't use JTAG debugging.
+// the JTAG pins and GPIO38/39/40 are also the SD card's CMD/CLK/DATA, so leave the SD
+// slot empty and don't use JTAG debugging. The whole cartridge bus sits on the board's
+// right-hand header (GPIO1, 2, 21, 38-42, 47); only the LTR390's SDA/SCL (GPIO4/5) are on
+// the left header, next to 3V3 (I2C could move to the right header too, but the free pins
+// there are the on-board LED GPIO48 and the strapping/UART pins, so it stays on 4/5).
 //
 // Any other ESP32-S3 board works if you change the pins here. Run the cartridge
 // bus on pins that are not used by flash/PSRAM on your module.
@@ -27,15 +30,24 @@
 //   /CS, /RD, /WR                 -> CART_CS_PIN, CART_RD_PIN, CART_WR_PIN
 //
 // Required external wiring (see the README):
-//   AD4 and AD7-AD15 : each through ~10k to GND
+//   AD4 and AD7-AD15 : each through ~10k to GND (must be low when the address latches;
+//                      a direct tie also works since the cartridge drives zeros there,
+//                      the resistors just guard against it ever driving a 1)
 //   A16-A23          : GND
-//   /CS2 (SRAM)      : 3V3 through ~10k (deselects the save RAM)
-//   /CS, /RD, /WR    : ~10k pull-up to 3V3 each (keeps them idle while the ESP32 boots)
+//   /CS2 (SRAM)      : 3V3, wired directly (deselects the save RAM; it is an input)
+//   /CS, /RD, /WR    : optional ~10k pull-up to 3V3 each (only keeps them idle while
+//                      the ESP32 boots)
 //   VCC / GND        : 3V3 / GND.  CLK and /IRQ: leave unconnected.
-const uint8_t CART_AD_PINS[6] = { 1, 2, 14, 21, 47, 42 };  // AD0, AD1, AD2, AD3, AD5, AD6
-const uint8_t CART_CS_PIN = 41;
-const uint8_t CART_RD_PIN = 40;
-const uint8_t CART_WR_PIN = 39;
+//
+// Pin order: the usable pins on the board's right-hand header, bottom to top (USB-C ports at
+// the bottom), are 21, 47, 38, 39, 40, 41, 42, 2, 1. The cartridge pins in order are /WR, /RD,
+// /CS, AD0, AD1, AD2, AD3, AD5, AD6, so mapping them onto that sequence needs no wire
+// crossings. This direction also keeps the active-low control lines off GPIO1-14, which give
+// a ~60 us low pulse at power-up (datasheet Table 2-2); only address/data lines sit on GPIO1/2.
+const uint8_t CART_AD_PINS[6] = { 39, 40, 41, 42, 2, 1 };  // AD0, AD1, AD2, AD3, AD5, AD6
+const uint8_t CART_CS_PIN = 38;
+const uint8_t CART_RD_PIN = 47;
+const uint8_t CART_WR_PIN = 21;
 
 // Time per sensor "tick". The original game clocks the sensor from a timer that
 // fires every 0x3128 CPU cycles (about 750 microseconds). Two ticks make one
@@ -61,6 +73,8 @@ const float UV_SENSITIVITY_COUNTS_PER_UVI = 2300.0f;
 // inside it, so a sample takes about 1000 ms and the interval can't usefully be
 // shorter. Use a longer interval for longer runs. If a sample takes longer than
 // the interval, the next one starts immediately.
+// The default of 1000 ms samples back to back. For runs of several days use a longer
+// interval (it can also be changed from the web app or serial); see the storage notes below.
 const uint32_t SAMPLE_INTERVAL_MS = 1000;
 
 // =============================================================================
@@ -69,13 +83,38 @@ const uint32_t SAMPLE_INTERVAL_MS = 1000;
 // Each power-up starts a new file /cal_NNNN.csv. Data is committed to flash
 // every FLUSH_EVERY_N_SAMPLES rows, so at most that many rows are lost on a
 // sudden power cut. Logging stops (and the LED turns red) when free space drops
-// below MIN_FREE_BYTES. Roughly 60 bytes per row: 1 sample/s is ~215 KB per hour.
-// The Arduino partition scheme must include a SPIFFS (LittleFS) data partition:
-//   "No OTA (1MB APP/3MB SPIFFS)"                  ~3 MB = about 14 hours at 1 sample/s
-//   "ESP SR 16M (3MB APP/6MB SPIFFS/3.9MB MODEL)"  ~6 MB = about 28 hours (16MB flash only)
-// For longer runs, raise SAMPLE_INTERVAL_MS (5000 ms stretches 3 MB to ~3 days).
+// below MIN_FREE_BYTES; deleting sessions (web app or serial) resumes logging in a new session.
+// A row is 33-43 bytes, so one sample per second is roughly 120-155 KB per hour.
+// All sessions on the device share the space, so download and delete earlier runs first.
+// The partitions.csv next to this sketch (for a 16 MB module) gives the app 3 MB, because the
+// Wi-Fi web app makes the firmware ~1 MB, and leaves ~12.9 MB of LittleFS ("spiffs") for the
+// logs: roughly 4 days at 1 s (about 8 days at 2 s). On an 8 MB module, edit or delete
+// partitions.csv and pick a scheme with a SPIFFS partition (e.g. "8M with spiffs": 1.5 MB,
+// about half a day at 1 s).
+// For longer runs, raise SAMPLE_INTERVAL_MS. These are estimates from the row size, not
+// measured on a device.
 const uint32_t FLUSH_EVERY_N_SAMPLES = 10;
 const uint32_t MIN_FREE_BYTES = 65536;
+
+// =============================================================================
+// WI-FI HOTSPOT / WEB APP
+// =============================================================================
+// The device creates its own Wi-Fi network (no internet or router needed). Join it
+// from a phone or laptop and open http://192.168.4.1 (a captive-portal prompt should
+// also pop up). The web app shows live readings, browses past sessions and manages and
+// backs up the stored logs.
+//
+// CHANGE THE PASSWORD: anyone in range who knows it can read and DELETE your logs.
+// It must be 8-63 characters; an empty string makes an open network (not recommended).
+// Running Wi-Fi draws more current than sampling alone (roughly 100 mA or more; not
+// measured) and its interrupts could, in principle, jitter the cartridge timing; set
+// WIFI_AP_ENABLED = false to run without it (serial commands still work).
+const bool WIFI_AP_ENABLED = true;
+const char WIFI_AP_SSID[] = "OjoDelSol-Calibrator";
+const char WIFI_AP_PASSWORD[] = "ojodelsol";
+const uint8_t WIFI_AP_CHANNEL = 6;
+const uint8_t WIFI_AP_MAX_CLIENTS = 4;
+const bool WIFI_AP_HIDDEN = false;
 
 // =============================================================================
 // SERIAL / STATUS LED

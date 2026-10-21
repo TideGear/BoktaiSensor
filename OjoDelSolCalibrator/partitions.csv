@@ -1,0 +1,7 @@
+# Partition table for a 16 MB ESP32-S3 (Arduino picks this file up automatically when it sits next to the sketch).
+# The Wi-Fi web app makes the firmware ~1 MB, which does not fit the usual 1 MB app slot,
+# so this gives the app 3 MB and leaves ~13 MB of "spiffs" (LittleFS) for the logs.
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x7000,
+app0,     app,  factory, 0x10000,  0x300000,
+spiffs,   data, spiffs,  0x310000, 0xCF0000,

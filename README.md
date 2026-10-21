@@ -439,15 +439,15 @@ If the bar display feels jumpy:
 
 ## Ojo del Sol Calibrator — UNTESTED
 
-> **Status: untested.** The firmware in `OjoDelSolCalibrator/` compiles for the ESP32-S3 (esp32 core 3.3.11), but it has **never been run on real hardware**. The cartridge-bus wiring and timing, the flash logging, and the serial commands are all unverified. The method itself was checked against a Boktai 3 (J) ROM and against a GBxCart RW, but not on this board. Expect to debug it, and please report what works and what doesn't.
+> **Status: untested.** The firmware in `OjoDelSolCalibrator/` compiles for the ESP32-S3 (esp32 core 3.3.11), but it has **never been run on real hardware**. The cartridge-bus wiring and timing, the flash logging, the Wi-Fi hotspot and the serial commands are all unverified. The web page was only tried in a desktop browser against a mock of the device's API (see [Web app](#web-app-wi-fi-hotspot)), never served by the board. The sensor-reading method itself was checked against a Boktai 3 (J) ROM and against a GBxCart RW, but not on this board. Expect to debug it, and please report what works and what doesn't.
 
-A separate device that reads a **real Boktai cartridge's solar sensor** and an **LTR390** at the same moment, and saves both to the board's flash. Leave it in the sun for hours, then dump the log over serial and compare the two sensors. This is the data needed to tune `AUTO_UV_MIN`, `AUTO_UV_SATURATION` and the bar thresholds against the real hardware.
+A separate device that reads a **real Boktai cartridge's solar sensor** and an **LTR390** at the same moment, and saves both to the board's flash. Leave it in the sun for hours, then watch it live, browse past sessions and back up the logs from your phone over its own Wi-Fi hotspot (or over serial). This is the data needed to tune `AUTO_UV_MIN`, `AUTO_UV_SATURATION` and the bar thresholds against the real hardware.
 
-**What it logs** (one CSV row per sample, about once per second by default):
+**What it logs** (one CSV row per sample, once per second by default):
 
 | Column | Meaning |
 |--------|---------|
-| `uptime_ms` | Milliseconds since power-up (there is no clock, so you line runs up by uptime) |
+| `uptime_ms` | Milliseconds since power-up. The device has no clock of its own; when a phone opens the web app it sends the real time, and the log then gets a `# time_sync,<uptime_ms>,<epoch_ms>` comment line that maps uptime to wall-clock time |
 | `cart_status` | `ok`, or `timeout` if the cartridge's flag never rose (no cartridge, or a wiring fault) |
 | `cart_raw` | The game's raw sensor value. About 230 in the dark, falling toward 0 as it gets brighter |
 | `cart_bus` | `1` if the cartridge's GPIO registers read back what was written (a wiring check) |
@@ -461,46 +461,84 @@ Written for an **ESP32-S3-CAM board with the camera unused** (any ESP32-S3 works
 
 | Signal | GPIO |
 |--------|------|
-| Cartridge AD0, AD1, AD2, AD3 | 1, 2, 14, 21 |
-| Cartridge AD5, AD6 | 47, 42 |
-| Cartridge /CS, /RD, /WR | 41, 40, 39 |
+| Cartridge /WR, /RD, /CS | 21, 47, 38 |
+| Cartridge AD0, AD1, AD2, AD3 | 39, 40, 41, 42 |
+| Cartridge AD5, AD6 | 2, 1 |
 | LTR390 SDA, SCL | 4, 5 |
 
-GPIO39–42 are also the JTAG pins and GPIO39/40 are the SD card's CLK/DATA, so leave the SD slot empty. GPIO4/5 are the camera's control bus; the LTR390 (0x53) does not collide with the camera (0x30).
+**Wire routing:** the whole cartridge bus is on the board's **right-hand header**. Hold the board with the USB-C ports at the bottom; the usable pins from the bottom up are GPIO **21, 47, 38, 39, 40, 41, 42, 2, 1**, which is exactly the cartridge pin order /WR, /RD, /CS, AD0, AD1, AD2, AD3, AD5, AD6. Run the nine wires in that order and none cross (the gaps between 47 and 38, and between 42 and 2, hold pins you can't use: GPIO48 is the on-board LED, 0/45 are strapping pins, 35–37 are PSRAM, 43/44 are the serial port). This direction also keeps the active-low /WR, /RD and /CS off GPIO1–14, which give a ~60 µs low pulse at power-up. The LTR390's SDA/SCL stay on the left header next to 3V3. GPIO39–42 are also the JTAG pins and GPIO38/39/40 are the SD card's CMD/CLK/DATA, so leave the SD slot empty. GPIO4/5 are the camera's control bus; the LTR390 (0x53) does not collide with the camera (0x30).
 
-**Cartridge wiring** — the cartridge is 3.3 V like the ESP32, so no level shifter is needed. Only the lines needed to reach the GPIO registers at 0x080000C4–C8 are driven, so the rest are tied off with resistors:
+**Cartridge wiring** — the cartridge is 3.3 V like the ESP32, so no level shifter is needed. Only the lines needed to reach the GPIO registers at 0x080000C4–C8 are driven, so the rest are tied off:
 
 | Cartridge pin(s) | Connect to |
 |------------------|------------|
 | VCC (pin 1) / GND (pin 32) | 3V3 / GND |
-| /WR (3), /RD (4), /CS (5) | the three GPIOs above, each with a ~10 k pull-up to 3V3 |
+| /WR (3), /RD (4), /CS (5) | the three GPIOs above. A ~10 k pull-up to 3V3 on each is **optional**: it only keeps them idle while the ESP32 boots |
 | AD0–AD3, AD5, AD6 (pins 6–9, 11, 12) | the six GPIOs above |
-| AD4 (pin 10) and AD7–AD15 (pins 13–21) | each through ~10 k to GND |
+| AD4 (pin 10) and AD7–AD15 (pins 13–21) | each through ~10 k to GND (a bussed resistor network works too). These must be held low when the address is latched. A direct tie to GND should also work, because the cartridge drives zeros on these lines for the GPIO registers, but the resistors protect against the cartridge ever driving a 1 into ground |
 | A16–A23 (pins 22–29) | GND |
-| /CS2 (pin 30) | 3V3 through ~10 k (keeps the save RAM deselected) |
+| /CS2 (pin 30) | 3V3, wired directly (keeps the save RAM deselected; it is an input on the cartridge, so no resistor is needed) |
 | CLK (pin 2), /IRQ (pin 31) | leave unconnected |
 
-The pin numbers are the standard GBA cartridge edge connector pinout from memory — **verify them against a pinout diagram before wiring**. Power the board off before inserting or removing the cartridge.
+The pin numbers match the GBA cartridge edge connector pinout in [`References/gba_cartridge_pinout.svg`](References/gba_cartridge_pinout.svg). The full wiring, including the resistors, is drawn in [`OjoDelSolCalibrator/Ojo del Sol Calibrator Wiring.svg`](OjoDelSolCalibrator/Ojo%20del%20Sol%20Calibrator%20Wiring.svg). Power the board off before inserting or removing the cartridge.
+
+![Ojo del Sol Calibrator wiring](OjoDelSolCalibrator/Ojo%20del%20Sol%20Calibrator%20Wiring.svg)
 
 ### Firmware setup
 
-- Open `OjoDelSolCalibrator/OjoDelSolCalibrator.ino` (the folder name must match the sketch).
-- Libraries: **Adafruit LTR390 Library** (plus Adafruit BusIO). LittleFS and Preferences come with the esp32 core.
-- Board: **ESP32S3 Dev Module**, with a **Partition Scheme that has a SPIFFS (LittleFS) partition**:
-  - *No OTA (1MB APP/3MB SPIFFS)* — about 14 hours of logging at one sample per second
-  - *ESP SR 16M (3MB APP/6MB SPIFFS/3.9MB MODEL)* — about 28 hours (16 MB flash only)
-- Settings such as pins, sample interval and the cartridge tick time live in `OjoDelSolCalibrator/config.h`. Raise `SAMPLE_INTERVAL_MS` for longer runs (5000 ms stretches 3 MB to about 3 days).
+- Open `OjoDelSolCalibrator/OjoDelSolCalibrator.ino` (the folder name must match the sketch). The sketch is several files in that folder (`WebApp.ino`, `WebPage.h`, `GbaCartSensor.h`, `Shared.h`, `config.h`, `partitions.csv`); Arduino builds them together, so keep them all together.
+- Libraries: **Adafruit LTR390 Library** (plus Adafruit BusIO). LittleFS, Preferences, WiFi, WebServer and DNSServer come with the esp32 core. There are no external web libraries and the web app needs no internet.
+- Board: **ESP32S3 Dev Module**, with **Flash Size: 16MB**, **Partition Scheme: Custom** (this uses the `partitions.csv` in the sketch folder) and **USB CDC On Boot: Disabled** (the default, so Serial stays on UART0 / the TTL port). **PSRAM** can stay Disabled or be set to *OPI PSRAM* for boards that have it; the sketch does not use PSRAM either way, and the pins avoid GPIO 33–37, which octal PSRAM occupies. These are the same board settings as in the Metal-Gear-Mk-0 robot project (an ESP32-S3-CAM from the same maker, 16 MB flash, OPI PSRAM), where that setup is known to work. Both *Custom* and *Huge APP (3MB No OTA/1MB SPIFFS)* build here with this layout.
+- **Partitions:** with the Wi-Fi web app the firmware is about 1 MB, which does **not** fit the usual 1 MB app slot (it filled 99% of it). The `partitions.csv` next to the sketch gives a **16 MB** module a 3 MB app slot and about 12.9 MB for logs; the build uses 33% of the app slot. **Check your board really has 16 MB**: the serial banner prints `Flash chip: 16 MB` at boot, and the web app shows a warning banner if it is smaller. **On an 8 MB module (for example the XIAO ESP32S3), do not use this file as it is**: delete or edit it (a 3 MB app slot leaves about 4.5 MB for logs) and pick a matching scheme.
+- **First run:** the log partition has never been formatted, so the device starts with "storage not set up" and records nothing until you press **Format storage…** on the web app's Storage tab (or send `format` over serial). It does not format by itself, so a failed mount can never silently erase old logs.
+- Log capacity: rows are 33–43 bytes, so one sample per second is roughly 120–155 KB per hour. 12.9 MB is therefore roughly **4 days** at the default 1-second interval (about 8 days at 2 s, or 3 weeks at 5 s); an 8 MB module with a 3 MB app slot would hold about a day and a half at 1 s. These are estimates from the row size, not measured on a device. All sessions on the device share the space, so download and delete earlier runs before a long one.
+- Settings such as pins, sample interval, the Wi-Fi name/password and the cartridge tick time live in `OjoDelSolCalibrator/config.h`. Raise `SAMPLE_INTERVAL_MS` for longer runs. A sample takes about 1 second, so intervals shorter than that don't help.
 - Serial is UART0 at 115200 baud, which is the board's **TTL** USB-C port.
 
 ### Using it
 
-Power it up and it starts a new session file (`/cal_0001.csv`, `/cal_0002.csv`, …) on every boot. The numbering survives power cycles. Data is committed to flash every 10 rows, so a sudden power cut loses at most the last 10. When flash is nearly full it stops logging instead of corrupting anything. The on-board LED is **green** when both sensors read fine, **yellow** if the last sample had a cartridge or LTR390 problem, and **red** for a storage problem.
+Power it up and it starts a new session file (`/cal_0001.csv`, `/cal_0002.csv`, …) on every boot. The numbering survives power cycles, and a session restored from a backup never gets its number reused. Data is committed to flash every 10 rows, so a sudden power cut loses at most the last 10. When less than 64 KB of flash is free it stops logging (`MIN_FREE_BYTES` in `config.h`); deleting sessions frees space and logging then resumes in a new session. The on-board LED is **green** when both sensors read fine, **yellow** if the last sample had a cartridge or LTR390 problem, and **red** for a storage problem.
 
-Serial commands (type `help`): `status`, `list`, `dump [n]` (prints a session; sampling pauses while it runs), `delete <n|all>` (never the current session), `format`, `interval <ms>`, and `live on|off`.
+Serial commands (type `help`): `status`, `list`, `dump [n]` (prints a session; sampling pauses while it runs), `delete <n|all>` (never the session being written; if logging stopped because flash filled up, that session can be deleted too), `format`, `interval <ms|0>` (saved across restarts; 0 restores the `config.h` default), and `live on|off`.
+
+### Web app (Wi-Fi hotspot)
+
+The device creates its own Wi-Fi network, so nothing else (router, internet) is needed:
+
+1. Power it up and join the network **`OjoDelSol-Calibrator`** (password **`ojodelsol`**). **Change the password in `config.h`** (`WIFI_AP_PASSWORD`, 8–63 characters): anyone who knows it can read and delete your logs.
+2. Open **http://192.168.4.1** (a "sign in to network" page should also pop up on most phones). If downloads or uploads don't work in that pop-up window, open the address in your normal browser instead.
+3. The page sends the phone's clock to the device, so sessions get real timestamps.
+
+| Tab | What it does |
+|-----|--------------|
+| **Live** | Current cartridge level and UV index, the bars each game (Boktai 1 J/U, Boktai 1 E, Boktai 2/3) would show, a calibration box (default 230, saved in the phone's browser), and a chart of the last few minutes |
+| **History** | Pick any session on the device and chart it over time, with zoom sliders, summary numbers, and a **UV index vs cartridge** scatter plot with the game's bar thresholds and a rough estimate of the UV index at which the cartridge reaches each bar |
+| **Storage** | Flash usage and an estimate of the time left; list, view, download and delete sessions; **backup** of all sessions as one `.tar`; **restore** from a `.tar` or individual `cal_NNNN.csv` files; change the sample interval; start a new session; set the clock; delete all old sessions; format |
+
+Screenshots (rendered in a desktop browser from **mock data** with the page's real code; this is not a photo of the device):
+
+| Live | History | Storage |
+|------|---------|---------|
+| <img src="OjoDelSolCalibrator/screenshots/web-live-phone.png" width="260"> | <img src="OjoDelSolCalibrator/screenshots/web-history-phone.png" width="260"> | <img src="OjoDelSolCalibrator/screenshots/web-storage-phone.png" width="260"> |
+
+Desktop layout: [Live](OjoDelSolCalibrator/screenshots/web-live-desktop.png), [History](OjoDelSolCalibrator/screenshots/web-history-desktop.png).
+
+If a sensor is missing:
+- The hotspot and web app start regardless, and sampling carries on. The Live tab shows what is wrong: **"Cartridge: no answer"** when the cartridge's sensor flag never rises, **"Cartridge … bus read-back check failed"** when it did answer but the GPIO registers did not read back what was written (the reading may be noise), and **"LTR390: not found"** with the pins to check. The device retries a missing LTR390 every 30 seconds, so you can plug it in later.
+- Rows are still logged with `cart_status = timeout` and/or `ltr_status = absent`, and the LED turns yellow.
+- With **no cartridge at all** the bus pins float, so a stray reading is possible now and then; `cart_bus = 0` and the warning above are the reliable signs. This is reasoning from the code, not something I have seen on hardware.
+
+Good to know:
+- The web server runs on core 0, so sampling on core 1 should not stall while a page loads or a file downloads. **This is unverified**; Wi-Fi interrupts could in principle disturb the cartridge timing, so compare a run with `WIFI_AP_ENABLED = false` if the readings look odd.
+- The hotspot uses more power than sampling alone. Current draw is unmeasured; plan on USB power.
+- Up to 4 devices can join (`WIFI_AP_MAX_CLIENTS`). The server handles one request at a time, so a large download briefly pauses the live view.
+- Large uploads and the backup run in your browser; the History tab downloads the whole session CSV to draw it, which can take a while for a multi-day session.
+- The calibration number and chosen bar table are remembered by the phone's browser, not the device.
+- Interface for scripts: `GET /api/status`, `/api/live?since=N`, `/api/files`, `/api/file?n=N` (CSV); `POST /api/delete?n=N|all=1`, `/api/newsession`, `/api/format?confirm=ERASE`, `/api/interval?ms=N`, `/api/time?ms=EPOCH_MS`, and a multipart `/api/upload`. See the header of `WebApp.ino`.
 
 ### Reading the data
 
-The game turns the cartridge's raw value into a 0–140 level with `level = calibration − cart_raw` (anything below 0 becomes 0, anything above 140 becomes 140), then maps that level to bars. The game sets `calibration` during its sensor setup as the dark `cart_raw` **minus 2**. So take the `cart_raw` the cartridge shows when the sensor is covered, subtract 2, and use that as the calibration. Plot `uvi` against the resulting level to see how the LTR390 maps onto the cartridge across a day of changing light.
+The game turns the cartridge's raw value into a 0–140 level with `level = calibration − cart_raw` (anything below 0 becomes 0, anything above 140 becomes 140), then maps that level to bars. The game sets `calibration` during its sensor setup as the raw value it measures at that moment **minus 2** (presumably taken in the dark; I have not confirmed what the game asks you to do). So take the `cart_raw` the cartridge shows when the sensor is covered, subtract 2, and use that as the calibration. Plot `uvi` against the resulting level to see how the LTR390 maps onto the cartridge across a day of changing light.
 
 ### Not verified yet
 
@@ -508,6 +546,11 @@ The game turns the cartridge's raw value into a 0–140 level with `level = cali
 - Whether the sensor tolerates the game's ~750 µs tick on this setup (`CART_TICK_US` is adjustable).
 - The `cart_bus` read-back check is a guess about how the GPIO registers answer, so a `0` there is not proof of a fault.
 - Long-run behaviour: flash wear, the "out of space" handling, and recovery from a write error.
+- The Wi-Fi hotspot and web server on the board: the page was tested only against a mock server in a desktop browser. Untested on a phone and on the device: the captive-portal pop-up, file downloads and uploads over the ESP32 `WebServer`, restore of large files, and the locking between the web task and the sampling loop.
+- Whether Wi-Fi activity disturbs the cartridge read timing (the ticks are software-timed).
+- A flash-size mismatch: `partitions.csv` assumes 16 MB of flash.
+- Boktai 1 cartridges: the sequence follows the Boktai 2 and 3 code (identical in all four Boktai 2 versions and Boktai 3 (J)). Boktai 1's sensor code differs slightly: it does not initialise the clock/reset byte (so the clock likely starts low instead of high) and does not wait for the flag to be low before counting. I expect that to make its raw value one count higher than Boktai 2/3, which cancels out in `calibration − raw` when both come from the same game, but this is inferred from the ROMs and untested.
+- Power: supply current is unmeasured. The cartridge and the LTR390 both run from the board's 3V3 pin. It is meant to run from USB power; there is no sleep mode or battery handling, so a lost supply ends the run (and loses up to the last 10 rows).
 
 ----------------------------------------------------------------------
 
