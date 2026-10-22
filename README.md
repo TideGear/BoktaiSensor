@@ -325,8 +325,7 @@ The tie-offs are the same as the calibrator's; its README explains [why each one
 ### Board Settings (Arduino IDE)
 
 - **Boards Manager URL:** `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json`
-- **Board package:** esp32 by Espressif Systems
-- **Recommended version:** `3.3.7`
+- **Board package:** esp32 by Espressif Systems, version 3.x
 - **Board:**
   - XIAO build: **XIAO_ESP32S3**
   - T-QT Pro build: **ESP32S3 Dev Module** (no T-QT entry exists in the ESP32 core) with these settings — everything not listed stays at its default:
@@ -349,7 +348,7 @@ The tie-offs are the same as the calibrator's; its README explains [why each one
 
 **When device is ON:**
 - **Tap:** Cycle screens (BOKTAI 1 → 2 → 3 → XInput → 1...). The XInput screen is always present and doubles as the diagnostics screen.
-- **Hold 2s on a game screen:** Power OFF (deep sleep, ~10uA)
+- **Hold 2s on a game screen:** Power OFF (deep sleep)
 - **Hold 2s on the XInput screen:** Restart into CDC mode for USB serial output and firmware upload
 - **Hold 2s while in CDC mode:** Exit CDC mode and sleep (next wake returns to XInput mode)
 - If screensaver is active, first tap wakes the screen
@@ -521,7 +520,7 @@ A separate device (partly tested: the Wi-Fi, web app, logging and LTR390 work on
 - Battery sampling/cutoff checks run on a timed loop and are not dependent on UV "new data" events
 - XIAO build: the OLED uses Display OFF + Charge Pump OFF commands, and on wake the firmware explicitly re-enables the charge pump/display before drawing
 - T-QT Pro: the panel is put to sleep and the backlight cut; the backlight pin is held off through deep sleep
-- Deep sleep current: ~10µA (varies with module pull-ups)
+- Deep sleep current: not measured on either board
 
 ### UV Blocking Warning
 Most glass and many plastics block UV strongly (often 90%+). Compensation can correct scale loss, but it cannot recover signal if too little UV reaches the sensor. Prefer an open aperture, quartz glass, or UV-transparent acrylic.
