@@ -1,4 +1,4 @@
-// WebPage.h - the web app served at http://192.168.4.1/ (self-contained: no external files,
+// WebPage.h - the web app served at http://ojodelsol-calibrator.local/ or http://192.168.4.1/ (self-contained: no external files,
 // fonts, scripts or network access needed). Edited as plain HTML/CSS/JS inside a raw string.
 #ifndef CALIBRATOR_WEB_PAGE_H
 #define CALIBRATOR_WEB_PAGE_H
@@ -137,7 +137,7 @@ tr:last-child td{border-bottom:0}
       <input id="calIn" type="number" min="0" max="255" step="1" style="width:84px">
       <button class="btn small" id="calFromNow" title="Cover the cartridge's sensor first">Use current reading − 2</button>
     </div>
-    <p class="note">Level = calibration − raw cartridge value, limited to 0–140. The game sets its calibration from the raw value at its sensor setup, minus 2 (cover the sensor, then press the button). The default 230 is only a starting guess.</p>
+    <p class="note">Level = calibration − raw cartridge value, limited to 0–140. The game sets its calibration from the raw value at its sensor setup, minus 2 (presumably with the sensor covered; not confirmed). The default 230 is only a starting guess.</p>
   </div>
 
   <div class="card">
@@ -455,7 +455,7 @@ async function pollStatus(){
   try{
     status=await api('/api/status',null,4000);
     setConn(true);updateBanner();renderLive();
-    if(!clockSent){clockSent=true;api('/api/time?ms='+Date.now(),{method:'POST'}).then(()=>{status.timeSynced=true;renderStorageStatus();}).catch(()=>{clockSent=false;});}
+    if(!clockSent&&status.timeSource!=='ntp'){clockSent=true;api('/api/time?ms='+Date.now(),{method:'POST'}).then(()=>{status.timeSynced=true;status.timeSource='browser';renderStorageStatus();}).catch(()=>{clockSent=false;});}
     renderStorageStatus();
   }catch(e){setConn(false);}
 }
@@ -585,7 +585,7 @@ function renderStorageStatus(){
     if(sel.value===''||sel.selectedIndex<0)sel.value='0';
   }
   $('#ivNote').textContent='now: '+(status.intervalMs/1000)+' s';
-  $('#clockNote').textContent=status.timeSynced?'clock set':'clock not set';
+  $('#clockNote').textContent=!status.timeSynced?'clock not set':status.timeSource==='ntp'?'clock set from internet time':'clock set from a browser';
 }
 async function loadFiles(){
   try{

@@ -1,7 +1,5 @@
 // TQTDisplay.h - LilyGO T-QT Pro built-in display support
 //
-// EXPERIMENTAL: the T-QT Pro build is currently untested on real hardware.
-//
 // The UI is authored at 128x64 (the SSD1306 OLED of the original build).
 // This class renders it into an offscreen 1-bit canvas and pushes the result
 // centered onto the T-QT's 128x128 GC9107 TFT, mirroring the subset of the

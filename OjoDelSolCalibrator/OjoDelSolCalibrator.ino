@@ -3,11 +3,12 @@
 // Reads a real Boktai cartridge's solar sensor (through the GBA cartridge bus)
 // and an LTR390 UV sensor at the same time, and logs both to flash so the Ojo
 // del Sol's UV thresholds can be tuned against the original hardware. It is
-// meant to sit in the sun for hours. It runs its own Wi-Fi hotspot with a web app
+// meant to sit in the sun for hours. It joins your Wi-Fi (or runs its own hotspot) with a web app
 // (see WebApp.ino) to watch live readings, browse past sessions and manage and
 // back up the stored logs; a serial console offers the same commands.
 //
-// STATUS: UNTESTED on hardware. See the README.
+// STATUS: partly tested on hardware (Wi-Fi, web app, logging, LTR390); the cartridge
+// reading has not been tried yet. See the README.
 //
 // One CSV row per sample:
 //   uptime_ms   - milliseconds since power-up, at the start of the cartridge read
@@ -64,8 +65,10 @@ bool liveEcho = LIVE_PRINT_DEFAULT;
 uint32_t sampleIntervalMs = SAMPLE_INTERVAL_MS;
 uint32_t nextSampleMs = 0;
 
-// Wall-clock time, learned from the phone that opens the web app (there is no RTC).
+// Wall-clock time (there is no RTC): from internet time servers when on your Wi-Fi,
+// otherwise from the phone that opens the web app.
 bool timeSynced = false;
+const char *timeSource = "none";  // "ntp", "browser" or "none"
 uint64_t epochOffsetMs = 0;     // epoch_ms = epochOffsetMs + millis()
 uint32_t timeSyncedAtMs = 0;
 
@@ -168,10 +171,12 @@ bool writeTimeSyncLine() {
   return logFile.write((const uint8_t *)line, n) == (size_t)n;
 }
 
-void setTimeSync(uint64_t epochMs) {
+// source is "ntp" or "browser"; the latest sync wins.
+void setTimeSync(uint64_t epochMs, const char *source) {
   FsLock lock;
   epochOffsetMs = epochMs - (uint64_t)millis();
   timeSynced = true;
+  timeSource = source;
   timeSyncedAtMs = millis();
   if (writeTimeSyncLine()) logFile.flush();
 }
@@ -217,7 +222,7 @@ uint32_t allocateSessionNumber() {
 bool writeSessionHeader() {
   char header[256];
   int n = snprintf(header, sizeof(header),
-                   "# Ojo del Sol Calibrator session %lu (UNTESTED firmware)\n"
+                   "# Ojo del Sol Calibrator session %lu (cartridge reading untested)\n"
                    "# tick_us=%lu ltr=UVS,18x,20bit,500ms counts_per_uvi=%.0f interval_ms=%lu\n"
                    "uptime_ms,cart_status,cart_raw,cart_bus,cart_ms,ltr_status,ltr_raw,uvi\n",
                    (unsigned long)sessionNo, (unsigned long)CART_TICK_US,
@@ -564,7 +569,7 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   delay(300);
   Serial.println();
-  Serial.println("Ojo del Sol Calibrator (UNTESTED) - type 'help' for commands");
+  Serial.println("Ojo del Sol Calibrator (cartridge reading untested) - type 'help' for commands");
   setLed(0, 0, 255);
 
   cartBusBegin();
@@ -589,7 +594,7 @@ void setup() {
                    "web app's Storage tab, or send 'format' here (this erases any logs).");
   }
 
-  webBegin();   // Wi-Fi hotspot + web app (WebApp.ino)
+  webBegin();   // Wi-Fi + web app (WebApp.ino)
 
   nextSampleMs = millis() + 1000;
 }

@@ -128,21 +128,11 @@ Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (
 
 ## Hardware
 
-Two boards are supported. Select yours at the top of `config.h` (`BOARD_SEEED_XIAO_ESP32S3` is the default; uncomment `BOARD_LILYGO_T_QT_PRO` instead for the T-QT Pro, which is currently experimental/untested — see Option B below).
+Two boards are supported. Select yours at the top of `config.h` (`BOARD_LILYGO_T_QT_PRO` is the default — see Option A below; uncomment `BOARD_SEEED_XIAO_ESP32S3` instead, and comment out the T-QT line, for the XIAO build in Option B).
 
-### Option A: Seeed XIAO ESP32S3 (original build)
+### Option A: LilyGO T-QT Pro (minimal-wiring build, default)
 
-**Components:**
-- Seeed XIAO ESP32S3 (built-in LiPo charging)
-- Adafruit LTR390 UV Sensor (I2C)
-- SSD1306 128x64 OLED Display (I2C)
-- Tactile push button (power/game select)
-- 3.7V LiPo battery (300mAh works well; larger capacity is optional but be mindful of your case size)
-- 2x 100K ohm resistors (for battery monitoring — optional but recommended)
-
-### Option B: LilyGO T-QT Pro (minimal-wiring build) — EXPERIMENTAL / UNTESTED
-
-> **Warning:** The T-QT Pro build is currently **untested on real hardware** and should be considered experimental. Pin assignments follow LilyGO's official pinmap and schematic, but nothing below has been verified on an actual unit yet. If you try it, expect to troubleshoot — and please report results (working or not) via a GitHub issue.
+The T-QT Pro build has been tested and works on real hardware. The GBA link solder pads are the least-exercised part, so please report any problems with them via a GitHub issue.
 
 The [LilyGO T-QT Pro](https://github.com/Xinyuan-LilyGO/T-QT) has a built-in 0.85" 128x128 GC9107 color TFT, two buttons, battery charging, and battery voltage sensing — so the only wiring needed is the LTR390 and a battery.
 
@@ -155,9 +145,20 @@ The [LilyGO T-QT Pro](https://github.com/Xinyuan-LilyGO/T-QT) has a built-in 0.8
 - If you wire to the Qwiic connector manually instead of using a cable: SDA = GPIO43, SCL = GPIO44. (Beware: the pinout image and board silkscreen swap the Qwiic SDA/SCL labels; SDA = GPIO43, SCL = GPIO44 matches the schematic and actually works — [details](https://github.com/Xinyuan-LilyGO/T-QT/issues/17).)
 - **Solder-pad sensor option:** set `I2C_SDA_PIN = 33` and `I2C_SCL_PIN = 34` in `config.h` to wire the sensor to the IO33/IO34 pads instead, freeing the Qwiic connector. I2C then needs pull-ups on SDA/SCL; the Adafruit LTR390 breakout includes 10K pull-ups on board, so no extra parts are needed with it.
 - GBA link output is supported via the board-edge solder pads: IO16 (SC), IO17 (SD), IO18 (SO), plus the adjacent GND pad. See [GBA Link Cable Wiring](#gba-link-cable-wiring-optional).
+- **Cartridge sensor option (untested):** a real Boktai cartridge can be wired up in place of the LTR390. See [Cartridge Sensor](#cartridge-sensor-t-qt-pro-optional--untested).
 - Battery sensing is built in (2:1 divider on GPIO4) and enabled by default; no resistors needed.
 - **Right button (GPIO47)** advances to the next screen (BOKTAI 1 → 2 → 3 → XInput). **Left button (GPIO0)** is the power button (hold 2s) — it is the only button that can wake the board from deep sleep — and a tap on it cycles screens backward.
 - The UI renders as a 128x64 region centered on the square screen (top/bottom letterboxed). Set `TQT_DISPLAY_ROTATION` in `config.h` if your case orientation needs the screen flipped.
+
+### Option B: Seeed XIAO ESP32S3 (original build)
+
+**Components:**
+- Seeed XIAO ESP32S3 (built-in LiPo charging)
+- Adafruit LTR390 UV Sensor (I2C)
+- SSD1306 128x64 OLED Display (I2C)
+- Tactile push button (power/game select)
+- 3.7V LiPo battery (300mAh works well; larger capacity is optional but be mindful of your case size)
+- 2x 100K ohm resistors (for battery monitoring — optional but recommended)
 
 ### Wiring
 
@@ -248,6 +249,57 @@ This wiring intentionally uses the conductor that routes P1 Pin 3 to P2 Pin 6 as
 **Notes:**
 - Keep all signals at 3.3V logic (both supported boards are 3.3V native, so no level shifting is needed)
 - The ESP32 writes data pins (SD, SO) before the phase pin (SC) so the GBA always samples stable data when it detects a phase edge. The GBA-side ASM patches include a consecutive-match check that discards any single-frame misread, adding one frame (~17ms) of latency on real bar changes but eliminating visible glitches.
+
+### Cartridge Sensor (T-QT Pro, Optional) — UNTESTED
+
+> **Status: untested.** This option compiles, but it has never been run with a cartridge attached. It uses the same reading method as the [Ojo del Sol Calibrator](OjoDelSolCalibrator/README.md), whose cartridge reading has not been run on hardware yet either. Expect to debug it, and please report results (working or not) via a GitHub issue.
+
+Instead of the LTR390, the T-QT Pro build can read a **real Boktai cartridge's own solar sensor** over the GBA cartridge bus. It turns that reading into bars with the games' own level formula and bar tables. Two things keep it from being an exact copy of the game:
+- **It needs a calibration number.** This is a dark baseline, `CART_CALIBRATION` (see below), and the default of 230 is a guess.
+- **It reads every game with the Boktai 2/3 sequence.** Boktai 1's sequence differs slightly and may give a raw value one count higher. That should cancel out, because the calibration and the readings both come from the same sequence, but it is untested ([details](OjoDelSolCalibrator/README.md#not-verified-yet)).
+
+It uses one sensor or the other, never both; to log a cartridge and an LTR390 side by side, use the calibrator.
+
+To enable it, comment out `#define SENSOR_LTR390` and uncomment `#define SENSOR_GBA_CARTRIDGE` near the top of `config.h`. The XIAO build does not support it.
+
+**Wiring (T-QT Pro):** the cartridge runs at 3.3 V, so no level shifting is needed. Cartridge pin numbers match [`References/gba_cartridge_pinout.svg`](References/gba_cartridge_pinout.svg).
+
+"Cart VCC" below is the cartridge's switched supply from the power switch (next paragraph), or plain 3V3 if you leave the switch out.
+
+| Cartridge pin(s) | Connect to |
+|------------------|------------|
+| VCC (1) | Cart VCC |
+| GND (32) | GND (the Qwiic connector's GND pin works) |
+| /WR (3), /RD (4), /CS (5) | IO33, IO34, IO35 pads, each with a ~10 k pull-up to Cart VCC (recommended: the firmware floats these during deep sleep and boot, and the pull-ups keep the cartridge idle) |
+| AD0–AD3 (6–9) | IO36, IO37, IO38, IO39 pads |
+| AD5 (11), AD6 (12) | GPIO43, GPIO44 (the Qwiic connector's SDA and SCL; the LTR390 isn't used, so the connector is free) |
+| AD4 (10) and AD7–AD15 (13–21) | each through ~10 k to GND |
+| A16–A23 (22–29) | GND |
+| /CS2 (30) | Cart VCC, wired directly |
+| CLK (2), /IRQ (31) | leave unconnected |
+
+**Cartridge power switch (recommended):** without it, the cartridge stays powered from 3V3 while the Ojo del Sol is asleep, and that sleep current is unmeasured. Use a logic-level P-channel MOSFET such as an AO3401A or Si2301. Connect its source to 3V3 and its drain to Cart VCC. Connect its gate to the IO48 pad, with a ~100 k resistor from the gate to 3V3. The firmware drives IO48 low to switch the cartridge on once the device has been powered on, and high again before sleeping or restarting. During deep sleep IO48 floats and the resistor keeps the switch off. Tie the pull-ups and /CS2 to Cart VCC, not 3V3, so they don't feed an unpowered cartridge. If you leave the switch out, wire Cart VCC straight to 3V3; the firmware's IO48 output then does nothing (or set `CART_POWER_PIN = -1`).
+
+The tie-offs are the same as the calibrator's; its README explains [why each one is needed](OjoDelSolCalibrator/README.md#hardware). The pins can be changed in the `CARTRIDGE SENSOR` section of `config.h`. The GBA link pads (IO16–IO18) are still free, so the link output works alongside the cartridge; every other pad is in use. Power the board off before inserting or removing the cartridge.
+
+**Setting it up:**
+- **Calibration:** the game turns the cartridge's raw value into a 0–140 level with `level = calibration − raw`. It stores a reading taken during its sensor setup, minus 2, as its calibration; that part is confirmed from the ROM. It is not confirmed that the reading is meant to be taken in the dark, but that is the working assumption (the [calibrator README](OjoDelSolCalibrator/README.md#reading-the-data) makes the same one). So: cover the sensor, switch to the XInput/CDC screen, read **Raw**, and set `CART_CALIBRATION` to that value minus 2. The default of 230 is only a starting guess.
+- **Boktai 1 (E):** set `CART_BOKTAI1_EUROPE_TABLE = true` so the BOKTAI 1 screen uses the European release's bar table (see [Automatic Mode](#automatic-mode-default)).
+- The UV settings in [Calibration](#calibration) (`AUTO_UV_*`, enclosure compensation, smoothing, hysteresis) are not used.
+
+**What changes:**
+- The game screens show the cartridge's **Level** (0–140) instead of the UV index. They show **No cart** when the sensor never answered (no cartridge, or a wiring fault), and the meter then reads 0 bars.
+- The XInput/CDC screen shows:
+  - **Raw** and **Lvl:** the latest raw value and the level in use.
+  - **Bus:** the read-back check (`ok` or `FAIL`, a rough wiring check) and how long the reading took.
+  - **Late** and **Rej:** the latest reading's most delayed tick, and how many readings were discarded as late (see below).
+- A reading starts every `CART_READ_INTERVAL_MS` (500 ms) and takes up to about 0.4 s, longest in the dark. Each sensor tick runs from a hardware timer interrupt, so the buttons, display and HID output keep running during a reading.
+- **Protection against timing disturbance:** the timer interrupt runs on core 1, so the Bluetooth stack and controller (core 0) can't delay it. Flash writes, such as saving a Bluetooth pairing, still pause it briefly. Any reading with a tick more than `CART_TICK_MAX_LATE_US` (250 µs) late is discarded, and the previous level is kept. Set it to 0 to keep every reading.
+
+**Not verified yet:**
+- Everything on the calibrator's [not verified](OjoDelSolCalibrator/README.md#not-verified-yet) list about the bus timing, the tied-off lines and Boktai 1 cartridges.
+- How sensitive the sensor is to tick timing at all, and so whether 250 µs is the right limit. Watch **Late** and **Rej** while Bluetooth is pairing and connected.
+- The power switch: whether switching on the cartridge dips the 3V3 rail enough to reset the board, and the actual current draw, awake and asleep. GPIO43 is the boot ROM's serial output and sits high for a moment at power-up before the firmware floats it. While the cartridge is switched off, that can feed a little current into its AD5 pin.
 
 
 ----------------------------------------------------------------------
@@ -340,11 +392,15 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 
 ### Screensaver
 
-After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan). Alternatively, set `SCREENSAVER_ACTIVE = false` to disable it without changing the time value. The status row appears only when battery data is available and/or BLE is actively connected or pairing.
+After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan). Alternatively, set `SCREENSAVER_ACTIVE = false` to disable it without changing the time value.
+
+On the T-QT Pro the screensaver is disabled by default (`SCREENSAVER_ACTIVE = false` in its branch of `config.h`): its LCD isn't prone to OLED-style burn-in, and the screensaver leaves the backlight on, so it would save no power. Set it to `true` if you want it anyway. The status row appears only when battery data is available and/or BLE is actively connected or pairing.
 
 ----------------------------------------------------------------------
 
 ## Calibration
+
+*(LTR390 builds. With the [cartridge sensor](#cartridge-sensor-t-qt-pro-optional--untested), only `CART_CALIBRATION` applies.)*
 
 ### Automatic Mode (Default)
 
@@ -437,122 +493,9 @@ If the bar display feels jumpy:
 
 ----------------------------------------------------------------------
 
-## Ojo del Sol Calibrator — UNTESTED
+## Ojo del Sol Calibrator — PARTLY TESTED
 
-> **Status: untested.** The firmware in `OjoDelSolCalibrator/` compiles for the ESP32-S3 (esp32 core 3.3.11), but it has **never been run on real hardware**. The cartridge-bus wiring and timing, the flash logging, the Wi-Fi hotspot and the serial commands are all unverified. The web page was only tried in a desktop browser against a mock of the device's API (see [Web app](#web-app-wi-fi-hotspot)), never served by the board. The sensor-reading method itself was checked against a Boktai 3 (J) ROM and against a GBxCart RW, but not on this board. Expect to debug it, and please report what works and what doesn't.
-
-A separate device that reads a **real Boktai cartridge's solar sensor** and an **LTR390** at the same moment, and saves both to the board's flash. Leave it in the sun for hours, then watch it live, browse past sessions and back up the logs from your phone over its own Wi-Fi hotspot (or over serial). This is the data needed to tune `AUTO_UV_MIN`, `AUTO_UV_SATURATION` and the bar thresholds against the real hardware.
-
-**What it logs** (one CSV row per sample, once per second by default):
-
-| Column | Meaning |
-|--------|---------|
-| `uptime_ms` | Milliseconds since power-up. The device has no clock of its own; when a phone opens the web app it sends the real time, and the log then gets a `# time_sync,<uptime_ms>,<epoch_ms>` comment line that maps uptime to wall-clock time |
-| `cart_status` | `ok`, or `timeout` if the cartridge's flag never rose (no cartridge, or a wiring fault) |
-| `cart_raw` | The game's raw sensor value. About 230 in the dark, falling toward 0 as it gets brighter |
-| `cart_bus` | `1` if the cartridge's GPIO registers read back what was written (a wiring check) |
-| `cart_ms` | How long the cartridge read took |
-| `ltr_status` | `ok`, `stale` (no fresh reading) or `absent` |
-| `ltr_raw`, `uvi` | LTR390 UV counts and `counts / 2300` (same settings as the main firmware) |
-
-### Hardware
-
-Written for an **ESP32-S3-CAM board with the camera unused** (any ESP32-S3 works if you change the pins in `OjoDelSolCalibrator/config.h`). The pins avoid PSRAM, the strapping pins, native USB and UART0.
-
-| Signal | GPIO |
-|--------|------|
-| Cartridge /WR, /RD, /CS | 21, 47, 38 |
-| Cartridge AD0, AD1, AD2, AD3 | 39, 40, 41, 42 |
-| Cartridge AD5, AD6 | 2, 1 |
-| LTR390 SDA, SCL | 4, 5 |
-
-**Wire routing:** the whole cartridge bus is on the board's **right-hand header**. Hold the board with the USB-C ports at the bottom; the usable pins from the bottom up are GPIO **21, 47, 38, 39, 40, 41, 42, 2, 1**, which is exactly the cartridge pin order /WR, /RD, /CS, AD0, AD1, AD2, AD3, AD5, AD6. Run the nine wires in that order and none cross (the gaps between 47 and 38, and between 42 and 2, hold pins you can't use: GPIO48 is the on-board LED, 0/45 are strapping pins, 35–37 are PSRAM, 43/44 are the serial port). This direction also keeps the active-low /WR, /RD and /CS off GPIO1–14, which give a ~60 µs low pulse at power-up. The LTR390's SDA/SCL stay on the left header next to 3V3. GPIO39–42 are also the JTAG pins and GPIO38/39/40 are the SD card's CMD/CLK/DATA, so leave the SD slot empty. GPIO4/5 are the camera's control bus; the LTR390 (0x53) does not collide with the camera (0x30).
-
-**Cartridge wiring** — the cartridge is 3.3 V like the ESP32, so no level shifter is needed. Only the lines needed to reach the GPIO registers at 0x080000C4–C8 are driven, so the rest are tied off:
-
-| Cartridge pin(s) | Connect to |
-|------------------|------------|
-| VCC (pin 1) / GND (pin 32) | 3V3 / GND |
-| /WR (3), /RD (4), /CS (5) | the three GPIOs above. A ~10 k pull-up to 3V3 on each is **optional**: it only keeps them idle while the ESP32 boots |
-| AD0–AD3, AD5, AD6 (pins 6–9, 11, 12) | the six GPIOs above |
-| AD4 (pin 10) and AD7–AD15 (pins 13–21) | each through ~10 k to GND (a bussed resistor network works too). These must be held low when the address is latched. A direct tie to GND should also work, because the cartridge drives zeros on these lines for the GPIO registers, but the resistors protect against the cartridge ever driving a 1 into ground |
-| A16–A23 (pins 22–29) | GND |
-| /CS2 (pin 30) | 3V3, wired directly (keeps the save RAM deselected; it is an input on the cartridge, so no resistor is needed) |
-| CLK (pin 2), /IRQ (pin 31) | leave unconnected |
-
-The pin numbers match the GBA cartridge edge connector pinout in [`References/gba_cartridge_pinout.svg`](References/gba_cartridge_pinout.svg). The full wiring, including the resistors, is drawn in [`OjoDelSolCalibrator/Ojo del Sol Calibrator Wiring.svg`](OjoDelSolCalibrator/Ojo%20del%20Sol%20Calibrator%20Wiring.svg). Power the board off before inserting or removing the cartridge.
-
-![Ojo del Sol Calibrator wiring](OjoDelSolCalibrator/Ojo%20del%20Sol%20Calibrator%20Wiring.svg)
-
-### Firmware setup
-
-- Open `OjoDelSolCalibrator/OjoDelSolCalibrator.ino` (the folder name must match the sketch). The sketch is several files in that folder (`WebApp.ino`, `WebPage.h`, `GbaCartSensor.h`, `Shared.h`, `config.h`, `partitions.csv`); Arduino builds them together, so keep them all together.
-- Libraries: **Adafruit LTR390 Library** (plus Adafruit BusIO). LittleFS, Preferences, WiFi, WebServer and DNSServer come with the esp32 core. There are no external web libraries and the web app needs no internet.
-- Board: **ESP32S3 Dev Module**, with **Flash Size: 16MB**, **Partition Scheme: Custom** (this uses the `partitions.csv` in the sketch folder) and **USB CDC On Boot: Disabled** (the default, so Serial stays on UART0 / the TTL port). **PSRAM** can stay Disabled or be set to *OPI PSRAM* for boards that have it; the sketch does not use PSRAM either way, and the pins avoid GPIO 33–37, which octal PSRAM occupies. These are the same board settings as in the Metal-Gear-Mk-0 robot project (an ESP32-S3-CAM from the same maker, 16 MB flash, OPI PSRAM), where that setup is known to work. Both *Custom* and *Huge APP (3MB No OTA/1MB SPIFFS)* build here with this layout.
-- **Partitions:** with the Wi-Fi web app the firmware is about 1 MB, which does **not** fit the usual 1 MB app slot (it filled 99% of it). The `partitions.csv` next to the sketch gives a **16 MB** module a 3 MB app slot and about 12.9 MB for logs; the build uses 33% of the app slot. **Check your board really has 16 MB**: the serial banner prints `Flash chip: 16 MB` at boot, and the web app shows a warning banner if it is smaller. **On an 8 MB module (for example the XIAO ESP32S3), do not use this file as it is**: delete or edit it (a 3 MB app slot leaves about 4.5 MB for logs) and pick a matching scheme.
-- **First run:** the log partition has never been formatted, so the device starts with "storage not set up" and records nothing until you press **Format storage…** on the web app's Storage tab (or send `format` over serial). It does not format by itself, so a failed mount can never silently erase old logs.
-- Log capacity: rows are 33–43 bytes, so one sample per second is roughly 120–155 KB per hour. 12.9 MB is therefore roughly **4 days** at the default 1-second interval (about 8 days at 2 s, or 3 weeks at 5 s); an 8 MB module with a 3 MB app slot would hold about a day and a half at 1 s. These are estimates from the row size, not measured on a device. All sessions on the device share the space, so download and delete earlier runs before a long one.
-- Settings such as pins, sample interval, the Wi-Fi name/password and the cartridge tick time live in `OjoDelSolCalibrator/config.h`. Raise `SAMPLE_INTERVAL_MS` for longer runs. A sample takes about 1 second, so intervals shorter than that don't help.
-- Serial is UART0 at 115200 baud, which is the board's **TTL** USB-C port.
-
-### Using it
-
-Power it up and it starts a new session file (`/cal_0001.csv`, `/cal_0002.csv`, …) on every boot. The numbering survives power cycles, and a session restored from a backup never gets its number reused. Data is committed to flash every 10 rows, so a sudden power cut loses at most the last 10. When less than 64 KB of flash is free it stops logging (`MIN_FREE_BYTES` in `config.h`); deleting sessions frees space and logging then resumes in a new session. The on-board LED is **green** when both sensors read fine, **yellow** if the last sample had a cartridge or LTR390 problem, and **red** for a storage problem.
-
-Serial commands (type `help`): `status`, `list`, `dump [n]` (prints a session; sampling pauses while it runs), `delete <n|all>` (never the session being written; if logging stopped because flash filled up, that session can be deleted too), `format`, `interval <ms|0>` (saved across restarts; 0 restores the `config.h` default), and `live on|off`.
-
-### Web app (Wi-Fi hotspot)
-
-The device creates its own Wi-Fi network, so nothing else (router, internet) is needed:
-
-1. Power it up and join the network **`OjoDelSol-Calibrator`** (password **`ojodelsol`**). **Change the password in `config.h`** (`WIFI_AP_PASSWORD`, 8–63 characters): anyone who knows it can read and delete your logs.
-2. Open **http://192.168.4.1** (a "sign in to network" page should also pop up on most phones). If downloads or uploads don't work in that pop-up window, open the address in your normal browser instead.
-3. The page sends the phone's clock to the device, so sessions get real timestamps.
-
-| Tab | What it does |
-|-----|--------------|
-| **Live** | Current cartridge level and UV index, the bars each game (Boktai 1 J/U, Boktai 1 E, Boktai 2/3) would show, a calibration box (default 230, saved in the phone's browser), and a chart of the last few minutes |
-| **History** | Pick any session on the device and chart it over time, with zoom sliders, summary numbers, and a **UV index vs cartridge** scatter plot with the game's bar thresholds and a rough estimate of the UV index at which the cartridge reaches each bar |
-| **Storage** | Flash usage and an estimate of the time left; list, view, download and delete sessions; **backup** of all sessions as one `.tar`; **restore** from a `.tar` or individual `cal_NNNN.csv` files; change the sample interval; start a new session; set the clock; delete all old sessions; format |
-
-Screenshots (rendered in a desktop browser from **mock data** with the page's real code; this is not a photo of the device):
-
-| Live | History | Storage |
-|------|---------|---------|
-| <img src="OjoDelSolCalibrator/screenshots/web-live-phone.png" width="260"> | <img src="OjoDelSolCalibrator/screenshots/web-history-phone.png" width="260"> | <img src="OjoDelSolCalibrator/screenshots/web-storage-phone.png" width="260"> |
-
-Desktop layout: [Live](OjoDelSolCalibrator/screenshots/web-live-desktop.png), [History](OjoDelSolCalibrator/screenshots/web-history-desktop.png).
-
-If a sensor is missing:
-- The hotspot and web app start regardless, and sampling carries on. The Live tab shows what is wrong: **"Cartridge: no answer"** when the cartridge's sensor flag never rises, **"Cartridge … bus read-back check failed"** when it did answer but the GPIO registers did not read back what was written (the reading may be noise), and **"LTR390: not found"** with the pins to check. The device retries a missing LTR390 every 30 seconds, so you can plug it in later.
-- Rows are still logged with `cart_status = timeout` and/or `ltr_status = absent`, and the LED turns yellow.
-- With **no cartridge at all** the bus pins float, so a stray reading is possible now and then; `cart_bus = 0` and the warning above are the reliable signs. This is reasoning from the code, not something I have seen on hardware.
-
-Good to know:
-- The web server runs on core 0, so sampling on core 1 should not stall while a page loads or a file downloads. **This is unverified**; Wi-Fi interrupts could in principle disturb the cartridge timing, so compare a run with `WIFI_AP_ENABLED = false` if the readings look odd.
-- The hotspot uses more power than sampling alone. Current draw is unmeasured; plan on USB power.
-- Up to 4 devices can join (`WIFI_AP_MAX_CLIENTS`). The server handles one request at a time, so a large download briefly pauses the live view.
-- Large uploads and the backup run in your browser; the History tab downloads the whole session CSV to draw it, which can take a while for a multi-day session.
-- The calibration number and chosen bar table are remembered by the phone's browser, not the device.
-- Interface for scripts: `GET /api/status`, `/api/live?since=N`, `/api/files`, `/api/file?n=N` (CSV); `POST /api/delete?n=N|all=1`, `/api/newsession`, `/api/format?confirm=ERASE`, `/api/interval?ms=N`, `/api/time?ms=EPOCH_MS`, and a multipart `/api/upload`. See the header of `WebApp.ino`.
-
-### Reading the data
-
-The game turns the cartridge's raw value into a 0–140 level with `level = calibration − cart_raw` (anything below 0 becomes 0, anything above 140 becomes 140), then maps that level to bars. The game sets `calibration` during its sensor setup as the raw value it measures at that moment **minus 2** (presumably taken in the dark; I have not confirmed what the game asks you to do). So take the `cart_raw` the cartridge shows when the sensor is covered, subtract 2, and use that as the calibration. Plot `uvi` against the resulting level to see how the LTR390 maps onto the cartridge across a day of changing light.
-
-**How the `uvi` column relates to the Ojo del Sol's own UV reading.** The calibrator sets up the LTR390 exactly like the main firmware (UV mode, 18x gain, 20-bit / about 400 ms, 500 ms measurement rate, `counts ÷ 2300`), so `uvi` is the same quantity as the main firmware's *UVI measured* value. The difference is what happens next: the main firmware then applies enclosure compensation (`UV_ENCLOSURE_TRANSMITTANCE`, currently 0.833, which multiplies the reading by about 1.2) and can optionally smooth it, while the calibrator logs the raw, uncorrected value and does no smoothing. The thresholds in `config.h` (`AUTO_UV_MIN`, `AUTO_UV_SATURATION` and the per-game values) are **open-air** UV values, so the calibrator's bare-sensor `uvi` is the number to compare them with: if the Ojo del Sol sits behind a window, its *corrected* UVI should land near what the calibrator reads in the same sunlight. Neither device has been checked against a reference UV meter; both rely on the datasheet's nominal 2300 counts per UVI, which cancels out when you compare against the cartridge but means the absolute UV index values could be off. Different LTR390 chips, mounting angles and diffusers will also read a little differently, so use the same breakout and orientation if you want the closest match.
-
-### Not verified yet
-
-- Whether the bus timing and the resistor-tied lines work on the ESP32-S3 (tested method only on a GBxCart RW, which drives the full bus).
-- Whether the sensor tolerates the game's ~750 µs tick on this setup (`CART_TICK_US` is adjustable).
-- The `cart_bus` read-back check is a guess about how the GPIO registers answer, so a `0` there is not proof of a fault.
-- Long-run behaviour: flash wear, the "out of space" handling, and recovery from a write error.
-- The Wi-Fi hotspot and web server on the board: the page was tested only against a mock server in a desktop browser. Untested on a phone and on the device: the captive-portal pop-up, file downloads and uploads over the ESP32 `WebServer`, restore of large files, and the locking between the web task and the sampling loop.
-- Whether Wi-Fi activity disturbs the cartridge read timing (the ticks are software-timed).
-- A flash-size mismatch: `partitions.csv` assumes 16 MB of flash.
-- Boktai 1 cartridges: the sequence follows the Boktai 2 and 3 code (identical in all four Boktai 2 versions and Boktai 3 (J)). Boktai 1's sensor code differs slightly: it does not initialise the clock/reset byte (so the clock likely starts low instead of high) and does not wait for the flag to be low before counting. I expect that to make its raw value one count higher than Boktai 2/3, which cancels out in `calibration − raw` when both come from the same game, but this is inferred from the ROMs and untested.
-- Power: supply current is unmeasured. The cartridge and the LTR390 both run from the board's 3V3 pin. It is meant to run from USB power; there is no sleep mode or battery handling, so a lost supply ends the run (and loses up to the last 10 rows).
+A separate device (partly tested: the Wi-Fi, web app, logging and LTR390 work on the board; the cartridge side has not been tried yet) in [`OjoDelSolCalibrator/`](OjoDelSolCalibrator/) that reads a real Boktai cartridge's solar sensor and an LTR390 at the same moment and logs both, to tune `AUTO_UV_MIN`, `AUTO_UV_SATURATION` and the bar thresholds against the real hardware. See the [calibrator README](OjoDelSolCalibrator/README.md) for its hardware, wiring, firmware setup and Wi-Fi web app.
 
 ----------------------------------------------------------------------
 
@@ -574,7 +517,7 @@ The game turns the cartridge's raw value into a 0–140 level with `level = cali
 ### Power Management
 - Wire the LTR390 directly to `3V3`, same as the OLED
 - Cutting the LTR390 breakout LED trace is recommended because the LED is hardwired to VIN
-- Battery sensing and low-voltage cutoff are disabled by default; enable after wiring and validating the battery divider (`BATTERY_SENSE_ENABLED`, `BATTERY_CUTOFF_ENABLED`)
+- Battery sensing is enabled by default on the T-QT Pro (built-in divider) and disabled by default on the XIAO build; low-voltage cutoff is disabled by default on both. Enable them after wiring (XIAO) and validating the battery divider (`BATTERY_SENSE_ENABLED`, `BATTERY_CUTOFF_ENABLED`)
 - Battery sampling/cutoff checks run on a timed loop and are not dependent on UV "new data" events
 - OLED uses Display OFF + Charge Pump OFF commands
 - On wake, firmware explicitly re-enables the OLED charge pump/display before drawing
@@ -627,7 +570,7 @@ Install "GFX Library for Arduino" (by moononournation) via the Library Manager.
 If you modified the code to use TFT_eSPI: its last release (2.5.43) crashes at `tft.init()` on ESP32-S3 with esp32 core 3.x — this firmware uses Arduino_GFX instead for exactly that reason. Otherwise, set `USB_HID_ENABLED = false` temporarily and watch the serial monitor: the firmware prints a boot banner and a marker after each init stage, so the last line tells you which step crashes.
 
 ### T-QT Pro: screen shows garbage, wrong colors, or an offset image
-T-QT units exist with two panel revisions (LilyGO ships separate factory firmware for the newer panel). Arduino_GFX's GC9107 driver is expected to handle the common revision; if your unit misbehaves, try `TQT_DISPLAY_ROTATION` values 0-3 in config.h first, then report it via a GitHub issue — the panel-specific init from LilyGO's [`extras` folder](https://github.com/Xinyuan-LilyGO/T-QT/tree/main/extras) may need porting.
+T-QT units exist with two panel revisions (LilyGO ships separate factory firmware for the newer panel). Arduino_GFX's GC9107 driver works on the unit this project was tested with, but only one revision has been tried; if your unit misbehaves, try `TQT_DISPLAY_ROTATION` values 0-3 in config.h first, then report it via a GitHub issue — the panel-specific init from LilyGO's [`extras` folder](https://github.com/Xinyuan-LilyGO/T-QT/tree/main/extras) may need porting.
 
 ----------------------------------------------------------------------
 

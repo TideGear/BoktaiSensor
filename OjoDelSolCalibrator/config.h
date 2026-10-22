@@ -97,19 +97,50 @@ const uint32_t FLUSH_EVERY_N_SAMPLES = 10;
 const uint32_t MIN_FREE_BYTES = 65536;
 
 // =============================================================================
-// WI-FI HOTSPOT / WEB APP
+// WI-FI / WEB APP
 // =============================================================================
-// The device creates its own Wi-Fi network (no internet or router needed). Join it
-// from a phone or laptop and open http://192.168.4.1 (a captive-portal prompt should
-// also pop up). The web app shows live readings, browses past sessions and manages and
-// backs up the stored logs.
+// The web app shows live readings, browses past sessions and manages and backs up the
+// stored logs. Open it at http://ojodelsol-calibrator.local (MDNS_HOSTNAME), or by IP.
 //
-// CHANGE THE PASSWORD: anyone in range who knows it can read and DELETE your logs.
-// It must be 8-63 characters; an empty string makes an open network (not recommended).
-// Running Wi-Fi draws more current than sampling alone (roughly 100 mA or more; not
-// measured) and its interrupts could, in principle, jitter the cartridge timing; set
-// WIFI_AP_ENABLED = false to run without it (serial commands still work).
-const bool WIFI_AP_ENABLED = true;
+// Your Wi-Fi: the calibrator joins the network in logins.h (copy logins.h.example to
+// logins.h; git ignores it). It uses modem sleep there, so the radio naps between the
+// router's beacons; that should draw much less than running a hotspot (not measured).
+// The IP address is printed on serial at boot. If the connection drops later, it
+// keeps trying to reconnect.
+//
+// Hotspot: if there is no logins.h, or joining fails within WIFI_STA_CONNECT_TIMEOUT_MS,
+// it creates its own network instead (no internet or router needed). Join it from a
+// phone or laptop and open http://192.168.4.1 (a captive-portal prompt should also pop
+// up). CHANGE THE HOTSPOT PASSWORD: anyone in range who knows it can read and DELETE
+// your logs. It must be 8-63 characters; an empty string makes an open network (not
+// recommended). The hotspot keeps the radio on (roughly 100 mA or more; not measured).
+//
+// Wi-Fi interrupts could, in principle, jitter the cartridge timing; set
+// WIFI_ENABLED = false to run without Wi-Fi at all (serial commands still work).
+const bool WIFI_ENABLED = true;
+
+#if __has_include("logins.h")
+#include "logins.h"
+#endif
+#if defined(WIFI_SSID) && defined(WIFI_PASSWORD)
+const char WIFI_STA_SSID[] = WIFI_SSID;
+const char WIFI_STA_PASSWORD[] = WIFI_PASSWORD;
+#else
+const char WIFI_STA_SSID[] = "";       // No logins.h: hotspot only
+const char WIFI_STA_PASSWORD[] = "";
+#endif
+const uint32_t WIFI_STA_CONNECT_TIMEOUT_MS = 20000;
+const char MDNS_HOSTNAME[] = "ojodelsol-calibrator";  // -> http://ojodelsol-calibrator.local
+
+// Internet time (only on your Wi-Fi). The device has no clock, so once connected it
+// asks these NTP servers for the time, trying the next one if a server doesn't answer,
+// and re-syncs every 3 hours. Timestamps are stored in UTC; the web app shows them in
+// the viewing device's own time zone, so no time zone is set here. On the hotspot (no
+// internet), or until a server answers, the phone that opens the web app sets the clock.
+const char NTP_SERVER_1[] = "pool.ntp.org";
+const char NTP_SERVER_2[] = "time.google.com";       // Fallbacks, from different operators
+const char NTP_SERVER_3[] = "time.cloudflare.com";
+
 const char WIFI_AP_SSID[] = "OjoDelSol-Calibrator";
 const char WIFI_AP_PASSWORD[] = "ojodelsol";
 const uint8_t WIFI_AP_CHANNEL = 6;

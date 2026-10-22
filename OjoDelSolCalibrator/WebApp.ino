@@ -1,7 +1,9 @@
-// WebApp.ino - Wi-Fi hotspot, captive portal and the web app's HTTP API.
+// WebApp.ino - Wi-Fi (your network, or a hotspot with captive portal as the fallback),
+// the mDNS name and the web app's HTTP API.
 //
-// Runs in its own task on core 0 (the sampling loop stays on core 1). The page itself
-// is in WebPage.h and is entirely self-contained, so nothing needs internet access.
+// Runs in its own task on core 0 (the sampling loop stays on core 1), which also does
+// the Wi-Fi connecting, so waiting for the network never delays sampling. The page
+// itself is in WebPage.h and is entirely self-contained, so nothing needs internet access.
 //
 //   GET  /                      the web app
 //   GET  /api/status            device state as JSON
@@ -13,20 +15,27 @@
 //   POST /api/newsession
 //   POST /api/format?confirm=ERASE
 //   POST /api/interval?ms=N     (0 = default from config.h)
-//   POST /api/time?ms=EPOCH_MS  set the wall clock (the page sends the phone's time)
+//   POST /api/time?ms=EPOCH_MS  set the wall clock (the page sends the phone's time
+//                               unless internet time is already in use)
 //   POST /api/upload[?overwrite=1]   multipart upload of a cal_NNNN.csv (restore)
 //
-// Not tested on hardware. See the README.
+// Joining your Wi-Fi, the .local name, internet time and the page/status/live APIs work
+// on the board; the hotspot fallback, downloads and uploads are untested. See the README.
 
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
+#include <ESPmDNS.h>
+#include <sys/time.h>
+#include "esp_sntp.h"
 #include "WebPage.h"
 
 static WebServer webServer(80);
 static DNSServer dnsServer;
-static bool webUp = false;
+static volatile bool webUp = false;
+static bool apMode = false;   // true = running the hotspot, false = joined WIFI_STA_SSID
 static IPAddress apIP;
+static volatile bool ntpSyncPending = false;  // set by the SNTP callback, handled in webTask
 
 // --- Upload (restore) state -------------------------------------------------------
 static const char UPLOAD_TMP_PATH[] = "/upload.tmp";
@@ -71,15 +80,16 @@ static void handleStatus() {
            "\"free\":%lu,\"total\":%lu,\"minFree\":%lu,"
            "\"uptimeMs\":%lu,\"intervalMs\":%lu,\"defaultIntervalMs\":%lu,"
            "\"minIntervalMs\":%lu,\"maxIntervalMs\":%lu,"
-           "\"timeSynced\":%s,\"epochMs\":%s,\"ltrReady\":%s,\"seq\":%lu,\"clients\":%d}",
+           "\"timeSynced\":%s,\"timeSource\":\"%s\",\"epochMs\":%s,\"ltrReady\":%s,\"seq\":%lu,\"clients\":%d}",
            (unsigned long)sessionNo, logPath, (unsigned long)rowsLogged, storageState(),
            (unsigned long)ESP.getFlashChipSize(),
            (unsigned long)(fsMounted ? freeBytes() : 0),
            (unsigned long)(fsMounted ? LittleFS.totalBytes() : 0),
            (unsigned long)MIN_FREE_BYTES, (unsigned long)millis(), (unsigned long)sampleIntervalMs,
            (unsigned long)SAMPLE_INTERVAL_MS, (unsigned long)MIN_INTERVAL_MS,
-           (unsigned long)MAX_INTERVAL_MS, timeSynced ? "true" : "false", epoch,
-           ltrReady ? "true" : "false", (unsigned long)liveSeq, (int)WiFi.softAPgetStationNum());
+           (unsigned long)MAX_INTERVAL_MS, timeSynced ? "true" : "false", timeSource, epoch,
+           ltrReady ? "true" : "false", (unsigned long)liveSeq,
+           apMode ? (int)WiFi.softAPgetStationNum() : 0);
   sendJson(200, buf);
 }
 
@@ -226,7 +236,7 @@ static void handleInterval() {
 static void handleTime() {
   unsigned long long ms = strtoull(webServer.arg("ms").c_str(), nullptr, 10);
   if (ms < 1600000000000ULL) { sendJsonError(400, "Implausible time"); return; }   // before 2020
-  setTimeSync((uint64_t)ms);
+  setTimeSync((uint64_t)ms, "browser");
   sendOk();
 }
 
@@ -298,28 +308,45 @@ static void handleUploadDone() {
   sendJson(200, String("{\"ok\":true,\"name\":\"") + (uploadFinalPath + 1) + "\",\"bytes\":" + uploadBytes + "}");
 }
 
-// Anything else (including phones' connectivity checks) goes to the app: captive portal.
+// On the hotspot, anything else (including phones' connectivity checks) goes to the
+// app: captive portal. On your own network there is no portal, so it is a plain 404.
 static void handleNotFound() {
+  if (!apMode) {
+    webServer.send(404, "text/plain", "Not found");
+    return;
+  }
   webServer.sendHeader("Location", String("http://") + apIP.toString() + "/", true);
   webServer.send(302, "text/plain", "");
 }
 
 static void handleFavicon() { webServer.send(204, "text/plain", ""); }
 
-static void webTask(void *) {
-  for (;;) {
-    dnsServer.processNextRequest();
-    webServer.handleClient();
-    vTaskDelay(pdMS_TO_TICKS(2));
+// Join WIFI_STA_SSID (from logins.h). Returns false if there is none or it fails.
+static bool joinWifi() {
+  if (WIFI_STA_SSID[0] == '\0') {
+    Serial.println("No logins.h - using the hotspot");
+    return false;
   }
+  WiFi.setHostname(MDNS_HOSTNAME);   // Must come before WiFi.mode()
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(WIFI_STA_SSID, WIFI_STA_PASSWORD);
+  WiFi.setSleep(true);               // Modem sleep: the radio naps between router beacons
+  Serial.printf("Joining Wi-Fi \"%s\"...\n", WIFI_STA_SSID);
+
+  uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - start) < WIFI_STA_CONNECT_TIMEOUT_MS) {
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  if (WiFi.status() == WL_CONNECTED) return true;
+
+  Serial.printf("Could not join \"%s\" within %lu ms - starting the hotspot instead\n",
+                WIFI_STA_SSID, (unsigned long)WIFI_STA_CONNECT_TIMEOUT_MS);
+  WiFi.disconnect(true);
+  return false;
 }
 
-// --- Entry points (called from OjoDelSolCalibrator.ino) ----------------------------------
-void webBegin() {
-  if (!WIFI_AP_ENABLED) {
-    Serial.println("Wi-Fi hotspot disabled in config.h");
-    return;
-  }
+static bool startHotspot() {
   size_t passLen = strlen(WIFI_AP_PASSWORD);
   const char *pass = WIFI_AP_PASSWORD;
   if (passLen > 0 && passLen < 8) {
@@ -332,11 +359,77 @@ void webBegin() {
   WiFi.mode(WIFI_AP);
   if (!WiFi.softAP(WIFI_AP_SSID, pass, WIFI_AP_CHANNEL, WIFI_AP_HIDDEN, WIFI_AP_MAX_CLIENTS)) {
     Serial.println("Wi-Fi hotspot failed to start");
-    return;
+    return false;
   }
   apIP = WiFi.softAPIP();
-
   dnsServer.start(53, "*", apIP);
+  apMode = true;
+  Serial.printf("Wi-Fi hotspot \"%s\" (%s) - open http://%s or http://%s.local\n", WIFI_AP_SSID,
+                pass ? "password protected" : "OPEN", apIP.toString().c_str(), MDNS_HOSTNAME);
+  return true;
+}
+
+// Runs in the network stack's task whenever a time server has set the system clock.
+// Only flags it: setTimeSync() takes the file lock, which must not block networking.
+static void onNtpSync(struct timeval *tv) {
+  (void)tv;
+  ntpSyncPending = true;
+}
+
+// Ask the NTP servers for UTC. lwIP moves on to the next server when one doesn't
+// answer, and re-syncs every 3 hours (CONFIG_LWIP_SNTP_UPDATE_DELAY).
+static void startNtp() {
+  sntp_set_time_sync_notification_cb(onNtpSync);
+  configTime(0, 0, NTP_SERVER_1, NTP_SERVER_2, NTP_SERVER_3);
+  Serial.printf("Getting the time from %s (fallbacks %s, %s)\n", NTP_SERVER_1, NTP_SERVER_2,
+                NTP_SERVER_3);
+}
+
+// Copy the freshly set system clock into the log's wall-clock time
+static void applyNtpSync() {
+  ntpSyncPending = false;
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  uint64_t epochMs = (uint64_t)tv.tv_sec * 1000ULL + (uint64_t)(tv.tv_usec / 1000);
+  if (epochMs < 1600000000000ULL) return;   // Implausible (before 2020)
+  setTimeSync(epochMs, "ntp");
+  Serial.println("Clock set from internet time");
+}
+
+static void webTask(void *) {
+  if (joinWifi()) {
+    Serial.printf("Wi-Fi \"%s\" joined - open http://%s.local or http://%s\n", WIFI_STA_SSID,
+                  MDNS_HOSTNAME, WiFi.localIP().toString().c_str());
+    startNtp();
+  } else if (!startHotspot()) {
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  // The name answers on whichever network is up
+  if (MDNS.begin(MDNS_HOSTNAME)) {
+    MDNS.addService("http", "tcp", 80);
+  } else {
+    Serial.println("mDNS failed to start - use the IP address instead");
+  }
+
+  webServer.begin();
+  webUp = true;
+  for (;;) {
+    if (apMode) dnsServer.processNextRequest();
+    if (ntpSyncPending) applyNtpSync();
+    webServer.handleClient();
+    vTaskDelay(pdMS_TO_TICKS(2));
+  }
+}
+
+// --- Entry points (called from OjoDelSolCalibrator.ino) ----------------------------------
+void webBegin() {
+  if (!WIFI_ENABLED) {
+    Serial.println("Wi-Fi disabled in config.h");
+    return;
+  }
+
   webServer.on("/", HTTP_GET, handleRoot);
   webServer.on("/api/status", HTTP_GET, handleStatus);
   webServer.on("/api/live", HTTP_GET, handleLive);
@@ -350,16 +443,18 @@ void webBegin() {
   webServer.on("/api/upload", HTTP_POST, handleUploadDone, handleUploadData);
   webServer.on("/favicon.ico", HTTP_GET, handleFavicon);
   webServer.onNotFound(handleNotFound);
-  webServer.begin();
 
+  // Connecting (up to WIFI_STA_CONNECT_TIMEOUT_MS) happens in the task, off the sampling core
   xTaskCreatePinnedToCore(webTask, "web", 10240, nullptr, 1, nullptr, 0);
-  webUp = true;
-  Serial.printf("Wi-Fi hotspot \"%s\" (%s) - open http://%s\n", WIFI_AP_SSID,
-                pass ? "password protected" : "OPEN", apIP.toString().c_str());
 }
 
 String webDescribe() {
-  if (!webUp) return String("Wi-Fi hotspot: off");
-  return String("Wi-Fi hotspot \"") + WIFI_AP_SSID + "\" at http://" + apIP.toString() + ", " +
-         WiFi.softAPgetStationNum() + " client(s)";
+  if (!WIFI_ENABLED) return String("Wi-Fi: off");
+  if (!webUp) return String("Wi-Fi: starting");
+  if (apMode) {
+    return String("Wi-Fi hotspot \"") + WIFI_AP_SSID + "\" at http://" + apIP.toString() + " or http://" +
+           MDNS_HOSTNAME + ".local, " + WiFi.softAPgetStationNum() + " client(s)";
+  }
+  return String("Wi-Fi \"") + WIFI_STA_SSID + "\" at http://" + MDNS_HOSTNAME + ".local or http://" +
+         WiFi.localIP().toString() + (WiFi.status() == WL_CONNECTED ? "" : " (reconnecting)");
 }

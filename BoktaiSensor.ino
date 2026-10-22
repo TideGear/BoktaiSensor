@@ -7,7 +7,11 @@
 #else
 #include <Adafruit_SSD1306.h>
 #endif
+#if defined(SENSOR_LTR390)
 #include "Adafruit_LTR390.h"
+#else
+#include "GbaCartSensor.h"
+#endif
 #include "esp_sleep.h"
 #include "esp_attr.h"       // RTC_DATA_ATTR
 #include "driver/rtc_io.h"  // rtc_gpio_pullup_en for the deep-sleep wake pin
@@ -61,7 +65,16 @@ const uint8_t SSD1306_SETSTARTLINE0_CMD = 0x40;
 #endif
 
 // Sensor settings
+#if defined(SENSOR_LTR390)
 Adafruit_LTR390 ltr = Adafruit_LTR390();
+#else
+// Latest cartridge reading (shown on the debug screen), the 0-140 level from
+// the latest reading that was kept, and how many were discarded as late
+CartReading lastCartReading = { false, 0, false, 0, 0 };
+bool hasCartReading = false;
+int cachedCartLevel = 0;
+uint32_t cartLateReadings = 0;
+#endif
 
 // UV Index calculation per LTR-390UV datasheet (DS86-2015-0004)
 // Reference: 2300 counts/UVI at 18x gain, 400ms (20-bit) integration
@@ -358,9 +371,13 @@ void exitCdcModeAndSleep() {
   display.display();
   displayPanelOff();
 
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  cartEnd();
+  #else
   Wire.end();
   pinMode(I2C_SDA_PIN, INPUT);
   pinMode(I2C_SCL_PIN, INPUT);
+  #endif
 
   while (digitalRead(BUTTON_PIN) == LOW) delay(10);
   delay(250);  // Settle release bounce before arming a level-triggered wake
@@ -389,12 +406,16 @@ void enterCdcMode() {
   display.display();
   delay(1000);
 
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  cartEnd();
+  #else
   // Cleanly release I2C before software restart to avoid occasional
   // bus/display state glitches on the next boot.
   Wire.end();
   pinMode(I2C_SDA_PIN, INPUT_PULLUP);
   pinMode(I2C_SCL_PIN, INPUT_PULLUP);
   delay(2);
+  #endif
 
   setCdcModeFlag();
   esp_restart();
@@ -531,11 +552,19 @@ void setup() {
     digitalWrite(GBA_PIN_SO, LOW);
   }
 
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  // Keep the cartridge unpowered and its bus floating through the power-on
+  // prompt; cartBegin() below switches it on.
+  cartEnd();
+  #endif
+
   if (BATTERY_SENSE_ENABLED) {
     analogSetPinAttenuation(BAT_PIN, ADC_11db);
   }
+  #if defined(SENSOR_LTR390)
   // Initialize I2C for the LTR390 (and, on the XIAO build, the OLED)
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+  #endif
 
   #if defined(BOARD_LILYGO_T_QT_PRO)
   if (serialEnabled) Serial.println("Initializing display (Arduino_GFX / GC9107)...");
@@ -602,6 +631,24 @@ void setup() {
   }
   #endif
 
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  if (!cartBegin()) {
+    if (serialEnabled) Serial.println("Cartridge tick timer could not be created; sleeping");
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(10, 28);
+    display.print("Cart timer failed");
+    display.display();
+    delay(2000);
+    enterDeepSleep();
+  }
+  if (serialEnabled) {
+    Serial.print("Cartridge sensor (UNTESTED): reading every ");
+    Serial.print(CART_READ_INTERVAL_MS);
+    Serial.print(" ms, calibration ");
+    Serial.println(CART_CALIBRATION);
+  }
+  #else
   if (!initLTR390()) {
     if (serialEnabled) Serial.println("LTR390 not found - check wiring; sleeping");
     display.clearDisplay();
@@ -636,7 +683,8 @@ void setup() {
       Serial.println("UV enclosure compensation: OFF");
     }
   }
-  
+  #endif
+
   if (!inCdcMode) {
     // Show wake-up confirmation
     display.clearDisplay();
@@ -689,6 +737,38 @@ void loop() {
 
   // Wait for new sensor data
   bool newData = false;
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  if (cartPoll(&lastCartReading)) {
+    hasCartReading = true;
+    bool late = (CART_TICK_MAX_LATE_US > 0) && (lastCartReading.maxLateUs > CART_TICK_MAX_LATE_US);
+    if (late) {
+      // A delayed tick may have skewed the count; keep the previous level.
+      cartLateReadings++;
+    } else {
+      // A reading that never saw the sensor flag counts as darkness (0 bars).
+      cachedCartLevel = lastCartReading.ok ? getCartLevel(lastCartReading.raw) : 0;
+      cachedNumBars = GAME_BARS[currentGame];
+      cachedFilledBars = getCartBars(cachedCartLevel, currentGame);
+      gameChanged = false;
+      updateBluetoothMeter(cachedFilledBars, cachedNumBars);
+      updateUsbMeter(cachedFilledBars, cachedNumBars);
+    }
+    if (serialEnabled && DEBUG_SERIAL_UV) {
+      Serial.print("Cart raw: ");
+      if (lastCartReading.ok) {
+        Serial.print(lastCartReading.raw);
+      } else {
+        Serial.print("timeout");
+      }
+      Serial.print(" level: "); Serial.print(cachedCartLevel);
+      Serial.print(" bus: "); Serial.print(lastCartReading.busOk ? "ok" : "FAIL");
+      Serial.print(" ms: "); Serial.print(lastCartReading.durationMs);
+      Serial.print(" late us: "); Serial.print(lastCartReading.maxLateUs);
+      Serial.println(late ? " (discarded)" : "");
+    }
+    newData = true;
+  }
+  #else
   if (ltr.newDataAvailable()) {
     float uvi = calculateUVI();
     float uviForBars = UV_THRESHOLDS_CALIBRATED_OPEN_AIR ? uvi : cachedUviRaw;
@@ -713,6 +793,7 @@ void loop() {
     updateUsbMeter(cachedFilledBars, cachedNumBars);
     newData = true;
   }
+  #endif
 
   updateGbaLinkOutput(cachedFilledBars);
 
@@ -926,6 +1007,38 @@ void drawDebugDisplay() {
   display.print("DEBUG");
   #endif
 
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  // Cartridge readings. "Raw" with the sensor covered, minus 2, is the
+  // suggested CART_CALIBRATION (see config.h). "Late" is the latest reading's most delayed tick;
+  // "Rej" counts readings discarded for exceeding CART_TICK_MAX_LATE_US.
+  display.setCursor(0, 10);
+  display.print("Raw:");
+  if (!hasCartReading) {
+    display.print("--");
+  } else if (lastCartReading.ok) {
+    display.print(lastCartReading.raw);
+  } else {
+    display.print("timeout");
+  }
+  display.print(" Lvl:");
+  display.print(cachedCartLevel);
+
+  display.setCursor(0, 20);
+  display.print("Bus:");
+  if (hasCartReading) {
+    display.print(lastCartReading.busOk ? "ok " : "FAIL ");
+    display.print(lastCartReading.durationMs);
+    display.print("ms");
+  } else {
+    display.print("--");
+  }
+
+  display.setCursor(0, 30);
+  display.print("Late:");
+  display.print(hasCartReading ? lastCartReading.maxLateUs : 0);
+  display.print("us Rej:");
+  display.print(cartLateReadings);
+  #else
   // UV readings
   display.setCursor(0, 10);
   display.print("UV raw:");
@@ -938,6 +1051,7 @@ void drawDebugDisplay() {
   display.setCursor(0, 30);
   display.print("UVI comp'ed:");
   display.print(cachedUvi, 3);
+  #endif
 
   // Battery readings
   bool haveBatteryReading = BATTERY_SENSE_ENABLED && hasBatteryReading;
@@ -982,11 +1096,22 @@ void drawMainDisplay() {
   display.setCursor(0, 10);
   display.print(cachedFilledBars);
 
-  // 4. UV Index (Small, Secondary)
+  // 4. Sensor reading (Small, Secondary): UV Index, or the cartridge level
   display.setTextSize(1);
   display.setCursor(64, 18);
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  if (!hasCartReading) {
+    display.print("Level:--");
+  } else if (lastCartReading.ok) {
+    display.print("Level:");
+    display.print(cachedCartLevel);
+  } else {
+    display.print("No cart");
+  }
+  #else
   display.print(UV_ENCLOSURE_COMP_ENABLED ? "cUVI:" : "UVI:");
   display.print(cachedUvi, 3);
+  #endif
 
   // 5. Draw Sun Gauge (8 or 10 segments depending on game)
   drawBoktaiGauge(38, 20, cachedFilledBars, cachedNumBars);
@@ -1035,6 +1160,7 @@ void updateGbaLinkOutput(int bars) {
   digitalWrite(GBA_PIN_SC, gbaFramePhaseHigh ? HIGH : LOW);
 }
 
+#if defined(SENSOR_LTR390)
 void writeLtr390Register(uint8_t reg, uint8_t value) {
   Wire.beginTransmission(LTR390_I2CADDR_DEFAULT);
   Wire.write(reg);
@@ -1087,6 +1213,7 @@ void updateUvDivisorFromSensor() {
     Serial.println(uvDivisor, 4);
   }
 }
+#endif
 
 float applyEnclosureCompensation(float measuredUvi) {
   if (!UV_ENCLOSURE_COMP_ENABLED) {
@@ -1231,10 +1358,45 @@ int getBoktaiBars(float uvi, int game) {
   return 0;
 }
 
+#if defined(SENSOR_GBA_CARTRIDGE)
+// Cartridge sensor: the games' own bar tables, as the first 0-140 level at
+// which each bar starts. Boktai 1 (J/U) and 2/3 are Raphi's tables above;
+// Boktai 1 (E) was found by disassembling that ROM (see the README).
+static const uint8_t CART_BARS_B1[8] = { 1, 7, 16, 28, 44, 67, 98, 140 };
+static const uint8_t CART_BARS_B1_EUROPE[8] = { 1, 7, 15, 25, 38, 56, 98, 140 };
+static const uint8_t CART_BARS_B23[10] = { 1, 6, 13, 23, 35, 50, 67, 87, 110, 140 };
+
+// Convert a raw cartridge reading to the game's 0-140 level
+int getCartLevel(uint16_t raw) {
+  return constrain(CART_CALIBRATION - (int)raw, 0, 140);
+}
+
+// Convert a cartridge level to Boktai bar count based on selected game
+int getCartBars(int level, int game) {
+  game = clampGameIndex(game);
+  int numBars = GAME_BARS[game];
+  const uint8_t* table = CART_BARS_B23;
+  if (numBars == 8) {
+    table = CART_BOKTAI1_EUROPE_TABLE ? CART_BARS_B1_EUROPE : CART_BARS_B1;
+  }
+  int bars = 0;
+  for (int i = 0; i < numBars; i++) {
+    if (level >= table[i]) {
+      bars++;
+    }
+  }
+  return bars;
+}
+#endif
+
 void refreshGameState(bool refreshOutputs) {
   currentGame = clampGameIndex(currentGame);
   cachedNumBars = GAME_BARS[currentGame];
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  cachedFilledBars = getCartBars(cachedCartLevel, currentGame);
+  #else
   cachedFilledBars = getBoktaiBars(cachedUvi, currentGame);
+  #endif
 
   if (refreshOutputs) {
     updateBluetoothMeter(cachedFilledBars, cachedNumBars);
@@ -1476,10 +1638,15 @@ void enterDeepSleep() {
     Serial.flush();
   }
 
+  #if defined(SENSOR_GBA_CARTRIDGE)
+  // Stop any reading and float the cartridge bus
+  cartEnd();
+  #else
   // Release I2C lines to reduce back-powering during sleep
   Wire.end();
   pinMode(I2C_SDA_PIN, INPUT);
   pinMode(I2C_SCL_PIN, INPUT);
+  #endif
 
   // Set GBA link pins to high-impedance
   if (GBA_LINK_ENABLED) {
@@ -2306,6 +2473,7 @@ int readBatteryPercentage() {
   return constrain(pct, 0, 100);
 }
 
+#if defined(SENSOR_LTR390)
 bool initLTR390() {
   const int maxAttempts = 3;
 
@@ -2342,6 +2510,7 @@ float calculateUVI() {
     Serial.print(" UVI measured: "); Serial.print(measuredUvi, 3);
     Serial.print(" UVI corrected: "); Serial.println(correctedUvi, 3);
   }
-  
+
   return correctedUvi;
 }
+#endif

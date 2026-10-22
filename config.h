@@ -27,6 +27,34 @@
 #endif
 
 // =============================================================================
+// SENSOR SELECTION
+// =============================================================================
+// Uncomment exactly ONE sensor.
+//
+// SENSOR_LTR390: Adafruit LTR390 UV sensor (default). Bars come from the UV
+//   index and the calibration settings below.
+//
+// SENSOR_GBA_CARTRIDGE: UNTESTED. A real Boktai cartridge's own solar sensor,
+//   read over the GBA cartridge bus (T-QT Pro only). Bars are computed from
+//   the cartridge's reading with the games' level formula and bar tables, so
+//   the UV calibration, enclosure and filtering settings below are not used.
+//   It still needs a dark-baseline value (CART_CALIBRATION in CARTRIDGE
+//   SENSOR). It reads with the Boktai 2/3 sequence for every game; Boktai 1's
+//   differs slightly and may read one count differently. The reading method is
+//   the Ojo del Sol Calibrator's, which has not been run on an ESP32 yet. See
+//   the README for the wiring.
+#define SENSOR_LTR390
+//#define SENSOR_GBA_CARTRIDGE
+
+#if defined(SENSOR_LTR390) && defined(SENSOR_GBA_CARTRIDGE)
+#error "Select only one sensor in config.h"
+#elif !defined(SENSOR_LTR390) && !defined(SENSOR_GBA_CARTRIDGE)
+#error "Select a sensor in config.h"
+#elif defined(SENSOR_GBA_CARTRIDGE) && !defined(BOARD_LILYGO_T_QT_PRO)
+#error "SENSOR_GBA_CARTRIDGE is only supported on BOARD_LILYGO_T_QT_PRO"
+#endif
+
+// =============================================================================
 // BOKTAI CALIBRATION
 // =============================================================================
 // Original cart sensor: 0xE8 = darkness, 0x50 = max gauge, 0x00 = extreme
@@ -120,6 +148,60 @@ const float BOKTAI_2_UV_SATURATION = 13.100;
 const float BOKTAI_3_UV_MIN = 1.000;
 const float BOKTAI_3_UV_SATURATION = 13.100;
 
+// -----------------------------------------------------------------------------
+// CARTRIDGE SENSOR (only used with SENSOR_GBA_CARTRIDGE) - UNTESTED
+// -----------------------------------------------------------------------------
+#if defined(SENSOR_GBA_CARTRIDGE)
+// Bus pins on the T-QT Pro's solder pads and Qwiic connector (the LTR390 is
+// not used, so the Qwiic pins are free; its 3V3/GND pins can power the
+// cartridge). The active-low control lines are kept off GPIO43, the boot
+// ROM's serial output, which toggles during boot. IO16/IO17/IO18 stay free for the GBA link output.
+// AD4, AD7-AD15, A16-A23 and /CS2 are tied off externally; see the README.
+const uint8_t CART_AD_PINS[6] = { 36, 37, 38, 39, 43, 44 };  // AD0, AD1, AD2, AD3, AD5, AD6
+const uint8_t CART_WR_PIN = 33;
+const uint8_t CART_RD_PIN = 34;
+const uint8_t CART_CS_PIN = 35;
+
+// Optional cartridge power switch: a P-channel MOSFET between 3V3 and the
+// cartridge's VCC, gate on this pin with a ~100k pull-up to 3V3 (see the
+// README). The firmware drives it LOW to power the cartridge only while the
+// device is on, and the pull-up keeps it off during deep sleep. Harmless if
+// the switch isn't fitted (the cartridge is then always powered); set -1 to
+// leave the pin alone.
+const int CART_POWER_PIN = 48;
+const unsigned long CART_POWER_ON_MS = 20;  // Settle time after switching on
+
+// The game turns the cartridge's raw reading into a 0-140 level with
+//   level = CART_CALIBRATION - raw   (limited to 0-140)
+// and maps the level to bars with its own table. Raw is about 230 in the dark
+// and falls toward 0 in bright light. The game stores a reading taken during
+// its sensor setup, minus 2, as its calibration (seen in the ROM). Whether
+// that reading is meant to be taken in the dark is not confirmed; covering
+// the sensor is the working assumption. So: cover the sensor, read "Raw" on
+// the XInput/CDC screen, and set this to that value minus 2. The default of
+// 230 is only a starting guess.
+const int CART_CALIBRATION = 230;
+
+// Boktai 1 (E) uses a different bar table from Boktai 1 (J/U). Set true to
+// match the European release on the BOKTAI 1 screen.
+const bool CART_BOKTAI1_EUROPE_TABLE = false;
+
+// Time between the starts of two readings. A reading takes up to ~0.4 s
+// (longest in the dark).
+const unsigned long CART_READ_INTERVAL_MS = 500;
+
+// Time per sensor tick; two ticks make one clock pulse. The game clocks the
+// sensor from a timer that fires about every 750 microseconds. Raise this if
+// the readings look unstable.
+const uint32_t CART_TICK_US = 750;
+
+// Ticks run from a hardware timer interrupt on the loop core, away from the
+// Bluetooth stack, but flash writes (e.g. saving a Bluetooth pairing) can
+// still delay one. A reading with any tick later than this is discarded and
+// the previous level kept. 0 keeps every reading.
+const uint32_t CART_TICK_MAX_LATE_US = 250;
+#endif
+
 // =============================================================================
 // POWER MANAGEMENT
 // =============================================================================
@@ -199,7 +281,7 @@ const unsigned long LONG_PRESS_MS = 2000;   // Hold 2 seconds to power on/off
 // -----------------------------------------------------------------------------
 #if defined(BOARD_LILYGO_T_QT_PRO)
 // LTR390 I2C on the Qwiic connector (Adafruit's STEMMA QT LTR390 plugs
-// straight in, no soldering). NOTE: the board silkscreen/pinout image swaps
+// straight in, no soldering). Unused with SENSOR_GBA_CARTRIDGE. NOTE: the board silkscreen/pinout image swaps
 // these labels; the schematic -- and working I2C -- is SDA = GPIO43,
 // SCL = GPIO44.
 //
@@ -223,8 +305,14 @@ const uint8_t DISPLAY_I2C_ADDR = 0x3C;   // Some SSD1306 modules use 0x3D
 // DISPLAY SCREENSAVER
 // -----------------------------------------------------------------------------
 // After SCREENSAVER_TIME minutes of no button activity, show a bouncing
-// "Ojo del Sol" screensaver.
+// "Ojo del Sol" screensaver. Disabled by default on the T-QT Pro: its LCD
+// isn't prone to OLED-style burn-in, and the screensaver leaves the backlight
+// on, so it saves no power there either.
+#if defined(BOARD_LILYGO_T_QT_PRO)
+const bool SCREENSAVER_ACTIVE = false;
+#else
 const bool SCREENSAVER_ACTIVE = true;
+#endif
 const unsigned long SCREENSAVER_TIME = 3;  // Minutes; 0 disables (equivalent to SCREENSAVER_ACTIVE = false)
 
 // =============================================================================
@@ -240,7 +328,8 @@ const bool GBA_LINK_ENABLED = true;
 // - SD/SO = 2-bit payload pair
 #if defined(BOARD_LILYGO_T_QT_PRO)
 // Uses the solder pads next to the GND pad on the board edge. Other exposed
-// pads (IO33-IO39, IO48) also work if these are inconvenient for your build.
+// pads (IO33-IO39, IO48) also work if these are inconvenient for your build,
+// except with SENSOR_GBA_CARTRIDGE, which uses them all.
 const int GBA_PIN_SC = 16;  // IO16 pad - frame phase (SC)
 const int GBA_PIN_SD = 17;  // IO17 pad - payload bit 1 (SD)
 const int GBA_PIN_SO = 18;  // IO18 pad - payload bit 0 (SO)
@@ -325,6 +414,6 @@ const bool USB_HID_ENABLED = true;
 const bool DEBUG_SERIAL = false;
 // Periodic Serial debug stream controls. These only apply when DEBUG_SERIAL = true.
 const bool DEBUG_SERIAL_BATTERY = true;
-const bool DEBUG_SERIAL_UV = true;
+const bool DEBUG_SERIAL_UV = true;  // UV readings, or cartridge readings with SENSOR_GBA_CARTRIDGE
 
 #endif

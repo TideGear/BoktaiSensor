@@ -1,0 +1,11 @@
+// logins.h - Wi-Fi network the Ojo del Sol Calibrator joins.
+//
+// Copy this file to logins.h (git ignores that file) and fill in your network.
+// Without logins.h the calibrator runs its own hotspot instead; see config.h.
+#ifndef LOGINS_H
+#define LOGINS_H
+
+#define WIFI_SSID "your-network-name"
+#define WIFI_PASSWORD "your-network-password"
+
+#endif

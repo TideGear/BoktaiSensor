@@ -1,3 +1,6 @@
 /armips-v0.11.0-windows-x86
 /Open-Closed Tests
 GBA Link Port Wiring.ai
+
+# Calibrator Wi-Fi credentials (see OjoDelSolCalibrator/logins.h.example)
+OjoDelSolCalibrator/logins.h
