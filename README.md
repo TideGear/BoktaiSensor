@@ -58,7 +58,7 @@ Prof9's original code is released under the MIT License — see
 3. For mGBA libretro, set `HID_CONTROL_MODE = 0` in `config.h`
 4. Pair the device as a Bluetooth controller in your OS
 5. In mGBA (libretro), map **L3** to solar sensor decrease and **R3** to increase
-6. Power on: hold button 2 seconds
+6. Power on: hold button 2 seconds (T-QT Pro: the left button, next to USB; see [Button Controls](#button-controls))
 7. Tap button to select game (BOKTAI 1, 2, or 3). (Optional) Tap to the **XInput** screen to view UV raw, UVI, compensated UVI, ADC avg, and battery voltage.
 8. Point sensor toward the sky — the device syncs the in-game meter automatically
 9. Hold button 2 seconds on a game screen to sleep. On the **XInput** screen, hold 2 seconds to enter CDC mode (USB serial / firmware upload).
@@ -120,7 +120,7 @@ This outputs a framed 3-wire value (SC + SD + SO) for use with a physical GBA vi
 **Limitation:** Boktai's normal link-cable modes (e.g., multiplayer) are **not compatible** with this and may never be. To use multiplayer alongside the Ojo del Sol, you'll need an emulator with link support (I've contacted Pizza Boy A Pro and Linkboy devs — TBD).
 
 ### 4. Display Only / Manual Entry (Not Recommended)
-Read the bar count from the OLED and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method above.
+Read the bar count from the screen and enter it manually using Prof9's ROM hacks (https://github.com/Prof9/Boktai-Solar-Sensor-Patches). If you intend to use manual entry, **do not** use the ROM hacks in the GBA Link Patches directory. Those are for the GBA link cable method above.
 
 **Note:** The screen is difficult to read in direct sunlight unless you shade it, so the display is really more for calibration and occasional reference.
 
@@ -162,7 +162,7 @@ The [LilyGO T-QT Pro](https://github.com/Xinyuan-LilyGO/T-QT) has a built-in 0.8
 
 ### Wiring
 
-*(XIAO ESP32S3 build only — the T-QT Pro just needs the LTR390 on the Qwiic connector (or the IO33/IO34 pads, see above), a battery, and the GBA link pads below if you use that output.)*
+*(XIAO ESP32S3 build only — the T-QT Pro just needs the LTR390 on the Qwiic connector (or the IO33/IO34 pads, see above) or a [cartridge](#cartridge-sensor-t-qt-pro-optional--untested), a battery, and the GBA link pads below if you use that output.)*
 
 | Component | Pin | XIAO ESP32S3 | Notes |
 |-----------|-----|--------------|-------|
@@ -309,7 +309,7 @@ The tie-offs are the same as the calibrator's; its README explains [why each one
 ### Libraries Required
 
 **Install via Arduino Library Manager:**
-- Adafruit LTR390 Library
+- Adafruit LTR390 Library (not needed with the cartridge sensor)
 - Adafruit SSD1306 (XIAO build only)
 - Adafruit GFX Library
 - Adafruit BusIO
@@ -333,13 +333,13 @@ The tie-offs are the same as the calibrator's; its README explains [why each one
     - **Flash Size:** 4MB (32Mb) for the common N4R2 variant; 8MB (64Mb) for the N8 variant (chip marking `ESP32-S3FN4R2` = N4R2)
     - **PSRAM:** QSPI PSRAM (N4R2) or Disabled (N8)
     - **Partition Scheme:** Huge APP (3MB No OTA/1MB SPIFFS) — the sketch is too large for the default 1.2MB app partition
-    - **Flash Mode:** QIO 80MHz, **CPU Frequency:** 240MHz, **Events/Arduino Run On:** Core 1
+    - **Flash Mode:** QIO 80MHz, **CPU Frequency:** 240MHz, **Events/Arduino Run On:** Core 1 (the cartridge sensor's tick timer relies on this to stay off the Bluetooth core)
     - USB settings identical to the XIAO build (below)
 - **USB Mode:** USB-OTG (TinyUSB)
 - **USB CDC On Boot:** Enabled (required for CDC mode; normal runtime remains XInput unless you enter CDC mode from the XInput screen or set `USB_HID_ENABLED = false`)
 - **Upload Mode:** USB-OTG CDC (TinyUSB) (required for CDC-mode uploads; UART0/Hardware CDC will fail to auto-connect in this setup)
 - If CDC UI appears inconsistent/garbled after failed uploads, do one upload with **Erase All Flash Before Sketch Upload = Enabled**, then set it back to Disabled.
-- Remember to select your board at the top of `config.h` as well (`BOARD_SEEED_XIAO_ESP32S3` or `BOARD_LILYGO_T_QT_PRO`).
+- Remember to select your board at the top of `config.h` as well (`BOARD_SEEED_XIAO_ESP32S3` or `BOARD_LILYGO_T_QT_PRO`), and the sensor just below it (`SENSOR_LTR390`, the default, or `SENSOR_GBA_CARTRIDGE`).
 
 ----------------------------------------------------------------------
 
@@ -392,9 +392,9 @@ The device advertises as "Ojo del Sol Sensor" (configurable via `BLE_DEVICE_NAME
 
 ### Screensaver
 
-After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan). Alternatively, set `SCREENSAVER_ACTIVE = false` to disable it without changing the time value.
+After `SCREENSAVER_TIME` minutes (default 3) of no button activity, the display shows a bouncing "Ojo del Sol" logo. Press any button to wake. Set `SCREENSAVER_TIME = 0` to disable (but this affects OLED lifespan). Alternatively, set `SCREENSAVER_ACTIVE = false` to disable it without changing the time value. The status row appears only when battery data is available and/or BLE is actively connected or pairing.
 
-On the T-QT Pro the screensaver is disabled by default (`SCREENSAVER_ACTIVE = false` in its branch of `config.h`): its LCD isn't prone to OLED-style burn-in, and the screensaver leaves the backlight on, so it would save no power. Set it to `true` if you want it anyway. The status row appears only when battery data is available and/or BLE is actively connected or pairing.
+On the T-QT Pro the screensaver is disabled by default (`SCREENSAVER_ACTIVE = false` in its branch of `config.h`): its LCD isn't prone to OLED-style burn-in, and the screensaver leaves the backlight on, so it would save no power. Set it to `true` if you want it anyway.
 
 ----------------------------------------------------------------------
 
@@ -519,8 +519,8 @@ A separate device (partly tested: the Wi-Fi, web app, logging and LTR390 work on
 - Cutting the LTR390 breakout LED trace is recommended because the LED is hardwired to VIN
 - Battery sensing is enabled by default on the T-QT Pro (built-in divider) and disabled by default on the XIAO build; low-voltage cutoff is disabled by default on both. Enable them after wiring (XIAO) and validating the battery divider (`BATTERY_SENSE_ENABLED`, `BATTERY_CUTOFF_ENABLED`)
 - Battery sampling/cutoff checks run on a timed loop and are not dependent on UV "new data" events
-- OLED uses Display OFF + Charge Pump OFF commands
-- On wake, firmware explicitly re-enables the OLED charge pump/display before drawing
+- XIAO build: the OLED uses Display OFF + Charge Pump OFF commands, and on wake the firmware explicitly re-enables the charge pump/display before drawing
+- T-QT Pro: the panel is put to sleep and the backlight cut; the backlight pin is held off through deep sleep
 - Deep sleep current: ~10µA (varies with module pull-ups)
 
 ### UV Blocking Warning
